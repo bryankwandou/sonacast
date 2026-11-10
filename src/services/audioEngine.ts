@@ -31,6 +31,7 @@ export class AudioEngine {
   private duration = 180;
   private volume = 0.85;
   private virtualTimeOffset = 0;
+  private prevAudioTime = 0;
   private watchdogInterval: number | null = null;
 
   private freqArray: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
@@ -80,7 +81,15 @@ export class AudioEngine {
 
       this.audioElement.addEventListener('timeupdate', () => {
         if (this.audioElement && !this.isSynthesizing && this.isPlaying) {
-          const calcTime = this.virtualTimeOffset + this.audioElement.currentTime;
+          const cur = this.audioElement.currentTime;
+
+          // Detect loop wrap-around from end of media back to start
+          if (cur < this.prevAudioTime - 0.8) {
+            this.virtualTimeOffset += this.prevAudioTime;
+          }
+          this.prevAudioTime = cur;
+
+          const calcTime = this.virtualTimeOffset + cur;
           if (calcTime >= this.duration) {
             this.currentTime = this.duration;
             this.notifyTime();
@@ -98,8 +107,9 @@ export class AudioEngine {
         const streamDur =
           this.audioElement && this.audioElement.duration > 0 ? this.audioElement.duration : 30;
         if (this.currentTime + 1 < this.duration) {
-          // Seamless audio continuity: loop without pause or silence
+          // Seamless audio continuity fallback
           this.virtualTimeOffset += streamDur;
+          this.prevAudioTime = 0;
           if (this.audioElement) {
             this.audioElement.currentTime = 0;
             this.audioElement.play().catch(() => {
@@ -206,10 +216,12 @@ export class AudioEngine {
     this.currentTrackBpm = bpm;
     this.virtualTimeOffset = 0;
     this.currentTime = 0;
+    this.prevAudioTime = 0;
 
     if (audioUrl && this.audioElement) {
       this.stopProceduralSynthesizer();
       this.startWatchdog();
+      this.audioElement.loop = true;
       if (this.audioElement.src !== audioUrl) {
         this.audioElement.src = audioUrl;
       }
@@ -253,6 +265,7 @@ export class AudioEngine {
       this.startWatchdog();
 
       if (this.audioElement && this.audioElement.src && !this.isSynthesizing) {
+        this.audioElement.loop = true;
         this.audioElement
           .play()
           .then(() => {
@@ -284,6 +297,7 @@ export class AudioEngine {
       if (mediaDur && mediaDur > 0 && isFinite(mediaDur)) {
         const segmentTime = this.currentTime % mediaDur;
         this.virtualTimeOffset = this.currentTime - segmentTime;
+        this.prevAudioTime = segmentTime;
         try {
           this.audioElement.currentTime = segmentTime;
         } catch {
@@ -291,9 +305,11 @@ export class AudioEngine {
         }
       } else {
         this.virtualTimeOffset = this.currentTime;
+        this.prevAudioTime = 0;
       }
     } else {
       this.virtualTimeOffset = this.currentTime;
+      this.prevAudioTime = 0;
     }
     this.notifyTime();
   }
