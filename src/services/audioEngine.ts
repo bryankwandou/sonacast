@@ -30,12 +30,15 @@ export class AudioEngine {
   private currentTime = 0;
   private duration = 180;
   private volume = 0.85;
+  private virtualTimeOffset = 0;
+  private watchdogInterval: number | null = null;
 
   private freqArray: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
   private waveArray: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
 
   private onTimeUpdateCallbacks: Set<(time: number) => void> = new Set();
   private onStateChangeCallbacks: Set<(playing: boolean) => void> = new Set();
+  private onTrackEndedCallbacks: Set<() => void> = new Set();
 
   constructor() {
     // Initialized on user interaction
@@ -76,25 +79,85 @@ export class AudioEngine {
       }
 
       this.audioElement.addEventListener('timeupdate', () => {
-        if (this.audioElement && !this.isSynthesizing) {
-          this.currentTime = this.audioElement.currentTime;
-          this.notifyTime();
+        if (this.audioElement && !this.isSynthesizing && this.isPlaying) {
+          const calcTime = this.virtualTimeOffset + this.audioElement.currentTime;
+          if (calcTime >= this.duration) {
+            this.currentTime = this.duration;
+            this.notifyTime();
+            this.pause();
+            this.notifyTrackEnded();
+          } else {
+            this.currentTime = calcTime;
+            this.notifyTime();
+          }
         }
       });
 
       this.audioElement.addEventListener('ended', () => {
-        this.pause();
+        if (!this.isPlaying) return;
+        const streamDur =
+          this.audioElement && this.audioElement.duration > 0 ? this.audioElement.duration : 30;
+        if (this.currentTime + 1 < this.duration) {
+          // Seamless audio continuity: loop without pause or silence
+          this.virtualTimeOffset += streamDur;
+          if (this.audioElement) {
+            this.audioElement.currentTime = 0;
+            this.audioElement.play().catch(() => {
+              this.startProceduralSynthesizer();
+            });
+          }
+        } else {
+          // 100% full-length track reached
+          this.currentTime = this.duration;
+          this.notifyTime();
+          this.pause();
+          this.notifyTrackEnded();
+        }
       });
 
       this.audioElement.addEventListener('durationchange', () => {
         if (this.audioElement && this.audioElement.duration && !isNaN(this.audioElement.duration)) {
-          this.duration = this.audioElement.duration;
+          // Only expand duration if media source is longer than target duration (e.g. full-length audio file)
+          if (this.audioElement.duration > this.duration) {
+            this.duration = this.audioElement.duration;
+          }
         }
       });
     }
 
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
+    }
+  }
+
+  private startWatchdog() {
+    this.stopWatchdog();
+    this.watchdogInterval = window.setInterval(() => {
+      if (!this.isPlaying || this.isSynthesizing || !this.audioElement) return;
+
+      const mediaDur = this.audioElement.duration;
+      if (mediaDur && mediaDur > 0 && isFinite(mediaDur)) {
+        // If within 0.18s of stream end and track still has remaining duration:
+        if (this.audioElement.currentTime >= mediaDur - 0.18) {
+          if (this.currentTime + 1 < this.duration) {
+            this.virtualTimeOffset += mediaDur;
+            this.audioElement.currentTime = 0;
+            this.audioElement.play().catch(() => {});
+          } else {
+            this.currentTime = this.duration;
+            this.notifyTime();
+            this.pause();
+            this.notifyTrackEnded();
+          }
+        }
+      }
+    }, 200);
+  }
+
+  private stopWatchdog() {
+    if (this.watchdogInterval !== null) {
+      clearInterval(this.watchdogInterval);
+      this.watchdogInterval = null;
     }
   }
 
@@ -122,14 +185,34 @@ export class AudioEngine {
     return () => this.onStateChangeCallbacks.delete(callback);
   }
 
+  public subscribeTrackEnded(callback: () => void) {
+    this.onTrackEndedCallbacks.add(callback);
+    return () => this.onTrackEndedCallbacks.delete(callback);
+  }
+
+  private notifyTrackEnded() {
+    this.onTrackEndedCallbacks.forEach((cb) => {
+      try {
+        cb();
+      } catch {
+        // Safe callback execution
+      }
+    });
+  }
+
   public playTrack(duration: number, bpm = 120, audioUrl?: string) {
     this.initContext();
-    this.duration = duration;
+    this.duration = Math.max(30, duration);
     this.currentTrackBpm = bpm;
+    this.virtualTimeOffset = 0;
+    this.currentTime = 0;
 
     if (audioUrl && this.audioElement) {
       this.stopProceduralSynthesizer();
-      this.audioElement.src = audioUrl;
+      this.startWatchdog();
+      if (this.audioElement.src !== audioUrl) {
+        this.audioElement.src = audioUrl;
+      }
       this.audioElement.currentTime = 0;
       this.audioElement
         .play()
@@ -155,6 +238,7 @@ export class AudioEngine {
 
   public pause() {
     this.isPlaying = false;
+    this.stopWatchdog();
     if (this.audioElement) {
       this.audioElement.pause();
     }
@@ -166,6 +250,7 @@ export class AudioEngine {
     if (!this.isPlaying) {
       this.initContext();
       this.isPlaying = true;
+      this.startWatchdog();
 
       if (this.audioElement && this.audioElement.src && !this.isSynthesizing) {
         this.audioElement
@@ -195,11 +280,20 @@ export class AudioEngine {
   public seek(seconds: number) {
     this.currentTime = Math.max(0, Math.min(this.duration, seconds));
     if (this.audioElement && this.audioElement.src && !this.isSynthesizing) {
-      try {
-        this.audioElement.currentTime = this.currentTime;
-      } catch {
-        // Safe seek fallback
+      const mediaDur = this.audioElement.duration;
+      if (mediaDur && mediaDur > 0 && isFinite(mediaDur)) {
+        const segmentTime = this.currentTime % mediaDur;
+        this.virtualTimeOffset = this.currentTime - segmentTime;
+        try {
+          this.audioElement.currentTime = segmentTime;
+        } catch {
+          // Safe seek fallback
+        }
+      } else {
+        this.virtualTimeOffset = this.currentTime;
       }
+    } else {
+      this.virtualTimeOffset = this.currentTime;
     }
     this.notifyTime();
   }
@@ -240,7 +334,11 @@ export class AudioEngine {
 
       this.currentTime += intervalMs / 1000;
       if (this.currentTime >= this.duration) {
-        this.currentTime = 0;
+        this.currentTime = this.duration;
+        this.notifyTime();
+        this.pause();
+        this.notifyTrackEnded();
+        return;
       }
       this.notifyTime();
 

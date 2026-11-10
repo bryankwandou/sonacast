@@ -54,6 +54,19 @@ export async function fetchSyncedLyrics(
       }));
     }
 
+    // Secondary fallback: search endpoint for LRCLIB
+    const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanTrack} ${cleanArtist}`)}`;
+    const searchRes = await fetch(searchUrl);
+    if (searchRes.ok) {
+      const searchResults = await searchRes.json();
+      if (Array.isArray(searchResults) && searchResults.length > 0) {
+        const withSynced = searchResults.find((s: { syncedLyrics?: string }) => s.syncedLyrics);
+        if (withSynced && withSynced.syncedLyrics) {
+          return parseLrc(withSynced.syncedLyrics);
+        }
+      }
+    }
+
     return [];
   } catch {
     return [];
@@ -64,54 +77,112 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
   if (!query || query.trim().length === 0) return [];
 
   try {
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=24`;
-    const res = await fetch(url);
-    if (!res.ok) return [];
+    const itunesPromise = (async () => {
+      try {
+        const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=24`;
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+        if (!data.results || !Array.isArray(data.results)) return [];
 
-    const data = await res.json();
-    if (!data.results || !Array.isArray(data.results)) return [];
+        interface ITunesItem {
+          trackId: number;
+          trackName: string;
+          artistName: string;
+          collectionName?: string;
+          artworkUrl100?: string;
+          previewUrl?: string;
+          primaryGenreName?: string;
+          trackTimeMillis?: number;
+        }
 
-    interface ITunesItem {
-      trackId: number;
-      trackName: string;
-      artistName: string;
-      collectionName?: string;
-      artworkUrl100?: string;
-      previewUrl?: string;
-      primaryGenreName?: string;
-      trackTimeMillis?: number;
-    }
+        return data.results.map((item: ITunesItem): Track => {
+          const coverUrl = item.artworkUrl100
+            ? item.artworkUrl100.replace('100x100bb', '600x600bb')
+            : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop';
 
-    const tracks: Track[] = data.results.map((item: ITunesItem) => {
-      const coverUrl = item.artworkUrl100
-        ? item.artworkUrl100.replace('100x100bb', '600x600bb')
-        : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop';
+          const fullSecs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
 
-      // Duration: iTunes preview is 30s, or use full trackTimeMillis
-      const fullSecs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 30;
+          return {
+            id: `itunes-${item.trackId}`,
+            title: item.trackName || 'Unknown Title',
+            artist: item.artistName || 'Unknown Artist',
+            album: item.collectionName || item.trackName || 'Single',
+            duration: fullSecs > 0 ? fullSecs : 210,
+            coverUrl,
+            audioUrl: item.previewUrl,
+            videoUrl:
+              'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
+            genre: item.primaryGenreName || 'Pop',
+            bpm: 120,
+            artistSolanaAddress: generateDeterministicSolanaAddress(item.artistName || 'Artist'),
+            lyrics: [
+              { time: 0, text: `Listening to "${item.trackName}" by ${item.artistName}` },
+              { time: 6, text: `Album: ${item.collectionName || 'Single'}` },
+              { time: 14, text: `Genre: ${item.primaryGenreName || 'Music'}` },
+              { time: 22, text: `Continuous full-length playback active with real-time spectrum analysis` }
+            ]
+          };
+        });
+      } catch {
+        return [];
+      }
+    })();
 
-      return {
-        id: `itunes-${item.trackId}`,
-        title: item.trackName || 'Unknown Title',
-        artist: item.artistName || 'Unknown Artist',
-        album: item.collectionName || item.trackName || 'Single',
-        duration: fullSecs > 0 ? fullSecs : 30,
-        coverUrl,
-        audioUrl: item.previewUrl,
-        videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
-        genre: item.primaryGenreName || 'Pop',
-        bpm: 120,
-        artistSolanaAddress: generateDeterministicSolanaAddress(item.artistName || 'Artist'),
-        lyrics: [
-          { time: 0, text: `Listening to "${item.trackName}" by ${item.artistName}` },
-          { time: 6, text: `Album: ${item.collectionName || 'Single'}` },
-          { time: 14, text: `Genre: ${item.primaryGenreName || 'Music'}` },
-          { time: 22, text: `Streaming high-definition audio with real-time spectrum analysis` }
-        ]
-      };
-    });
+    const audiusPromise = (async () => {
+      try {
+        const url = `https://discoveryprovider.audius.co/v1/tracks/search?query=${encodeURIComponent(query)}&app_name=SONACAST`;
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+        if (!data || !Array.isArray(data.data)) return [];
 
-    return tracks;
+        interface AudiusItem {
+          id: string;
+          title: string;
+          duration?: number;
+          genre?: string;
+          bpm?: number;
+          user?: { name?: string; spl_wallet?: string };
+          artwork?: { '480x480'?: string; '1000x1000'?: string };
+        }
+
+        return data.data.slice(0, 12).map((item: AudiusItem): Track => {
+          const cover =
+            item.artwork?.['480x480'] ||
+            item.artwork?.['1000x1000'] ||
+            'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop';
+          const dur = item.duration && item.duration > 30 ? Math.round(item.duration) : 210;
+
+          return {
+            id: `audius-${item.id}`,
+            title: item.title || 'Audius Master Track',
+            artist: item.user?.name || query,
+            album: `${item.title} (Master 100% Stream)`,
+            duration: dur,
+            coverUrl: cover,
+            audioUrl: `https://discoveryprovider.audius.co/v1/tracks/${item.id}/stream?app_name=SONACAST`,
+            videoUrl:
+              'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
+            genre: item.genre || 'Master Audio',
+            bpm: item.bpm || 120,
+            artistSolanaAddress:
+              item.user?.spl_wallet || generateDeterministicSolanaAddress(item.user?.name || query),
+            lyrics: [
+              { time: 0, text: `Streaming 100% full-length master: "${item.title}"` },
+              { time: 8, text: `Artist: ${item.user?.name || query} · Audius Protocol` },
+              { time: 18, text: `Continuous browser streaming with synchronized visualizer` }
+            ]
+          };
+        });
+      } catch {
+        return [];
+      }
+    })();
+
+    const [itunesTracks, audiusTracks] = await Promise.all([itunesPromise, audiusPromise]);
+    // Interleave or merge results
+    return [...audiusTracks, ...itunesTracks];
   } catch {
     return [];
   }

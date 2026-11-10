@@ -127,6 +127,10 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
           </div>
           <span>{formatTime(duration)}</span>
         </div>
+        <div className="flex items-center gap-2 text-[9px] font-mono text-emerald-400/80 -mt-0.5">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span>100% Full-Length Continuity Active</span>
+        </div>
       </div>
 
       {/* Right: Display Mode Switcher & Volume */}

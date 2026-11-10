@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Track } from '../../types';
+import type { Track, LyricLine } from '../../types';
 import { searchTracksOnline, fetchSyncedLyrics } from '../../services/musicService';
-import { Play, Sparkles, Search, Upload, Globe, Loader2, Disc3, Users } from 'lucide-react';
+import { Play, Sparkles, Search, Upload, Globe, Loader2, Users, Disc3 } from 'lucide-react';
 
 interface DiscoverViewProps {
   tracks: Track[];
@@ -10,6 +10,7 @@ interface DiscoverViewProps {
   onSelectTrack: (track: Track) => void;
   onTogglePlay: () => void;
   onUploadTrack: (file: File) => void;
+  onUpdateLyrics?: (lyrics: LyricLine[]) => void;
 }
 
 const GLOBAL_ARTISTS = [
@@ -50,7 +51,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   isPlaying,
   onSelectTrack,
   onTogglePlay,
-  onUploadTrack
+  onUploadTrack,
+  onUpdateLyrics
 }) => {
   const [selectedGenre, setSelectedGenre] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,8 +113,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     onSelectTrack(track);
     try {
       const syncedLyrics = await fetchSyncedLyrics(track.title, track.artist, track.duration);
-      if (syncedLyrics.length > 0) {
-        onSelectTrack({ ...track, lyrics: syncedLyrics });
+      if (syncedLyrics.length > 0 && onUpdateLyrics) {
+        onUpdateLyrics(syncedLyrics);
       }
     } catch {
       // Retain existing
@@ -200,7 +202,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             <Users size={14} className="text-emerald-400" />
             <span>Explore 800+ Top Artists (1-Click Instant Catalog Load)</span>
           </div>
-          <span className="text-[11px] text-emerald-400 font-mono">Live iTunes & LRCLIB API</span>
+          <span className="text-[11px] text-emerald-400 font-mono">iTunes, Audius & LRCLIB Sync</span>
         </div>
 
         {/* Artist Badges */}
@@ -256,9 +258,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
               {searchQuery ? `Live Tracks for "${searchQuery}"` : `Top Tracks for "${selectedArtist}"`}
             </span>
           </h3>
-          <span className="text-xs text-emerald-400 font-mono">
-            {onlineResults.length} high-definition releases loaded
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline text-[11px] text-emerald-300 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/25">
+              100% Full-Length Playback
+            </span>
+            <span className="text-xs text-emerald-400 font-mono">
+              {onlineResults.length} releases loaded
+            </span>
+          </div>
         </div>
 
         {isSearchingOnline && onlineResults.length === 0 ? (

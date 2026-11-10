@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import type { Track, PodcastEpisode, RadioStation, PlayerMode, TabType, Language } from './types';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import type { Track, PodcastEpisode, RadioStation, PlayerMode, TabType, Language, LyricLine } from './types';
 import { TRACK_CATALOG, PODCAST_CATALOG, RADIO_STATIONS } from './data/catalog';
 import { sharedAudioEngine } from './services/audioEngine';
 import { solanaService } from './services/solanaService';
@@ -39,13 +39,19 @@ export default function App() {
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
   const [walletBalanceSol, setWalletBalanceSol] = useState(0);
 
+  const handleNextRef = useRef<() => void>(() => {});
+
   // Sync with audio engine
   useEffect(() => {
     const unsubTime = sharedAudioEngine.subscribeTimeUpdate((t) => setCurrentTime(t));
     const unsubState = sharedAudioEngine.subscribeStateChange((p) => setIsPlaying(p));
+    const unsubEnd = sharedAudioEngine.subscribeTrackEnded(() => {
+      handleNextRef.current();
+    });
     return () => {
       unsubTime();
       unsubState();
+      unsubEnd();
     };
   }, []);
 
@@ -60,16 +66,32 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleSelectTrack = (track: Track) => {
+  const handleUpdateTrackLyrics = (lyrics: LyricLine[]) => {
+    setCurrentTrack((prev) => ({ ...prev, lyrics }));
+  };
+
+  const handleSelectTrack = useCallback((track: Track) => {
     setCurrentTrack(track);
     setCurrentTime(0);
 
-    if (!queue.some((t) => t.id === track.id)) {
-      setQueue([track, ...queue]);
-    }
+    setQueue((prevQueue) => {
+      if (!prevQueue.some((t) => t.id === track.id)) {
+        return [track, ...prevQueue];
+      }
+      return prevQueue;
+    });
 
     sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl);
-  };
+
+    // If lyrics are short (less than 5 lines), fetch real synced lyrics dynamically
+    if (track.lyrics.length <= 4) {
+      fetchSyncedLyrics(track.title, track.artist, track.duration).then((synced) => {
+        if (synced && synced.length > 0) {
+          setCurrentTrack((prev) => (prev.id === track.id ? { ...prev, lyrics: synced } : prev));
+        }
+      });
+    }
+  }, []);
 
   const handleSelectRadio = (station: RadioStation) => {
     setCurrentTrack(station.currentTrack);
@@ -142,17 +164,21 @@ export default function App() {
     }
   };
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     const currentIndex = queue.findIndex((t) => t.id === currentTrack.id);
     const nextIndex = (currentIndex + 1) % queue.length;
     handleSelectTrack(queue[nextIndex]);
-  };
+  }, [queue, currentTrack.id, handleSelectTrack]);
 
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
     const currentIndex = queue.findIndex((t) => t.id === currentTrack.id);
     const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
     handleSelectTrack(queue[prevIndex]);
-  };
+  }, [queue, currentTrack.id, handleSelectTrack]);
+
+  useEffect(() => {
+    handleNextRef.current = handleNext;
+  }, [handleNext]);
 
   const handleSeek = (secs: number) => {
     sharedAudioEngine.seek(secs);
@@ -277,6 +303,7 @@ export default function App() {
                 onSelectTrack={handleSelectTrack}
                 onTogglePlay={handleTogglePlay}
                 onUploadTrack={handleUploadTrack}
+                onUpdateLyrics={handleUpdateTrackLyrics}
               />
             )}
 
