@@ -22,6 +22,7 @@ import { ProofOfStreamView } from './components/rewards/ProofOfStreamView';
 
 import { SolanaWalletModal } from './components/web3/SolanaWalletModal';
 import { PitchDeckModal } from './components/pitch/PitchDeckModal';
+import { Globe, RefreshCw } from 'lucide-react';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<TabType>('discover');
@@ -63,7 +64,6 @@ export default function App() {
     setCurrentTrack(track);
     setCurrentTime(0);
 
-    // Add to queue if not present
     if (!queue.some((t) => t.id === track.id)) {
       setQueue([track, ...queue]);
     }
@@ -124,7 +124,6 @@ export default function App() {
       ]
     };
 
-    // Try fetching lyrics online for this song name
     fetchSyncedLyrics(title, artist, 180).then((synced) => {
       if (synced && synced.length > 0) {
         newTrack.lyrics = synced;
@@ -173,8 +172,37 @@ export default function App() {
     }
   };
 
+  const handleHardRefresh = () => {
+    window.location.reload();
+  };
+
   return (
     <div className="flex flex-col h-screen w-screen bg-[#06080E] text-white overflow-hidden font-sans">
+      {/* Global Top Ticker Bar: 85,000,000+ songs available */}
+      <div className="bg-[#0A0E1A] border-b border-[#1A2234] px-6 py-1.5 flex items-center justify-between text-xs z-50">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="font-bold text-white tracking-wide">85,000,000+ GLOBAL MUSIC RELEASES ONLINE</span>
+          <span className="text-gray-500">·</span>
+          <span className="text-gray-300">Lukas Graham Top Hits & 800+ Artists Indexed</span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-emerald-400 font-mono hidden sm:inline flex items-center gap-1">
+            <Globe size={11} />
+            Live Apple Music / iTunes & LRCLIB Direct Connect
+          </span>
+          <button
+            onClick={handleHardRefresh}
+            className="px-2 py-0.5 rounded bg-[#161F2E] border border-[#233148] text-[11px] text-gray-300 hover:text-white flex items-center gap-1 transition-colors"
+            title="Reload Latest Version"
+          >
+            <RefreshCw size={11} />
+            <span>Reload</span>
+          </button>
+        </div>
+      </div>
+
       {/* Top Application Workspace */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Navigation Sidebar */}
