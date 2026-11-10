@@ -131,3 +131,4 @@ function generateDeterministicSolanaAddress(name: string): string {
   }
   return str;
 }
+

@@ -2,7 +2,196 @@ import type { Track, PodcastEpisode, RadioStation } from '../types';
 
 export const TRACK_CATALOG: Track[] = [
   {
-    id: 'track-1',
+    id: 'track-lukas-7years',
+    title: '7 Years',
+    artist: 'Lukas Graham',
+    album: 'Lukas Graham (Blue Album)',
+    duration: 237,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music69/v4/1f/57/08/1f57082e-ee7e-dcb7-a73e-ba1f3468211d/093624920496.jpg/600x600bb.jpg',
+    audioUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/15/71/af/1571af0b-19e7-00a2-452d-8c146b88bab3/mzaf_1010696746274902629.plus.aac.p.m4a',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
+    genre: 'Pop / Soul',
+    bpm: 120,
+    artistSolanaAddress: '4LukasGrah4mSolanaDevnetArtistAddress1111111',
+    lyrics: [
+      { time: 0, text: 'Once I was seven years old, my mama told me' },
+      { time: 4, text: '"Go make yourself some friends, or you\'ll be lonely"' },
+      { time: 8, text: 'Once I was seven years old' },
+      { time: 14, text: 'It was a big, big world, but we thought we were bigger' },
+      { time: 18, text: 'Pushing each other to the limits, we were learning quicker' },
+      { time: 22, text: 'By eleven, smoking herb and drinking burning liquor' },
+      { time: 26, text: 'Never rich, so we were out to make that steady figure' },
+      { time: 30, text: 'Once I was eleven years old, my daddy told me' },
+      { time: 34, text: '"Go get yourself a wife, or you\'ll be lonely"' },
+      { time: 38, text: 'Once I was eleven years old' },
+      { time: 46, text: 'I always had that dream like my daddy before me' },
+      { time: 50, text: 'So I started writing songs, I started writing stories' },
+      { time: 54, text: 'Something about that glory just always seemed to bore me' },
+      { time: 58, text: '\'Cause only those I really love will ever really know me' },
+      { time: 62, text: 'Once I was twenty years old, my story got told' },
+      { time: 66, text: 'Before the morning sun, when life was lonely' },
+      { time: 70, text: 'Once I was twenty years old' },
+      { time: 78, text: 'I only see my goals, I don\'t believe in failure' },
+      { time: 82, text: '\'Cause I know the smallest voices, they can make it major' },
+      { time: 86, text: 'I got my boys with me, at least those in favor' },
+      { time: 90, text: 'And if we don\'t meet before I leave, I hope I\'ll see you later' },
+      { time: 94, text: 'Soon we\'ll be thirty years old, our songs have been sold' },
+      { time: 98, text: 'We\'ve traveled \'round the world and we\'re still roaming' },
+      { time: 102, text: 'Soon we\'ll be thirty years old' }
+    ]
+  },
+  {
+    id: 'track-lukas-lovesomeone',
+    title: 'Love Someone',
+    artist: 'Lukas Graham',
+    album: '3 (The Purple Album)',
+    duration: 205,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/d0/ca/47/d0ca4734-03fb-6c99-2142-05a194a9dbf4/093624903284.jpg/600x600bb.jpg',
+    audioUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/53/47/3a/53473ace-1050-1698-ea89-e133e2509d8a/mzaf_11888205234446110455.plus.aac.p.m4a',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-colored-smoke-effect-in-slow-motion-41846-large.mp4',
+    genre: 'Pop / Acoustic',
+    bpm: 104,
+    artistSolanaAddress: '4LukasGrah4mSolanaDevnetArtistAddress1111111',
+    lyrics: [
+      { time: 0, text: 'There are days I wake up and I pinch myself' },
+      { time: 5, text: 'You\'re with me and not someone else' },
+      { time: 10, text: 'And I am terrified of what I\'d be without you' },
+      { time: 16, text: '\'Cause when you love someone, you open up your heart' },
+      { time: 22, text: 'When you love someone, you make room' },
+      { time: 28, text: 'If you love someone, and you\'re not afraid to lose \'em' },
+      { time: 34, text: 'You\'ll probably never love someone like I do' }
+    ]
+  },
+  {
+    id: 'track-lukas-mamasaid',
+    title: 'Mama Said',
+    artist: 'Lukas Graham',
+    album: 'Lukas Graham',
+    duration: 206,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music69/v4/1f/57/08/1f57082e-ee7e-dcb7-a73e-ba1f3468211d/093624920496.jpg/600x600bb.jpg',
+    audioUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/cf/d1/db/cfd1dbb9-321a-ab90-da37-b29679a1f109/mzaf_12099054444687301675.plus.aac.p.m4a',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-blurred-street-lights-on-a-rainy-night-41818-large.mp4',
+    genre: 'Pop / Soul',
+    bpm: 110,
+    artistSolanaAddress: '4LukasGrah4mSolanaDevnetArtistAddress1111111',
+    lyrics: [
+      { time: 0, text: 'When mama said that it was okay, mama said that it was quite alright' },
+      { time: 7, text: 'Our kind of people had a bed for the night' },
+      { time: 14, text: 'And it was okay, mama said that it was quite alright' },
+      { time: 21, text: 'Our kind of people had a bed for the night' },
+      { time: 28, text: 'Don\'t get complacent, don\'t ever lose your sight' }
+    ]
+  },
+  {
+    id: 'track-queen-bohemian',
+    title: 'Bohemian Rhapsody',
+    artist: 'Queen',
+    album: 'A Night At The Opera',
+    duration: 354,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/8b/0a/ea/8b0aea60-6f4a-195b-5958-cdf459c2333b/602527644271.jpg/600x600bb.jpg',
+    audioUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/4b/83/09/4b8309c3-e3b2-10bd-ea80-ec017d832503/mzaf_9752264660400108875.plus.aac.p.m4a',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
+    genre: 'Classic Rock',
+    bpm: 72,
+    artistSolanaAddress: '8QueenBandSolanaDevnetArtistAddress11111111',
+    lyrics: [
+      { time: 0, text: 'Is this the real life? Is this just fantasy?' },
+      { time: 7, text: 'Caught in a landslide, no escape from reality' },
+      { time: 14, text: 'Open your eyes, look up to the skies and see' },
+      { time: 25, text: 'I\'m just a poor boy, I need no sympathy' },
+      { time: 30, text: '\'Cause I\'m easy come, easy go, little high, little low' },
+      { time: 38, text: 'Any way the wind blows doesn\'t really matter to me' }
+    ]
+  },
+  {
+    id: 'track-weeknd-blinding',
+    title: 'Blinding Lights',
+    artist: 'The Weeknd',
+    album: 'After Hours',
+    duration: 200,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/61/e7/3f/61e73f94-018d-5f50-50ec-8521952bc72e/20UM1IM11629.rgb.jpg/600x600bb.jpg',
+    audioUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/12/73/ca/1273ca46-233a-5331-189b-25ac1d656533/mzaf_976341070785891411.plus.aac.p.m4a',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-flashing-tunnel-lights-41838-large.mp4',
+    genre: 'Synthwave / Pop',
+    bpm: 171,
+    artistSolanaAddress: '7WeekndAbelSolanaDevnetArtistAddress1111111',
+    lyrics: [
+      { time: 0, text: 'Yeah, I\'ve been tryna call' },
+      { time: 5, text: 'I\'ve been on my own for long enough' },
+      { time: 10, text: 'Maybe you can show me how to love, maybe' },
+      { time: 16, text: 'I\'m going through withdrawals' },
+      { time: 21, text: 'You don\'t even have to do too much' },
+      { time: 26, text: 'I said, ooh, I\'m blinded by the lights' },
+      { time: 32, text: 'No, I can\'t sleep until I feel your touch' }
+    ]
+  },
+  {
+    id: 'track-coldplay-vivalavida',
+    title: 'Viva La Vida',
+    artist: 'Coldplay',
+    album: 'Viva La Vida or Death and All His Friends',
+    duration: 242,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/52/aa/85/52aa851f-15b7-6322-f91f-df84b15b7b19/190295978044.jpg/600x600bb.jpg',
+    audioUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/a3/30/8e/a3308eed-d8b7-e0b3-f09d-5e1b0f4d660a/mzaf_8517946447501075134.plus.aac.p.m4a',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-star-cluster-movement-in-outer-space-41617-large.mp4',
+    genre: 'Alternative / Rock',
+    bpm: 138,
+    artistSolanaAddress: '9ColdplayBandSolanaDevnetArtistAddress11111',
+    lyrics: [
+      { time: 0, text: 'I used to rule the world' },
+      { time: 5, text: 'Seas would rise when I gave the word' },
+      { time: 10, text: 'Now in the morning I sleep alone' },
+      { time: 15, text: 'Sweep the streets I used to own' },
+      { time: 21, text: 'I used to roll the dice' },
+      { time: 26, text: 'Feel the fear in my enemy\'s eyes' },
+      { time: 31, text: 'Listen as the crowd would sing' },
+      { time: 36, text: '"Now the old king is dead, long live the king"' }
+    ]
+  },
+  {
+    id: 'track-edsheeran-shapeofyou',
+    title: 'Shape of You',
+    artist: 'Ed Sheeran',
+    album: '÷ (Deluxe)',
+    duration: 233,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/15/e6/e8/15e6e8a4-4190-6a8b-86c3-ab4a51b88288/190295851286.jpg/600x600bb.jpg',
+    audioUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/44/c7/4f/44c74f0d-72dc-6143-d4d0-ba14d661ca0d/mzaf_9566898362556366703.plus.aac.p.m4a',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
+    genre: 'Pop',
+    bpm: 96,
+    artistSolanaAddress: '3EdSheeranSolanaDevnetArtistAddress11111111',
+    lyrics: [
+      { time: 0, text: 'The club isn\'t the best place to find a lover so the bar is where I go' },
+      { time: 5, text: 'Me and my friends at the table doing shots, drinking fast and then we talk slow' },
+      { time: 10, text: 'Girl, you know I want your love, your love was handmade for somebody like me' },
+      { time: 16, text: 'I\'m in love with the shape of you' },
+      { time: 20, text: 'We push and pull like a magnet do' },
+      { time: 24, text: 'Although my heart is falling too, I\'m in love with your body' }
+    ]
+  },
+  {
+    id: 'track-mode-pesawat',
+    title: 'Mode Pesawat',
+    artist: 'Dandy Barakati Ft. Dante Nababan',
+    album: 'Mode Pesawat Single',
+    duration: 184,
+    coverUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=800&auto=format&fit=crop',
+    audioUrl: '/audio/mode-pesawat.mp3',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-waves-crashing-on-a-beach-41619-large.mp4',
+    genre: 'Indonesian Pop / Hip-Hop',
+    bpm: 105,
+    artistSolanaAddress: '2DandyBarakatiSolanaDevnetAddress1111111111',
+    lyrics: [
+      { time: 0, text: 'Mengatur pikiran ke mode pesawat' },
+      { time: 6, text: 'Meninggalkan riuh dunia yang tak terawat' },
+      { time: 12, text: 'Terbang tinggi menembus awan dan waktu' },
+      { time: 18, text: 'Mencari ketenangan dalam irama laguku' },
+      { time: 26, text: 'Dandy Barakati bersama Dante Nababan' },
+      { time: 34, text: 'Irama mengalun membawa kedamaian jiwa' }
+    ]
+  },
+  {
+    id: 'track-midnight-horizon',
     title: 'Midnight Horizon',
     artist: 'Kaelen Brooks',
     album: 'Synthetic Solitude',
@@ -16,21 +205,11 @@ export const TRACK_CATALOG: Track[] = [
       { time: 0, text: 'Scanning the empty avenues under violet light' },
       { time: 8, text: 'Analog synthesizer hums across the digital divide' },
       { time: 16, text: 'Feel the frequency vibrating through the dashboard' },
-      { time: 24, text: 'Accelerating toward the edge of what we knew before' },
-      { time: 32, text: 'Night lights blur into streaming vectors of code' },
-      { time: 40, text: 'We found our sanctuary on this open endless road' },
-      { time: 48, text: 'No latency in our connection, no echoes of yesterday' },
-      { time: 56, text: 'Let the bassline sweep every phantom shadow away' },
-      { time: 66, text: 'Resonance builds inside the core of the machine' },
-      { time: 74, text: 'The purest transmission this city has ever seen' },
-      { time: 82, text: 'Catch the wave before the morning signals break' },
-      { time: 90, text: 'Alive in every calculated frequency we make' },
-      { time: 100, text: 'Hold the frequency steady till the skyline glows' },
-      { time: 110, text: 'Where the midnight horizon finally overflows' }
+      { time: 24, text: 'Accelerating toward the edge of what we knew before' }
     ]
   },
   {
-    id: 'track-2',
+    id: 'track-neon-echoes',
     title: 'Neon Echoes',
     artist: 'Cygnus & Lyra',
     album: 'Constellation Vector',
@@ -43,103 +222,7 @@ export const TRACK_CATALOG: Track[] = [
     lyrics: [
       { time: 0, text: 'Rain drops striking holographic displays on glass' },
       { time: 9, text: 'Reflecting memories of analog times that pass' },
-      { time: 18, text: 'Whispers routed through fiber strands deep underground' },
-      { time: 27, text: 'Searching for a warm human frequency yet unfound' },
-      { time: 36, text: 'Neon echoes pulse across the concrete maze' },
-      { time: 45, text: 'Lost in the digital luminescence and quiet haze' },
-      { time: 54, text: 'Synchronize your heartbeat with the clock of the net' },
-      { time: 63, text: 'The cleanest cadence we have discovered yet' },
-      { time: 72, text: 'Decentralized dreams in every line we render' },
-      { time: 82, text: 'A gentle spectrum soft, resilient and tender' }
-    ]
-  },
-  {
-    id: 'track-3',
-    title: 'Velvet Raindrops',
-    artist: 'Maya Lin',
-    album: 'Coffee & Analog Tapes',
-    duration: 178,
-    coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop',
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-blurred-street-lights-on-a-rainy-night-41818-large.mp4',
-    genre: 'Lo-Fi Jazz',
-    bpm: 84,
-    artistSolanaAddress: '3mK8Rx9b7C2eR1M8Fv4D5aPq3h9xR7kZ2mVc4T6nYbE',
-    lyrics: [
-      { time: 0, text: 'Steam rising from an untouched ceramic cup' },
-      { time: 10, text: 'Watching the quiet morning street waking up' },
-      { time: 20, text: 'Gentle vinyl crackle breathing through the speaker cone' },
-      { time: 30, text: 'A tranquil room where solitude feels like home' },
-      { time: 40, text: 'Raindrops tap a gentle rhumba on the windowsill' },
-      { time: 50, text: 'Time suspended in a groove completely still' },
-      { time: 60, text: 'Muted trumpet floating over warm Rhodes chords' },
-      { time: 70, text: 'Expressing feelings far beyond everyday words' },
-      { time: 82, text: 'Just stay right here while the drizzle softly falls' }
-    ]
-  },
-  {
-    id: 'track-4',
-    title: 'Orbital Drift',
-    artist: 'Sector 7',
-    album: 'Deep Telemetry',
-    duration: 236,
-    coverUrl: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=800&auto=format&fit=crop',
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-star-cluster-movement-in-outer-space-41617-large.mp4',
-    genre: 'Deep Ambient',
-    bpm: 72,
-    artistSolanaAddress: '9rQ4Fx2b7C2eR1M8Fv4D5aPq3h9xR7kZ2mVc4T6nYbE',
-    lyrics: [
-      { time: 0, text: 'Approaching the outer edge of low planetary orbit' },
-      { time: 12, text: 'Silence so immense only sub-bass can absorb it' },
-      { time: 24, text: 'Beacon signals blinking blue every sixteen bars' },
-      { time: 36, text: 'Suspended midway between the Earth and ancient stars' },
-      { time: 48, text: 'Telemetry streams down in crystalline cascading packets' },
-      { time: 60, text: 'Weightless floating above magnetic weather brackets' },
-      { time: 72, text: 'Listen to the cosmic background radiation sigh' },
-      { time: 84, text: 'Drifting gently across the endless dark velvet sky' }
-    ]
-  },
-  {
-    id: 'track-5',
-    title: 'Subterranean Pulse',
-    artist: 'Vesper Pulse',
-    album: 'Berlin Vault Sessions',
-    duration: 198,
-    coverUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=800&auto=format&fit=crop',
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-flashing-tunnel-lights-41838-large.mp4',
-    genre: 'Modular Techno',
-    bpm: 132,
-    artistSolanaAddress: '7tY9Vx4b7C2eR1M8Fv4D5aPq3h9xR7kZ2mVc4T6nYbE',
-    lyrics: [
-      { time: 0, text: 'Concrete resonance deep beneath the city grid' },
-      { time: 8, text: 'Unlocking rhythmic patterns once securely hid' },
-      { time: 16, text: 'Kick drum impacts with three hundred joules of force' },
-      { time: 24, text: 'Tracking the acoustic vibration back to its origin source' },
-      { time: 32, text: 'Strobe light flashes slicing through the dry ice air' },
-      { time: 40, text: 'A thousand minds united in an unshakeable trance out there' },
-      { time: 48, text: 'Keep the 909 running without interruption or cease' },
-      { time: 56, text: 'Pure mechanical rhythm bringing spiritual release' }
-    ]
-  },
-  {
-    id: 'track-6',
-    title: 'Solana Sunset',
-    artist: 'Solarium Collective',
-    album: 'Proof of Groove',
-    duration: 186,
-    coverUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800&auto=format&fit=crop',
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-waves-crashing-on-a-beach-41619-large.mp4',
-    genre: 'Tropical Chill',
-    bpm: 98,
-    artistSolanaAddress: '2uB7Kx5b7C2eR1M8Fv4D5aPq3h9xR7kZ2mVc4T6nYbE',
-    lyrics: [
-      { time: 0, text: 'Warm golden breeze touching the shoreline palms' },
-      { time: 10, text: 'Unwinding after hours with soothing ocean balms' },
-      { time: 20, text: 'Four hundred milliseconds to finalize the sunset' },
-      { time: 30, text: 'The most tranquil vista our eyes have noticed yet' },
-      { time: 40, text: 'Bassline rolling smooth like the evening surf rolling in' },
-      { time: 50, text: 'Where the warmth of the sun and the night begin' },
-      { time: 60, text: 'Raise a glass to open code and decentralized sound' },
-      { time: 70, text: 'True community harmony forever easily found' }
+      { time: 18, text: 'Whispers routed through fiber strands deep underground' }
     ]
   }
 ];
@@ -278,4 +361,3 @@ export const RADIO_STATIONS: RadioStation[] = [
     currentTrack: TRACK_CATALOG[5]
   }
 ];
-
