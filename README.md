@@ -8,6 +8,10 @@
 
 **Sonacast** is a next-generation decentralized streaming application inspired by platforms like Spotify and Resso, engineered to run entirely inside modern web browsers with zero server transcoding overhead.
 
+### Live Deployments
+- **GitHub Pages (Production)**: [https://bryankwandou.github.io/sonacast/](https://bryankwandou.github.io/sonacast/)
+- **Local Server**: [http://localhost:4173/](http://localhost:4173/)
+
 Unlike legacy audio platforms that require heavy cloud transcoding clusters and 90-day royalty settlement delays, Sonacast delivers:
 - **Tri-Mode Dynamic Stage**: Seamless switching between Vinyl Cover Disc, Live Synchronized Video Stream, and the real-time Orbwave Spectrum Engine.
 - **Real-Time Live Synchronized Lyrics & Transcripts**: Rendered directly over the visualizer canvas at 60 FPS without requiring offline video pre-rendering.
