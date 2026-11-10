@@ -176,6 +176,47 @@ export const TRACK_CATALOG: Track[] = [
     ]
   },
   {
+    id: 'track-lukas-yourenotthere',
+    title: "You're Not There",
+    artist: 'Lukas Graham',
+    album: 'Lukas Graham (Blue Album)',
+    duration: 202,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music69/v4/1f/57/08/1f57082e-ee7e-dcb7-a73e-ba1f3468211d/093624920496.jpg/600x600bb.jpg',
+    audioUrl: './audio/lukas-graham-youre-not-there.mp3',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
+    genre: 'Pop / Soul',
+    bpm: 108,
+    artistSolanaAddress: '4LukasGrah4mSolanaDevnetArtistAddress1111111',
+    lyrics: [
+      { time: 0, text: "Got to tell you a story" },
+      { time: 4, text: "About the girl I fell in love with" },
+      { time: 8, text: "She's always on my mind, but you're not there" },
+      { time: 14, text: "Standing on the corner waiting for you" },
+      { time: 20, text: "I wish you could see who I grew up to be" },
+      { time: 28, text: "You'd be so proud, but you're not there" }
+    ]
+  },
+  {
+    id: 'track-lukas-funeral',
+    title: 'Funeral',
+    artist: 'Lukas Graham',
+    album: 'Lukas Graham (Blue Album)',
+    duration: 244,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music69/v4/1f/57/08/1f57082e-ee7e-dcb7-a73e-ba1f3468211d/093624920496.jpg/600x600bb.jpg',
+    audioUrl: './audio/lukas-graham-funeral.mp3',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-blurred-street-lights-on-a-rainy-night-41818-large.mp4',
+    genre: 'Pop / Soul',
+    bpm: 112,
+    artistSolanaAddress: '4LukasGrah4mSolanaDevnetArtistAddress1111111',
+    lyrics: [
+      { time: 0, text: "After the service, let the party begin" },
+      { time: 6, text: "Put a drink in my hand, let the music play loud" },
+      { time: 12, text: "Celebrate my life, don't shed no tears" },
+      { time: 20, text: "Sing along together like we did through the years" },
+      { time: 28, text: "This is how we say goodbye" }
+    ]
+  },
+  {
     id: 'track-queen-bohemian',
     title: 'Bohemian Rhapsody',
     artist: 'Queen',

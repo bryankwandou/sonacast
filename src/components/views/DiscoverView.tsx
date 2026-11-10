@@ -101,7 +101,21 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     setIsSearchingOnline(true);
     try {
       const results = await searchTracksOnline(term);
-      setOnlineResults(results);
+      const curatedMatches = tracks.filter(
+        (t) =>
+          t.artist.toLowerCase().includes(term.toLowerCase()) ||
+          t.title.toLowerCase().includes(term.toLowerCase())
+      );
+      const combined =
+        curatedMatches.length > 0
+          ? [
+              ...curatedMatches,
+              ...results.filter(
+                (r) => !curatedMatches.some((c) => c.title.toLowerCase() === r.title.toLowerCase())
+              )
+            ]
+          : results;
+      setOnlineResults(combined);
     } catch {
       setOnlineResults([]);
     } finally {

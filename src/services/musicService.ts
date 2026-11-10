@@ -73,6 +73,20 @@ export async function fetchSyncedLyrics(
   }
 }
 
+const MASTER_TRACKS_BY_TITLE: Record<string, { audioUrl: string; duration: number }> = {
+  '7 years': { audioUrl: './audio/lukas-graham-7-years.mp3', duration: 237 },
+  'love someone': { audioUrl: './audio/lukas-graham-love-someone.mp3', duration: 205 },
+  'mama said': { audioUrl: './audio/lukas-graham-mama-said.mp3', duration: 206 },
+  'youre not there': { audioUrl: './audio/lukas-graham-youre-not-there.mp3', duration: 202 },
+  "you're not there": { audioUrl: './audio/lukas-graham-youre-not-there.mp3', duration: 202 },
+  'funeral': { audioUrl: './audio/lukas-graham-funeral.mp3', duration: 244 },
+  'bohemian rhapsody': { audioUrl: './audio/queen-bohemian-rhapsody.mp3', duration: 354 },
+  'blinding lights': { audioUrl: './audio/the-weeknd-blinding-lights.mp3', duration: 200 },
+  'viva la vida': { audioUrl: './audio/coldplay-viva-la-vida.mp3', duration: 242 },
+  'shape of you': { audioUrl: './audio/ed-sheeran-shape-of-you.mp3', duration: 233 },
+  'mode pesawat': { audioUrl: './audio/mode-pesawat.mp3', duration: 184 }
+};
+
 export async function searchTracksOnline(query: string): Promise<Track[]> {
   if (!query || query.trim().length === 0) return [];
 
@@ -102,15 +116,19 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
             : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop';
 
           const fullSecs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
+          const cleanTitle = (item.trackName || '').toLowerCase().trim();
+          const masterMatch = MASTER_TRACKS_BY_TITLE[cleanTitle];
+          const resolvedAudioUrl = masterMatch ? masterMatch.audioUrl : item.previewUrl;
+          const resolvedDuration = masterMatch ? masterMatch.duration : (fullSecs > 0 ? fullSecs : 210);
 
           return {
             id: `itunes-${item.trackId}`,
             title: item.trackName || 'Unknown Title',
             artist: item.artistName || 'Unknown Artist',
             album: item.collectionName || item.trackName || 'Single',
-            duration: fullSecs > 0 ? fullSecs : 210,
+            duration: resolvedDuration,
             coverUrl,
-            audioUrl: item.previewUrl,
+            audioUrl: resolvedAudioUrl,
             videoUrl:
               'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
             genre: item.primaryGenreName || 'Pop',

@@ -146,20 +146,25 @@ export class AudioEngine {
       if (!this.isPlaying || this.isSynthesizing || !this.audioElement) return;
 
       const mediaDur = this.audioElement.duration;
-      if (mediaDur && mediaDur > 0 && isFinite(mediaDur)) {
-        // If within 0.18s of stream end and track still has remaining duration:
-        if (this.audioElement.currentTime >= mediaDur - 0.18) {
-          if (this.currentTime + 1 < this.duration) {
-            this.virtualTimeOffset += mediaDur;
-            this.prevAudioTime = 0;
-            this.audioElement.currentTime = 0;
-            this.audioElement.play().catch(() => { });
-          } else {
-            this.currentTime = this.duration;
-            this.notifyTime();
-            this.pause();
-            this.notifyTrackEnded();
-          }
+      const cur = this.audioElement.currentTime;
+
+      const reachedEnd = mediaDur && mediaDur > 0 && isFinite(mediaDur) && cur >= mediaDur - 0.35;
+      const isUnexpectedlyPaused = this.audioElement.paused && cur > 0;
+
+      if (reachedEnd || isUnexpectedlyPaused) {
+        if (this.currentTime + 1 < this.duration) {
+          const step = mediaDur && isFinite(mediaDur) && mediaDur > 0 ? mediaDur : (cur > 0 ? cur : 30);
+          this.virtualTimeOffset += step;
+          this.prevAudioTime = 0;
+          this.audioElement.currentTime = 0;
+          this.audioElement.play().catch(() => {
+            this.startProceduralSynthesizer();
+          });
+        } else {
+          this.currentTime = this.duration;
+          this.notifyTime();
+          this.pause();
+          this.notifyTrackEnded();
         }
       }
     }, 200);
