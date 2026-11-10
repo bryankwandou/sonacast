@@ -151,6 +151,7 @@ export class AudioEngine {
         if (this.audioElement.currentTime >= mediaDur - 0.18) {
           if (this.currentTime + 1 < this.duration) {
             this.virtualTimeOffset += mediaDur;
+            this.prevAudioTime = 0;
             this.audioElement.currentTime = 0;
             this.audioElement.play().catch(() => { });
           } else {
