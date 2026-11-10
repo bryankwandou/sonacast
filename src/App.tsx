@@ -3,6 +3,7 @@ import type { Track, PodcastEpisode, RadioStation, PlayerMode, TabType, Language
 import { TRACK_CATALOG, PODCAST_CATALOG, RADIO_STATIONS } from './data/catalog';
 import { sharedAudioEngine } from './services/audioEngine';
 import { solanaService } from './services/solanaService';
+import { fetchSyncedLyrics } from './services/musicService';
 
 import { Sidebar } from './components/layout/Sidebar';
 import { RightSidebar } from './components/layout/RightSidebar';
@@ -25,7 +26,7 @@ import { PitchDeckModal } from './components/pitch/PitchDeckModal';
 export default function App() {
   const [currentTab, setCurrentTab] = useState<TabType>('discover');
   const [currentTrack, setCurrentTrack] = useState<Track>(TRACK_CATALOG[0]);
-  const [queue] = useState<Track[]>(TRACK_CATALOG);
+  const [queue, setQueue] = useState<Track[]>(TRACK_CATALOG);
   const [playerMode, setPlayerMode] = useState<PlayerMode>('orbwave');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -61,13 +62,23 @@ export default function App() {
   const handleSelectTrack = (track: Track) => {
     setCurrentTrack(track);
     setCurrentTime(0);
-    sharedAudioEngine.playTrack(track.duration, track.bpm);
+
+    // Add to queue if not present
+    if (!queue.some((t) => t.id === track.id)) {
+      setQueue([track, ...queue]);
+    }
+
+    sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl);
   };
 
   const handleSelectRadio = (station: RadioStation) => {
     setCurrentTrack(station.currentTrack);
     setCurrentTime(0);
-    sharedAudioEngine.playTrack(station.currentTrack.duration, station.currentTrack.bpm);
+    sharedAudioEngine.playTrack(
+      station.currentTrack.duration,
+      station.currentTrack.bpm,
+      station.currentTrack.audioUrl
+    );
   };
 
   const handleSelectPodcast = (episode: PodcastEpisode) => {
@@ -84,16 +95,51 @@ export default function App() {
       artistSolanaAddress: episode.hostSolanaAddress,
       bpm: 90
     };
-    setCurrentTrack(podTrack);
-    setCurrentTime(0);
-    sharedAudioEngine.playTrack(podTrack.duration, podTrack.bpm);
+    handleSelectTrack(podTrack);
+  };
+
+  const handleUploadTrack = async (file: File) => {
+    const objectUrl = URL.createObjectURL(file);
+    const fileName = file.name.replace(/\.[^/.]+$/, '');
+    const parts = fileName.split('-').map((s) => s.trim());
+    const artist = parts.length > 1 ? parts[0] : 'Local Artist';
+    const title = parts.length > 1 ? parts.slice(1).join(' - ') : parts[0];
+
+    const newTrack: Track = {
+      id: `local-${Date.now()}`,
+      title,
+      artist,
+      album: 'Local Library Upload',
+      duration: 180,
+      coverUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=800&auto=format&fit=crop',
+      audioUrl: objectUrl,
+      videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
+      genre: 'Custom Audio',
+      bpm: 120,
+      artistSolanaAddress: solanaService.getPublicKey(),
+      lyrics: [
+        { time: 0, text: `Playing custom file: ${file.name}` },
+        { time: 5, text: `Loaded locally with full 60 FPS spectrum analysis` },
+        { time: 12, text: `Zero server upload required · 100% Client-Side DSP` }
+      ]
+    };
+
+    // Try fetching lyrics online for this song name
+    fetchSyncedLyrics(title, artist, 180).then((synced) => {
+      if (synced && synced.length > 0) {
+        newTrack.lyrics = synced;
+        setCurrentTrack({ ...newTrack, lyrics: synced });
+      }
+    });
+
+    handleSelectTrack(newTrack);
   };
 
   const handleTogglePlay = () => {
     if (isPlaying) {
       sharedAudioEngine.pause();
     } else {
-      sharedAudioEngine.playTrack(currentTrack.duration, currentTrack.bpm);
+      sharedAudioEngine.playTrack(currentTrack.duration, currentTrack.bpm, currentTrack.audioUrl);
     }
   };
 
@@ -202,6 +248,7 @@ export default function App() {
                 isPlaying={isPlaying}
                 onSelectTrack={handleSelectTrack}
                 onTogglePlay={handleTogglePlay}
+                onUploadTrack={handleUploadTrack}
               />
             )}
 

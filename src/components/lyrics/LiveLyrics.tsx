@@ -137,3 +137,4 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
     </div>
   );
 };
+

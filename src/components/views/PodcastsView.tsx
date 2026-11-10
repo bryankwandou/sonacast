@@ -37,9 +37,8 @@ export const PodcastsView: React.FC<PodcastsViewProps> = ({
             <div
               key={ep.id}
               onClick={() => onSelectPodcast(ep)}
-              className={`p-5 rounded-2xl bg-[#0D111A] border transition-all duration-200 cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 hover:border-[#2C3850] ${
-                isActive ? 'border-emerald-500/60 shadow-xl shadow-emerald-500/10' : 'border-[#1B2232]'
-              }`}
+              className={`p-5 rounded-2xl bg-[#0D111A] border transition-all duration-200 cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 hover:border-[#2C3850] ${isActive ? 'border-emerald-500/60 shadow-xl shadow-emerald-500/10' : 'border-[#1B2232]'
+                }`}
             >
               <div className="flex items-center gap-4">
                 <img

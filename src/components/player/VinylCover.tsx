@@ -105,3 +105,4 @@ export const VinylCover: React.FC<VinylCoverProps> = ({
     </div>
   );
 };
+

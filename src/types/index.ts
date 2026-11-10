@@ -69,3 +69,4 @@ export interface ProofOfStreamRecord {
   verifiedOnChain: boolean;
   txSignature?: string;
 }
+

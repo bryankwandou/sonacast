@@ -146,3 +146,4 @@ export const ProofOfStreamView: React.FC<ProofOfStreamViewProps> = ({
     </div>
   );
 };
+

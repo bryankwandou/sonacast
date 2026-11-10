@@ -205,3 +205,4 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
     </footer>
   );
 };
+

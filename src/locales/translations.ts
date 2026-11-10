@@ -151,3 +151,4 @@ export const TRANSLATIONS: Record<Language, {
     claimRewards: 'Prämien beanspruchen'
   }
 };
+

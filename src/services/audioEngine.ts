@@ -1,12 +1,15 @@
 /**
  * Sonacast Audio Engine
- * High-performance Web Audio API controller featuring real-time FFT frequency extraction,
- * logarithmic band smoothing, and dynamic procedural synthesis for resilient offline playback.
+ * High-performance Web Audio API controller supporting:
+ * 1. Real-time media streaming via HTMLAudioElement + AnalyserNode (with crossOrigin = anonymous)
+ * 2. Real-time 512-bin FFT frequency and waveform extraction
+ * 3. Procedural multi-oscillator polyphonic synthesizer fallback
+ * 4. Local custom audio file streaming (Blob / File / URL.createObjectURL)
  */
 
 export interface SpectrumData {
-  frequencies: Uint8Array;
-  waveformData: Uint8Array;
+  frequencies: Uint8Array<ArrayBuffer>;
+  waveformData: Uint8Array<ArrayBuffer>;
   bass: number;
   mid: number;
   treble: number;
@@ -17,29 +20,34 @@ export class AudioEngine {
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private gainNode: GainNode | null = null;
+  private audioElement: HTMLAudioElement | null = null;
+  private mediaSourceNode: MediaElementAudioSourceNode | null = null;
+
   private isSynthesizing = false;
   private synthInterval: number | null = null;
-  private audioElement: HTMLAudioElement | null = null;
-  private freqArray: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
-  private waveArray: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
-
   private currentTrackBpm = 120;
   private isPlaying = false;
   private currentTime = 0;
   private duration = 180;
-  private volume = 0.8;
+  private volume = 0.85;
+
+  private freqArray: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
+  private waveArray: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
 
   private onTimeUpdateCallbacks: Set<(time: number) => void> = new Set();
   private onStateChangeCallbacks: Set<(playing: boolean) => void> = new Set();
 
   constructor() {
-    // Lazy AudioContext initialization on first user interaction
+    // Initialized on user interaction
   }
 
   private initContext() {
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AudioCtx();
+
       this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = 512;
       this.analyser.smoothingTimeConstant = 0.82;
@@ -54,6 +62,35 @@ export class AudioEngine {
 
       this.freqArray = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
       this.waveArray = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
+
+      // Create persistent HTMLAudioElement
+      this.audioElement = new Audio();
+      this.audioElement.crossOrigin = 'anonymous';
+      this.audioElement.preload = 'auto';
+
+      try {
+        this.mediaSourceNode = this.ctx.createMediaElementSource(this.audioElement);
+        this.mediaSourceNode.connect(this.analyser);
+      } catch {
+        // Fallback if media element source fails
+      }
+
+      this.audioElement.addEventListener('timeupdate', () => {
+        if (this.audioElement && !this.isSynthesizing) {
+          this.currentTime = this.audioElement.currentTime;
+          this.notifyTime();
+        }
+      });
+
+      this.audioElement.addEventListener('ended', () => {
+        this.pause();
+      });
+
+      this.audioElement.addEventListener('durationchange', () => {
+        if (this.audioElement && this.audioElement.duration && !isNaN(this.audioElement.duration)) {
+          this.duration = this.audioElement.duration;
+        }
+      });
     }
 
     if (this.ctx.state === 'suspended') {
@@ -85,17 +122,42 @@ export class AudioEngine {
     return () => this.onStateChangeCallbacks.delete(callback);
   }
 
-  public playTrack(duration: number, bpm = 120) {
+  public playTrack(duration: number, bpm = 120, audioUrl?: string) {
     this.initContext();
     this.duration = duration;
     this.currentTrackBpm = bpm;
-    this.isPlaying = true;
-    this.startProceduralSynthesizer();
-    this.notifyState();
+
+    if (audioUrl && this.audioElement) {
+      this.stopProceduralSynthesizer();
+      this.audioElement.src = audioUrl;
+      this.audioElement.currentTime = 0;
+      this.audioElement
+        .play()
+        .then(() => {
+          this.isPlaying = true;
+          this.notifyState();
+        })
+        .catch(() => {
+          // If network / CORS blocked, seamlessly fall back to procedural synth
+          this.isPlaying = true;
+          this.startProceduralSynthesizer();
+          this.notifyState();
+        });
+    } else {
+      if (this.audioElement) {
+        this.audioElement.pause();
+      }
+      this.isPlaying = true;
+      this.startProceduralSynthesizer();
+      this.notifyState();
+    }
   }
 
   public pause() {
     this.isPlaying = false;
+    if (this.audioElement) {
+      this.audioElement.pause();
+    }
     this.stopProceduralSynthesizer();
     this.notifyState();
   }
@@ -104,8 +166,21 @@ export class AudioEngine {
     if (!this.isPlaying) {
       this.initContext();
       this.isPlaying = true;
-      this.startProceduralSynthesizer();
-      this.notifyState();
+
+      if (this.audioElement && this.audioElement.src && !this.isSynthesizing) {
+        this.audioElement
+          .play()
+          .then(() => {
+            this.notifyState();
+          })
+          .catch(() => {
+            this.startProceduralSynthesizer();
+            this.notifyState();
+          });
+      } else {
+        this.startProceduralSynthesizer();
+        this.notifyState();
+      }
     }
   }
 
@@ -119,6 +194,13 @@ export class AudioEngine {
 
   public seek(seconds: number) {
     this.currentTime = Math.max(0, Math.min(this.duration, seconds));
+    if (this.audioElement && this.audioElement.src && !this.isSynthesizing) {
+      try {
+        this.audioElement.currentTime = this.currentTime;
+      } catch {
+        // Safe seek fallback
+      }
+    }
     this.notifyTime();
   }
 
@@ -135,17 +217,16 @@ export class AudioEngine {
   }
 
   /**
-   * Generates procedural chords, bass, and rhythmic percussion pulses.
-   * This guarantees audio playback and rich spectrum analysis anywhere, anytime.
+   * Generates rich harmonic procedural chords, basslines, and beats
+   * when playing without an external audio URL or in offline mode.
    */
   private startProceduralSynthesizer() {
     if (this.isSynthesizing) return;
     this.isSynthesizing = true;
 
-    const intervalMs = Math.round((60 / this.currentTrackBpm) * 500); // 8th note rhythm
+    const intervalMs = Math.round((60 / this.currentTrackBpm) * 500); // 8th note
     let step = 0;
 
-    // Harmonic scale frequencies: A minor / C major (A2, C3, E3, G3, A3, D4)
     const bassNotes = [110.0, 110.0, 130.81, 146.83, 164.81, 130.81, 98.0, 110.0];
     const chordNotes = [
       [220.0, 261.63, 329.63],
@@ -159,20 +240,19 @@ export class AudioEngine {
 
       this.currentTime += intervalMs / 1000;
       if (this.currentTime >= this.duration) {
-        this.currentTime = 0; // loop track
+        this.currentTime = 0;
       }
       this.notifyTime();
 
       const now = this.ctx.currentTime;
 
-      // 1. Bass synth oscillator
+      // Bass oscillator
       const bassOsc = this.ctx.createOscillator();
       const bassGain = this.ctx.createGain();
       bassOsc.type = 'sawtooth';
       const note = bassNotes[step % bassNotes.length];
       bassOsc.frequency.setValueAtTime(note, now);
 
-      // Low-pass filter for smooth warm punch
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(450, now);
@@ -186,9 +266,9 @@ export class AudioEngine {
       bassGain.connect(this.analyser);
 
       bassOsc.start(now);
-      bassOsc.stop(now + (intervalMs / 1000));
+      bassOsc.stop(now + intervalMs / 1000);
 
-      // 2. Harmonic Pad / Arp every 2 steps
+      // Pad chord chords
       if (step % 2 === 0) {
         const chordIndex = Math.floor(step / 8) % chordNotes.length;
         const currentChord = chordNotes[chordIndex];
@@ -210,7 +290,7 @@ export class AudioEngine {
         });
       }
 
-      // 3. Sub kick impact on beats 0, 4, 8...
+      // Kick impact
       if (step % 4 === 0) {
         const kickOsc = this.ctx.createOscillator();
         const kickGain = this.ctx.createGain();
@@ -248,9 +328,6 @@ export class AudioEngine {
     this.onStateChangeCallbacks.forEach((cb) => cb(this.isPlaying));
   }
 
-  /**
-   * Retrieves live spectrum and time-domain analysis data
-   */
   public getSpectrum(): SpectrumData {
     if (!this.analyser) {
       return {
@@ -272,23 +349,23 @@ export class AudioEngine {
     for (let i = 0; i < bassCount; i++) {
       bassSum += this.freqArray[i];
     }
-    const bass = bassCount > 0 ? (bassSum / bassCount) / 255 : 0;
+    const bass = bassCount > 0 ? bassSum / bassCount / 255 : 0;
 
     let midSum = 0;
     const midCount = Math.floor(len * 0.45);
     for (let i = bassCount; i < bassCount + midCount; i++) {
       midSum += this.freqArray[i];
     }
-    const mid = midCount > 0 ? (midSum / midCount) / 255 : 0;
+    const mid = midCount > 0 ? midSum / midCount / 255 : 0;
 
     let trebleSum = 0;
     const trebleCount = len - (bassCount + midCount);
     for (let i = bassCount + midCount; i < len; i++) {
       trebleSum += this.freqArray[i];
     }
-    const treble = trebleCount > 0 ? (trebleSum / trebleCount) / 255 : 0;
+    const treble = trebleCount > 0 ? trebleSum / trebleCount / 255 : 0;
 
-    const level = (bass * 0.5 + mid * 0.3 + treble * 0.2);
+    const level = bass * 0.5 + mid * 0.3 + treble * 0.2;
 
     return {
       frequencies: this.freqArray,

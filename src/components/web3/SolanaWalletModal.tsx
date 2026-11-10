@@ -219,3 +219,4 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
     </div>
   );
 };
+

@@ -199,9 +199,8 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
                 <button
                   key={i}
                   onClick={() => setCurrentSlide(i)}
-                  className={`w-2.5 h-2.5 rounded-full transition-all ${
-                    i === currentSlide ? 'w-6 bg-emerald-400' : 'bg-gray-700 hover:bg-gray-500'
-                  }`}
+                  className={`w-2.5 h-2.5 rounded-full transition-all ${i === currentSlide ? 'w-6 bg-emerald-400' : 'bg-gray-700 hover:bg-gray-500'
+                    }`}
                 />
               ))}
             </div>
