@@ -142,7 +142,7 @@ export class AudioEngine {
           if (this.currentTime + 1 < this.duration) {
             this.virtualTimeOffset += mediaDur;
             this.audioElement.currentTime = 0;
-            this.audioElement.play().catch(() => {});
+            this.audioElement.play().catch(() => { });
           } else {
             this.currentTime = this.duration;
             this.notifyTime();
