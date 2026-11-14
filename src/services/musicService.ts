@@ -409,7 +409,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
     const itunesPromise = (async (): Promise<ITunesItem[]> => {
       try {
         const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=40`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(5500) });
+        const res = await fetch(url, { signal: AbortSignal.timeout(3800) });
         if (!res.ok) return [];
         const data = await res.json();
         if (!Array.isArray(data.results)) return [];
@@ -445,9 +445,16 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       }
     })();
 
-    const streamsPromise = searchFullStreams(query);
+    const fastStreamsPromise = Promise.race([
+      searchPipedMusic(query),
+      new Promise<StreamCandidate[]>((resolve) => setTimeout(() => resolve([]), 2200))
+    ]);
 
-    const [itunesItems, streamCandidates] = await Promise.all([itunesPromise, streamsPromise]);
+    const [itunesItems, rawStreamCandidates] = await Promise.all([itunesPromise, fastStreamsPromise]);
+    const streamCandidates =
+      itunesItems.length > 0 || rawStreamCandidates.length > 0
+        ? rawStreamCandidates
+        : await searchFullStreams(query);
 
     const usedStreamIds = new Set<string>();
     const coveredTitles = new Set<string>();

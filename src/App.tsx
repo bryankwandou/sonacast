@@ -249,6 +249,7 @@ export default function App() {
     }
 
     // 4. Resolve 100% full-length official stream dynamically for 85M+ catalog search items
+    sharedAudioEngine.pause();
     setResolvingTrackId(track.id);
     setIsYouTubeActive(true);
     try {
