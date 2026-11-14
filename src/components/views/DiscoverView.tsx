@@ -736,7 +736,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                           type="button"
                           onClick={() => onAddTrackToPlaylist(selectedPlaylist.id, currentTrack)}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--accent-emerald)] cursor-pointer"
-                          tidak ad                        >
+                        >
                           <Plus size={12} />
                           <span>Add "{currentTrack.title.slice(0, 18)}"</span>
                         </button>

@@ -55,7 +55,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           src={track.coverUrl}
           alt={track.title}
           loading="lazy"
-          onError={(e) => applyCoverFallback(e.currentTarget, track.title, track.artist)}
+          onError={(e) => applyCoverFallback(e, track.title, track.artist)}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
 
