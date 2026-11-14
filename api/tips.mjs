@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import { PublicKey } from '@solana/web3.js';
 import {
   ensureListenerRow,
   ensureSchema,
@@ -8,6 +7,58 @@ import {
   sanitizeId,
   sanitizeText
 } from './_db.mjs';
+
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const BASE58_MAP = new Map([...BASE58_ALPHABET].map((ch, idx) => [ch, BigInt(idx)]));
+
+export function decodeBase5832Bytes(address) {
+  const trimmed = String(address || '').trim();
+  if (trimmed.length < 32 || trimmed.length > 48) return null;
+
+  let value = 0n;
+  for (let i = 0; i < trimmed.length; i += 1) {
+    const digit = BASE58_MAP.get(trimmed[i]);
+    if (digit === undefined) return null;
+    value = value * 58n + digit;
+  }
+
+  const tail = [];
+  while (value > 0n) {
+    tail.push(Number(value & 0xffn));
+    value >>= 8n;
+  }
+  tail.reverse();
+
+  let leadingZeros = 0;
+  for (let i = 0; i < trimmed.length && trimmed[i] === '1'; i += 1) {
+    leadingZeros += 1;
+  }
+
+  const totalLen = leadingZeros + tail.length;
+  if (totalLen !== 32) return null;
+
+  const bytes = new Uint8Array(32);
+  bytes.set(tail, leadingZeros);
+  return bytes;
+}
+
+export function encodeBase58(bytes) {
+  let leadingZeros = 0;
+  while (leadingZeros < bytes.length && bytes[leadingZeros] === 0) {
+    leadingZeros += 1;
+  }
+  let value = 0n;
+  for (let i = 0; i < bytes.length; i += 1) {
+    value = (value << 8n) + BigInt(bytes[i]);
+  }
+  let out = '';
+  while (value > 0n) {
+    const mod = Number(value % 58n);
+    out = BASE58_ALPHABET[mod] + out;
+    value /= 58n;
+  }
+  return '1'.repeat(leadingZeros) + out;
+}
 
 export const PLATFORM_FEE_BPS = 1500;
 export const ARTIST_SHARE_BPS = 8500;
@@ -47,13 +98,9 @@ export function normalizeArtistKey(name) {
 
 export function isValidPublicKey(address) {
   const trimmed = String(address || '').trim();
-  if (trimmed.length < 32 || trimmed.length > 48) return false;
-  try {
-    const pk = new PublicKey(trimmed);
-    return pk.toBase58() === trimmed;
-  } catch {
-    return false;
-  }
+  const bytes = decodeBase5832Bytes(trimmed);
+  if (!bytes) return false;
+  return encodeBase58(bytes) === trimmed;
 }
 
 export function computeSplitLamports(grossLamportsInput, feeBps = PLATFORM_FEE_BPS) {
@@ -152,8 +199,11 @@ export function verifyEd25519Ownership({ walletAddress, artistName, message, sig
   }
 
   try {
-    const pubkey = new PublicKey(walletAddress);
-    const spkiDer = Buffer.concat([ED25519_SPKI_PREFIX, pubkey.toBytes()]);
+    const pubkeyBytes = decodeBase5832Bytes(walletAddress);
+    if (!pubkeyBytes) {
+      return { ok: false, error: 'Invalid Solana public key bytes.' };
+    }
+    const spkiDer = Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(pubkeyBytes)]);
     const publicKeyObj = crypto.createPublicKey({
       key: spkiDer,
       format: 'der',
@@ -779,3 +829,4 @@ export default async function handler(req, res) {
     res.status(500).json({ error: err?.message || 'Internal tips service error' });
   }
 }
+
