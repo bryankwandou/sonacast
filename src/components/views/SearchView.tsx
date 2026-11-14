@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Track, LyricLine } from '../../types';
 import { ARTISTS_DIRECTORY, ARTIST_GENRE_CATEGORIES } from '../../data/artists800';
 import { searchTracksOnline, fetchSyncedLyrics } from '../../services/musicService';
-import { Search, Play, Pause, Sparkles, Loader2, Globe, Users, Shuffle } from 'lucide-react';
+import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { TrackCard } from '../common/TrackCard';
+import { Search, Sparkles, Loader2, Globe, Users, Shuffle } from 'lucide-react';
 
 interface SearchViewProps {
   curatedTracks: Track[];
@@ -21,7 +23,6 @@ const INITIAL_ARTIST_CHIP_LIMIT = 42;
 export const SearchView: React.FC<SearchViewProps> = ({
   curatedTracks,
   currentTrack,
-  isPlaying,
   resolvingTrackId,
   externalQuery,
   externalTrigger = 0,
@@ -29,6 +30,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   onTogglePlay,
   onUpdateLyrics
 }) => {
+  const { t } = useAppPreferences();
   const [searchQuery, setSearchQuery] = useState(
     externalTrigger > 0 && externalQuery?.trim() ? externalQuery.trim() : 'Queen'
   );
@@ -142,48 +144,51 @@ export const SearchView: React.FC<SearchViewProps> = ({
   return (
     <div className="space-y-6 select-none">
       {/* Search Header Banner */}
-      <div className="relative rounded-3xl overflow-hidden p-8 bg-gradient-to-r from-[#0C121E] via-[#101728] to-[#0A0E18] border border-[#20293D] shadow-2xl">
+      <div
+        className="relative rounded-3xl overflow-hidden p-5 sm:p-8 border border-[var(--border-subtle)] transition-colors"
+        style={{ background: 'var(--hero-gradient)', boxShadow: 'var(--card-shadow)' }}
+      >
         <div className="relative z-10 max-w-3xl">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-bold border border-emerald-500/30 mb-4">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)] text-xs font-bold border border-[var(--accent-border)] mb-4">
             <Sparkles size={13} />
             <span>
-              GLOBAL SEARCH ENGINE · 85,000,000+ CATALOG & {ARTISTS_DIRECTORY.length} INDEXED ARTISTS
+              GLOBAL SEARCH ENGINE &middot; 85,000,000+ CATALOG &amp; {ARTISTS_DIRECTORY.length} INDEXED ARTISTS
             </span>
           </div>
 
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-tight">
-            Search Original Studio Masters & Full Releases
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-[var(--text-primary)] tracking-tight leading-tight">
+            {t.navSearch}
           </h2>
-          <p className="text-xs text-gray-300 mt-2 font-medium">
-            Search any song, album, or artist across global catalogs for 100% full-length start-to-finish playback with synchronized lyrics and 60 FPS Orbwave spectrum analysis.
+          <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-2 font-medium">
+            {t.pillar2Desc}
           </p>
 
           <form onSubmit={handleSearchSubmit} className="mt-6 flex flex-col sm:flex-row gap-2.5">
             <div className="relative flex-1">
-              <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" />
               <input
                 type="text"
-                placeholder="Search any song, album, or artist (e.g. Queen, Eminem, Taylor Swift, Dewa 19)..."
+                placeholder={t.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#121724] border border-[#232F46] text-xs text-white placeholder-gray-400 focus:outline-none focus:border-emerald-500 transition-colors shadow-inner"
+                className="w-full pl-11 pr-4 min-h-[44px] py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-medium)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] transition-colors"
               />
             </div>
 
             <button
               type="submit"
               disabled={isLoading || !searchQuery.trim()}
-              className="px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-xs transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+              className="min-h-[44px] px-6 py-2.5 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] disabled:opacity-50 text-[var(--accent-fg)] font-bold text-xs transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
             >
               {isLoading ? (
                 <>
                   <Loader2 size={15} className="animate-spin" />
-                  <span>Searching...</span>
+                  <span>Loading...</span>
                 </>
               ) : (
                 <>
                   <Search size={15} />
-                  <span>Search 85M+ Tracks</span>
+                  <span>{t.heroCatalogCta}</span>
                 </>
               )}
             </button>
@@ -192,18 +197,18 @@ export const SearchView: React.FC<SearchViewProps> = ({
       </div>
 
       {/* 800+ Popular Artists Directory & Genre Filter */}
-      <div className="p-5 rounded-2xl bg-[#0D111A] border border-[#1E2638] space-y-4">
+      <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-            <Users size={15} className="text-emerald-400" />
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+            <Users size={15} className="text-[var(--accent-text)]" />
             <span>
-              Global Artists Directory ({filteredArtists.length} of {ARTISTS_DIRECTORY.length} Artists Ready)
+              Global Artists Directory ({filteredArtists.length} of {ARTISTS_DIRECTORY.length} Artists)
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 sm:flex-initial">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" />
               <input
                 type="text"
                 value={artistDirectoryFilter}
@@ -212,14 +217,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   setShowAllArtists(true);
                 }}
                 placeholder="Filter 800+ artists..."
-                className="pl-8 pr-3 py-1.5 rounded-lg bg-[#121724] border border-[#232F46] text-[11px] text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 w-44"
+                className="pl-8 pr-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] w-full sm:w-44"
               />
             </div>
 
             <button
               type="button"
               onClick={handleRandomArtist}
-              className="px-3 py-1.5 rounded-lg bg-[#151D2E] hover:bg-[#1C273D] border border-[#26334D] text-[11px] font-semibold text-emerald-300 flex items-center gap-1.5 cursor-pointer transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--accent-text)] flex items-center gap-1.5 cursor-pointer transition-colors"
             >
               <Shuffle size={12} />
               <span>Random Artist</span>
@@ -239,10 +244,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   setSelectedGenre(genre);
                   setShowAllArtists(false);
                 }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 transition-all cursor-pointer ${isActive
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                  : 'bg-[#121724] text-gray-400 hover:text-white border border-[#1E2638]'
-                  }`}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 transition-all cursor-pointer border ${
+                  isActive
+                    ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border-[var(--accent-border)]'
+                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border-[var(--border-subtle)]'
+                }`}
               >
                 {genre}
               </button>
@@ -259,10 +265,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 key={artist.name}
                 type="button"
                 onClick={() => handleArtistClick(artist.name)}
-                className={`px-3 py-1.5 rounded-xl border transition-all font-semibold text-xs flex items-center gap-1.5 cursor-pointer ${isSelected
-                  ? 'bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/20'
-                  : 'bg-[#121724] border-[#1E2638] text-gray-300 hover:text-white hover:border-[#2C3850]'
-                  }`}
+                className={`px-3 py-1.5 rounded-xl border transition-all font-semibold text-xs flex items-center gap-1.5 cursor-pointer ${
+                  isSelected
+                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)] border-[var(--accent-emerald)]'
+                    : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-medium)]'
+                }`}
               >
                 <span>{artist.name}</span>
               </button>
@@ -275,7 +282,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             <button
               type="button"
               onClick={() => setShowAllArtists((prev) => !prev)}
-              className="px-4 py-1.5 rounded-lg bg-[#141B29] hover:bg-[#1A2436] border border-[#23304A] text-xs font-semibold text-emerald-400 cursor-pointer transition-colors"
+              className="px-4 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--accent-text)] cursor-pointer transition-colors"
             >
               {showAllArtists
                 ? `Show Top ${INITIAL_ARTIST_CHIP_LIMIT} Artists`
@@ -287,96 +294,47 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
       {/* Search Results Grid */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <Globe size={15} className="text-emerald-400" />
-            <span>Search Results for "{searchQuery}"</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <Globe size={15} className="text-[var(--accent-text)]" />
+            <span>Search Results for &ldquo;{searchQuery}&rdquo;</span>
           </h3>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-emerald-300 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/25">
-              100% Full-Length Playback
+            <span className="text-[11px] text-[var(--accent-text)] font-mono bg-[var(--accent-soft)] px-2 py-0.5 rounded-md border border-[var(--accent-border)]">
+              100% Full-Length
             </span>
-            <span className="text-xs text-emerald-400 font-mono">
+            <span className="text-xs text-[var(--accent-text)] font-mono">
               {results.length} releases found
             </span>
           </div>
         </div>
 
         {isLoading ? (
-          <div className="p-12 text-center text-xs text-gray-400 rounded-2xl bg-[#0D111A] border border-[#1E2638] flex items-center justify-center gap-3">
-            <Loader2 size={18} className="animate-spin text-emerald-400" />
+          <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center justify-center gap-3">
+            <Loader2 size={18} className="animate-spin text-[var(--accent-text)]" />
             <span>Searching 85M+ track index for full-length studio releases...</span>
           </div>
         ) : results.length === 0 ? (
-          <div className="p-12 text-center text-xs text-gray-400 rounded-2xl bg-[#0D111A] border border-[#1E2638]">
-            <p>No tracks found for "{searchQuery}". Try another query or pick any artist above.</p>
+          <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+            <p>No tracks found for &ldquo;{searchQuery}&rdquo;. Try another query or pick any artist above.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-            {results.map((track) => {
-              const isSelected = track.id === currentTrack.id;
-              const isResolving = resolvingTrackId === track.id;
-              const isCurrentlyPlayingThis = isSelected && isPlaying;
-              const isMaster = track.streamSource === 'studio-master' || Boolean(track.audioUrl);
-
-              return (
-                <div
-                  key={track.id}
-                  onClick={() => {
-                    if (isSelected && !isResolving) {
-                      onTogglePlay();
-                    } else {
-                      handlePlayTrackWithLyrics(track);
-                    }
-                  }}
-                  className={`group relative p-3 rounded-2xl bg-[#0D111A] border transition-all duration-200 cursor-pointer hover:-translate-y-1 ${isSelected
-                    ? 'border-emerald-500/60 shadow-lg shadow-emerald-500/10'
-                    : 'border-[#1B2232] hover:border-[#2C3850]'
-                    }`}
-                >
-                  <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-[#161C2A]">
-                    <img
-                      src={track.coverUrl}
-                      alt={track.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div
-                      className={`absolute inset-0 bg-black/45 transition-opacity flex items-center justify-center ${isResolving ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                        }`}
-                    >
-                      <div className="w-10 h-10 rounded-full bg-emerald-500 text-black flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
-                        {isResolving ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : isCurrentlyPlayingThis ? (
-                          <Pause size={16} fill="currentColor" />
-                        ) : (
-                          <Play size={16} fill="currentColor" className="ml-0.5" />
-                        )}
-                      </div>
-                    </div>
-                    <span
-                      className={`absolute bottom-2 left-2 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[10px] font-mono font-bold border border-white/10 ${isMaster ? 'text-emerald-400' : 'text-cyan-300'
-                        }`}
-                    >
-                      {isResolving ? 'LOADING...' : isMaster ? 'STUDIO MASTER' : 'FULL TRACK'}
-                    </span>
-                  </div>
-
-                  <h4 className="text-xs font-bold text-white truncate group-hover:text-emerald-300 transition-colors">
-                    {track.title}
-                  </h4>
-                  <p className="text-[11px] text-gray-400 truncate mt-0.5">{track.artist}</p>
-
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#182030] text-[10px] text-gray-400 font-mono">
-                    <span className="truncate max-w-[80px]">{track.genre}</span>
-                    <span>
-                      {Math.floor(track.duration / 60)}:{track.duration % 60 < 10 ? '0' : ''}
-                      {track.duration % 60}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
+            {results.map((track) => (
+              <TrackCard
+                key={track.id}
+                track={track}
+                isSelected={track.id === currentTrack.id}
+                isResolving={resolvingTrackId === track.id}
+                onSelect={(chosen) => {
+                  if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id) {
+                    onTogglePlay();
+                  } else {
+                    handlePlayTrackWithLyrics(chosen);
+                  }
+                }}
+              />
+            ))}
           </div>
         )}
       </div>

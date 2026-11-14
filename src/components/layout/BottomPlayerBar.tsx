@@ -1,19 +1,21 @@
 import React from 'react';
 import type { Track, PlayerMode } from '../../types';
+import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import {
-  Play,
+  Disc3,
+  ListMusic,
+  Loader2,
+  Mic2,
   Pause,
+  Play,
+  Repeat,
+  Shuffle,
   SkipBack,
   SkipForward,
+  Sparkles,
+  Video,
   Volume2,
   VolumeX,
-  Disc3,
-  Video,
-  Sparkles,
-  Mic2,
-  Shuffle,
-  Repeat,
-  Loader2
 } from 'lucide-react';
 
 interface BottomPlayerBarProps {
@@ -33,6 +35,7 @@ interface BottomPlayerBarProps {
   onPlayerModeChange: (mode: PlayerMode) => void;
   isLyricsOpen: boolean;
   onToggleLyrics: () => void;
+  onOpenMobileQueue?: () => void;
 }
 
 export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
@@ -51,8 +54,11 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   playerMode,
   onPlayerModeChange,
   isLyricsOpen,
-  onToggleLyrics
+  onToggleLyrics,
+  onOpenMobileQueue,
 }) => {
+  const { t } = useAppPreferences();
+
   const formatTime = (secs: number) => {
     const safe = Math.max(0, Math.floor(secs));
     const mins = Math.floor(safe / 60);
@@ -60,168 +66,233 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
     return `${mins}:${rem < 10 ? '0' : ''}${rem}`;
   };
 
-  const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+  const progressPercent =
+    duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+
+  const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const clickPos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    onSeek(clickPos * duration);
+  };
 
   return (
-    <footer className="h-24 bg-[#080B12]/95 backdrop-blur-xl border-t border-[#1B2232] px-6 flex items-center justify-between z-40 select-none">
-      {/* Left: Track Information */}
-      <div className="flex items-center gap-3 w-1/4 min-w-[200px]">
-        <img
-          src={currentTrack.coverUrl}
-          alt={currentTrack.title}
-          className="w-14 h-14 rounded-xl object-cover shadow-md border border-[#1E2638] shrink-0"
-        />
-        <div className="min-w-0">
-          <h4 className="text-sm font-bold text-white truncate">{currentTrack.title}</h4>
-          <p className="text-xs text-gray-400 truncate">{currentTrack.artist}</p>
-          <span className="inline-block mt-0.5 text-[10px] text-emerald-400 font-semibold px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">
-            {currentTrack.genre}
-          </span>
+    <footer
+      className="backdrop-blur-xl border-t border-[var(--border-subtle)] px-3 sm:px-6 py-2.5 md:py-0 md:h-24 flex flex-col md:flex-row md:items-center justify-between gap-2 md:gap-4 z-40 select-none shrink-0 transition-colors"
+      style={{ backgroundColor: 'var(--backdrop-bar)' }}
+    >
+      {/* Mobile Top Scrubber Row */}
+      <div className="flex md:hidden items-center gap-2 w-full text-[10px] font-mono text-[var(--text-dim)]">
+        <span>{formatTime(currentTime)}</span>
+        <div
+          className="relative flex-1 h-1.5 bg-[var(--bg-elevated)] rounded-full overflow-hidden cursor-pointer"
+          onClick={handleScrub}
+          role="slider"
+          aria-label="Seek audio position"
+          aria-valuemin={0}
+          aria-valuemax={duration}
+          aria-valuenow={Math.floor(currentTime)}
+        >
+          <div
+            className="absolute left-0 top-0 bottom-0 bg-[var(--accent-emerald)] rounded-full"
+            style={{ width: `${progressPercent}%` }}
+          />
         </div>
+        <span>{formatTime(duration)}</span>
       </div>
 
-      {/* Center: Controls & Scrubber */}
-      <div className="flex flex-col items-center gap-1.5 w-2/4 max-w-xl">
-        <div className="flex items-center gap-4">
-          <button className="text-gray-400 hover:text-white transition-colors" title="Shuffle">
-            <Shuffle size={15} />
-          </button>
-          <button
-            onClick={onPrev}
-            className="text-gray-300 hover:text-white transition-colors cursor-pointer"
-            title="Previous Track"
-          >
-            <SkipBack size={18} />
-          </button>
-          <button
-            onClick={onTogglePlay}
-            className="w-10 h-10 rounded-full bg-emerald-500 text-black flex items-center justify-center hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/25 active:scale-95 cursor-pointer"
-            title={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isResolvingStream ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : isPlaying ? (
-              <Pause size={18} fill="currentColor" />
-            ) : (
-              <Play size={18} fill="currentColor" className="ml-0.5" />
-            )}
-          </button>
-          <button
-            onClick={onNext}
-            className="text-gray-300 hover:text-white transition-colors cursor-pointer"
-            title="Next Track"
-          >
-            <SkipForward size={18} />
-          </button>
-          <button className="text-gray-400 hover:text-white transition-colors" title="Repeat">
-            <Repeat size={15} />
-          </button>
+      {/* Main Row (Track Info + Transport + Right Controls) */}
+      <div className="flex items-center justify-between gap-2.5 w-full">
+        {/* Left: Track Information */}
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 md:flex-none md:w-1/4 md:max-w-[260px]">
+          <img
+            src={currentTrack.coverUrl}
+            alt={currentTrack.title}
+            className="w-11 h-11 md:w-14 md:h-14 rounded-xl object-cover border border-[var(--border-subtle)] shrink-0"
+          />
+          <div className="min-w-0">
+            <h4 className="text-xs sm:text-sm font-bold text-[var(--text-primary)] truncate">
+              {currentTrack.title}
+            </h4>
+            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
+              {currentTrack.artist}
+            </p>
+            <span className="hidden sm:inline-block mt-0.5 text-[10px] text-[var(--accent-text)] font-semibold px-1.5 rounded bg-[var(--accent-soft)] border border-[var(--accent-border)]">
+              {currentTrack.genre}
+            </span>
+          </div>
         </div>
 
-        {/* Scrubber Bar */}
-        <div className="w-full flex items-center gap-3 text-[11px] font-mono text-gray-400">
-          <span>{formatTime(currentTime)}</span>
-          <div
-            className="relative flex-1 h-1.5 bg-[#1C2333] rounded-full overflow-hidden cursor-pointer group"
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const clickPos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-              onSeek(clickPos * duration);
-            }}
-          >
+        {/* Center: Controls & Desktop Scrubber */}
+        <div className="flex flex-col items-center gap-1.5 md:flex-1 md:max-w-xl shrink-0">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <button
+              type="button"
+              className="hidden sm:inline-flex text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              title="Shuffle"
+            >
+              <Shuffle size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={onPrev}
+              className="w-9 h-9 md:w-auto md:h-auto flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              title="Previous Track"
+            >
+              <SkipBack size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={onTogglePlay}
+              data-testid="player-play-toggle"
+              className="w-10 h-10 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] flex items-center justify-center hover:bg-[var(--accent-emerald-hover)] transition-all shadow-md active:scale-95 cursor-pointer"
+              title={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isResolvingStream ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : isPlaying ? (
+                <Pause size={18} fill="currentColor" />
+              ) : (
+                <Play size={18} fill="currentColor" className="ml-0.5" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              className="w-9 h-9 md:w-auto md:h-auto flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              title="Next Track"
+            >
+              <SkipForward size={18} />
+            </button>
+            <button
+              type="button"
+              className="hidden sm:inline-flex text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              title="Repeat"
+            >
+              <Repeat size={15} />
+            </button>
+          </div>
+
+          {/* Desktop Scrubber Bar */}
+          <div className="hidden md:flex w-full items-center gap-3 text-[11px] font-mono text-[var(--text-dim)]">
+            <span>{formatTime(currentTime)}</span>
             <div
-              className="absolute left-0 top-0 bottom-0 bg-emerald-500 rounded-full group-hover:bg-emerald-400 transition-all"
-              style={{ width: `${progressPercent}%` }}
+              className="relative flex-1 h-1.5 bg-[var(--bg-elevated)] rounded-full overflow-hidden cursor-pointer group"
+              onClick={handleScrub}
+            >
+              <div
+                className="absolute left-0 top-0 bottom-0 bg-[var(--accent-emerald)] rounded-full group-hover:bg-[var(--accent-emerald-hover)] transition-all"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <span>{formatTime(duration)}</span>
+          </div>
+
+          <div className="hidden md:flex items-center gap-2 text-[10px] font-mono -mt-0.5">
+            {isResolvingStream ? (
+              <span className="text-[var(--accent-cyan)] flex items-center gap-1">
+                <Loader2 size={10} className="animate-spin" />
+                Loading Full Master...
+              </span>
+            ) : streamError ? (
+              <span className="text-amber-500 truncate max-w-md">{streamError}</span>
+            ) : (
+              <span className="text-[var(--accent-text)] flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--accent-emerald)] animate-pulse" />
+                <span>100% Full-Length Continuity Active</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Mode Switcher, Lyrics, Queue & Volume */}
+        <div className="flex items-center justify-end gap-1.5 sm:gap-2.5 md:w-1/4 shrink-0">
+          <div className="hidden sm:flex items-center p-1 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-xl gap-1">
+            <button
+              type="button"
+              onClick={() => onPlayerModeChange('cover')}
+              className={`p-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                playerMode === 'cover'
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent'
+              }`}
+              title={t.modeCover}
+            >
+              <Disc3 size={14} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onPlayerModeChange('video')}
+              className={`p-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                playerMode === 'video'
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent'
+              }`}
+              title={t.modeVideo}
+            >
+              <Video size={14} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onPlayerModeChange('orbwave')}
+              className={`p-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                playerMode === 'orbwave'
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent'
+              }`}
+              title={t.modeOrbwave}
+            >
+              <Sparkles size={14} />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={onToggleLyrics}
+            className={`w-9 h-9 md:w-auto md:h-auto md:p-2 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all cursor-pointer ${
+              isLyricsOpen
+                ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border-[var(--accent-border)]'
+                : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+            title={t.lyrics}
+          >
+            <Mic2 size={15} />
+          </button>
+
+          {onOpenMobileQueue && (
+            <button
+              type="button"
+              onClick={onOpenMobileQueue}
+              className="xl:hidden w-9 h-9 rounded-xl border bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors cursor-pointer"
+              title={t.queue}
+              aria-label={t.queue}
+            >
+              <ListMusic size={15} />
+            </button>
+          )}
+
+          <div className="hidden lg:flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onVolumeChange(volume > 0 ? 0 : 0.85)}
+              className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              aria-label={t.volume}
+            >
+              {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={volume}
+              onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+              aria-label={t.volume}
+              className="w-20 accent-[var(--accent-emerald)] cursor-pointer"
             />
           </div>
-          <span>{formatTime(duration)}</span>
-        </div>
-
-        <div className="flex items-center gap-2 text-[9px] font-mono -mt-0.5">
-          {isResolvingStream ? (
-            <span className="text-cyan-300 flex items-center gap-1">
-              <Loader2 size={10} className="animate-spin" />
-              Loading Full Master...
-            </span>
-          ) : streamError ? (
-            <span className="text-amber-400 truncate max-w-md">{streamError}</span>
-          ) : (
-            <span className="text-emerald-400/85 flex items-center gap-1.5">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>100% Full-Length Continuity Active</span>
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Right: Display Mode Switcher & Volume */}
-      <div className="flex items-center justify-end gap-3 w-1/4 min-w-[240px]">
-        <div className="flex items-center p-1 bg-[#101420] border border-[#1E2638] rounded-xl gap-1">
-          <button
-            onClick={() => onPlayerModeChange('cover')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
-              playerMode === 'cover'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                : 'text-gray-400 hover:text-white'
-            }`}
-            title="Cover Disc Mode"
-          >
-            <Disc3 size={14} />
-          </button>
-
-          <button
-            onClick={() => onPlayerModeChange('video')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
-              playerMode === 'video'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                : 'text-gray-400 hover:text-white'
-            }`}
-            title="Live Video Stream Mode"
-          >
-            <Video size={14} />
-          </button>
-
-          <button
-            onClick={() => onPlayerModeChange('orbwave')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
-              playerMode === 'orbwave'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                : 'text-gray-400 hover:text-white'
-            }`}
-            title="Orbwave Spectrum Engine Mode"
-          >
-            <Sparkles size={14} />
-          </button>
-        </div>
-
-        <button
-          onClick={onToggleLyrics}
-          className={`p-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-            isLyricsOpen
-              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-              : 'bg-[#101420] border-[#1E2638] text-gray-400 hover:text-white'
-          }`}
-          title="Toggle Synchronized Lyrics"
-        >
-          <Mic2 size={15} />
-        </button>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onVolumeChange(volume > 0 ? 0 : 0.85)}
-            className="text-gray-400 hover:text-white transition-colors cursor-pointer"
-          >
-            {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
-          </button>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={volume}
-            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-            className="w-20 accent-emerald-500 cursor-pointer"
-          />
         </div>
       </div>
     </footer>

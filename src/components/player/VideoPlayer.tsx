@@ -51,12 +51,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full min-h-[460px] bg-black rounded-2xl overflow-hidden border border-[#1E2433] flex items-center justify-center select-none group"
+      className="relative w-full h-full min-h-[340px] lg:min-h-[460px] bg-black rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex items-center justify-center select-none group"
     >
       {isOfficialStreamActive ? (
         <div
           ref={officialSlotRef}
-          className="w-full h-full min-h-[460px] bg-black"
+          className="w-full h-full min-h-[340px] lg:min-h-[460px] bg-black"
         />
       ) : videoUrl && !videoError ? (
         <video

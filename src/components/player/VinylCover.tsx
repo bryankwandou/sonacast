@@ -33,10 +33,13 @@ export const VinylCover: React.FC<VinylCoverProps> = ({
   }, []);
 
   return (
-    <div className="relative w-full h-full min-h-[460px] bg-gradient-to-b from-[#0C101A] to-[#07090F] rounded-2xl overflow-hidden border border-[#1E2433] flex flex-col items-center justify-center p-8 select-none">
+    <div
+      className="relative w-full h-full min-h-[360px] lg:min-h-[460px] rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex flex-col items-center justify-center p-6 sm:p-8 select-none transition-colors"
+      style={{ background: 'var(--hero-gradient)', boxShadow: 'var(--card-shadow)' }}
+    >
       {/* Background ambient lighting */}
       <div
-        className="absolute w-96 h-96 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none transition-transform duration-100 ease-out"
+        className="absolute w-80 h-80 sm:w-96 sm:h-96 rounded-full bg-[var(--accent-soft)] blur-3xl pointer-events-none transition-transform duration-100 ease-out"
         style={{
           transform: `scale(${1 + bassLevel * 0.4})`
         }}
@@ -46,11 +49,11 @@ export const VinylCover: React.FC<VinylCoverProps> = ({
       <div className="relative flex items-center justify-center">
         {/* Vinyl Disc */}
         <div
-          className={`relative w-64 h-64 sm:w-80 sm:h-80 rounded-full bg-gradient-to-tr from-black via-[#111622] to-black shadow-2xl border-4 border-[#1E2536] flex items-center justify-center transition-transform duration-75 ${
+          className={`relative w-56 h-56 sm:w-72 sm:h-72 rounded-full bg-gradient-to-tr from-black via-[#111622] to-black shadow-2xl border-4 border-[#1E2536] flex items-center justify-center transition-transform duration-75 ${
             isPlaying ? 'animate-[spin_20s_linear_infinite]' : ''
           }`}
           style={{
-            boxShadow: `0 20px 50px rgba(0, 0, 0, 0.8), 0 0 ${20 + bassLevel * 40}px rgba(16, 185, 129, ${0.15 + bassLevel * 0.25})`,
+            boxShadow: `0 20px 50px rgba(0, 0, 0, 0.45), 0 0 ${20 + bassLevel * 40}px rgba(16, 185, 129, ${0.15 + bassLevel * 0.25})`,
             transform: `scale(${1 + bassLevel * 0.04})`
           }}
         >
@@ -62,7 +65,7 @@ export const VinylCover: React.FC<VinylCoverProps> = ({
           <div className="absolute inset-20 rounded-full border border-white/5" />
 
           {/* Album Cover Center Label */}
-          <div className="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden border-2 border-emerald-500/40 shadow-inner">
+          <div className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden border-2 border-[var(--accent-emerald)] shadow-inner">
             <img
               src={coverUrl}
               alt={title}
@@ -75,31 +78,31 @@ export const VinylCover: React.FC<VinylCoverProps> = ({
 
         {/* Tone Arm Simulation */}
         <div
-          className={`absolute -top-6 right-2 sm:right-6 w-24 sm:w-28 h-48 pointer-events-none transition-transform duration-700 ease-in-out origin-top-right ${
+          className={`absolute -top-6 right-2 sm:right-6 w-20 sm:w-28 h-44 pointer-events-none transition-transform duration-700 ease-in-out origin-top-right ${
             isPlaying ? 'rotate-12' : '-rotate-12'
           }`}
         >
           <div className="w-4 h-4 rounded-full bg-gray-500 border-2 border-gray-300 ml-auto" />
-          <div className="w-1.5 h-36 bg-gradient-to-b from-gray-400 to-gray-600 ml-auto mr-1.5 rounded-full" />
-          <div className="w-4 h-6 bg-emerald-500 rounded-sm ml-auto mr-0.5 shadow-lg" />
+          <div className="w-1.5 h-32 bg-gradient-to-b from-gray-400 to-gray-600 ml-auto mr-1.5 rounded-full" />
+          <div className="w-4 h-6 bg-[var(--accent-emerald)] rounded-sm ml-auto mr-0.5 shadow-lg" />
         </div>
       </div>
 
       {/* Track Metadata Card */}
-      <div className="mt-8 text-center max-w-md z-10">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#161D2B] border border-[#242E42] text-[11px] font-medium text-emerald-400 mb-2">
+      <div className="mt-7 text-center max-w-md z-10 px-2">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--accent-text)] mb-2">
           <Disc3 size={12} className={isPlaying ? 'animate-spin' : ''} />
           <span>{genre}</span>
-          <span className="text-gray-500">·</span>
-          <span>{album}</span>
+          <span className="text-[var(--text-dim)]">&middot;</span>
+          <span className="truncate max-w-[160px]">{album}</span>
         </div>
-        <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight truncate">{title}</h2>
-        <p className="text-sm font-medium text-gray-400 mt-1">{artist}</p>
+        <h2 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] tracking-tight truncate">{title}</h2>
+        <p className="text-sm font-medium text-[var(--text-secondary)] mt-1 truncate">{artist}</p>
       </div>
 
       {/* Bottom Live Audio Indicator */}
-      <div className="absolute bottom-4 left-6 flex items-center gap-2 text-xs text-gray-400">
-        <Radio size={14} className="text-emerald-400 animate-pulse" />
+      <div className="mt-4 flex items-center gap-2 text-xs text-[var(--text-dim)]">
+        <Radio size={14} className="text-[var(--accent-text)] animate-pulse" />
         <span>320 kbps Master Audio</span>
       </div>
     </div>

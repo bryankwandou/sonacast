@@ -46,23 +46,26 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
   };
 
   return (
-    <div className="relative w-full h-full min-h-[460px] bg-[#0A0D15] rounded-2xl overflow-hidden border border-[#1E2433] flex flex-col p-6 select-none">
+    <div
+      className="relative w-full h-full min-h-[360px] lg:min-h-[460px] bg-[var(--bg-surface)] rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex flex-col p-5 sm:p-6 select-none transition-colors"
+      style={{ boxShadow: 'var(--card-shadow)' }}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-[#1A2030] mb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-[var(--border-subtle)] mb-4">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="p-2 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)] shrink-0">
             <Mic2 size={16} />
           </div>
-          <div>
-            <h3 className="text-white font-bold text-sm">Synchronized Live Lyrics</h3>
-            <p className="text-xs text-gray-400">{title} · {artist}</p>
+          <div className="min-w-0">
+            <h3 className="text-[var(--text-primary)] font-bold text-sm truncate">Synchronized Live Lyrics</h3>
+            <p className="text-xs text-[var(--text-secondary)] truncate">{title} &middot; {artist}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-gray-400">
-          <span className="flex items-center gap-1 bg-[#121622] px-2.5 py-1 rounded-full border border-[#202738]">
-            <Globe size={12} className="text-emerald-400" />
-            <span>Interactive Timestamp</span>
+        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] shrink-0">
+          <span className="flex items-center gap-1 bg-[var(--bg-elevated)] px-2.5 py-1 rounded-full border border-[var(--border-subtle)]">
+            <Globe size={12} className="text-[var(--accent-text)]" />
+            <span>Timestamped</span>
           </span>
         </div>
       </div>
@@ -70,8 +73,7 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
       {/* Lyrics Scrollable Container */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto space-y-4 pr-2 scroll-smooth focus:outline-none"
-        style={{ scrollbarWidth: 'thin', scrollbarColor: '#242C3D transparent' }}
+        className="flex-1 overflow-y-auto space-y-3 pr-2 scroll-smooth focus:outline-none"
       >
         {lyrics.map((line, idx) => {
           const isActive = idx === activeIndex;
@@ -82,47 +84,47 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
               key={idx}
               ref={isActive ? activeLineRef : null}
               onClick={() => onSeek(line.time)}
-              className={`group flex items-start gap-4 p-3.5 rounded-xl cursor-pointer transition-all duration-300 ${
+              className={`group flex items-start gap-3 sm:gap-4 p-3 rounded-xl cursor-pointer transition-all duration-300 ${
                 isActive
-                  ? 'bg-gradient-to-r from-emerald-500/15 via-[#131C2A] to-transparent border-l-4 border-emerald-400 pl-4 scale-[1.01]'
+                  ? 'bg-[var(--accent-soft)] border-l-4 border-[var(--accent-emerald)] pl-4'
                   : isPast
-                  ? 'text-gray-500 hover:text-gray-300 hover:bg-[#101420]/50'
-                  : 'text-gray-400 hover:text-white hover:bg-[#101420]'
+                  ? 'text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
               }`}
             >
               {/* Timestamp tag */}
               <span
-                className={`text-[11px] font-mono mt-1 px-1.5 py-0.5 rounded transition-colors ${
+                className={`text-[11px] font-mono mt-1 px-1.5 py-0.5 rounded transition-colors shrink-0 ${
                   isActive
-                    ? 'text-emerald-400 bg-emerald-500/20 font-semibold'
-                    : 'text-gray-600 group-hover:text-gray-400'
+                    ? 'text-[var(--accent-text)] bg-[var(--bg-surface)] border border-[var(--accent-border)] font-semibold'
+                    : 'text-[var(--text-dim)]'
                 }`}
               >
                 {formatTime(line.time)}
               </span>
 
               {/* Lyric Text */}
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <p
-                  className={`text-base sm:text-lg font-semibold tracking-wide transition-all ${
+                  className={`text-sm sm:text-base font-semibold tracking-wide transition-all ${
                     isActive
-                      ? 'text-white text-emerald-300 drop-shadow-[0_0_12px_rgba(16,185,129,0.35)] font-bold'
+                      ? 'text-[var(--accent-text)] font-bold'
                       : isPast
-                      ? 'text-gray-500'
-                      : 'text-gray-300'
+                      ? 'text-[var(--text-dim)]'
+                      : 'text-[var(--text-primary)]'
                   }`}
                 >
                   {line.text}
                 </p>
                 {line.translation && (
-                  <p className="text-xs text-gray-500 mt-0.5 font-normal">
+                  <p className="text-xs text-[var(--text-dim)] mt-0.5 font-normal">
                     {line.translation}
                   </p>
                 )}
               </div>
 
               {/* Click-to-seek icon indicator on hover */}
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-1 text-gray-400">
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-1 text-[var(--text-dim)]">
                 <Clock size={14} />
               </div>
             </div>
@@ -131,7 +133,7 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
       </div>
 
       {/* Footer hint */}
-      <div className="pt-3 border-t border-[#1A2030] mt-3 text-center text-[11px] text-gray-400">
+      <div className="pt-3 border-t border-[var(--border-subtle)] mt-3 text-center text-[11px] text-[var(--text-dim)]">
         Click any lyric line to jump playback directly to that moment.
       </div>
     </div>

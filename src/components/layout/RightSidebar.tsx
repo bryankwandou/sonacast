@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Track, RadioStation } from '../../types';
-import { Play, Radio, Coins, Users, Disc3, Tv } from 'lucide-react';
+import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { Coins, Disc3, Play, Radio, Tv, Users, X } from 'lucide-react';
 
 interface RightSidebarProps {
   queue: Track[];
@@ -11,6 +12,8 @@ interface RightSidebarProps {
   onOpenTipModal: () => void;
   ytMonitorRef?: React.RefObject<HTMLDivElement | null>;
   showYtMonitor?: boolean;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -21,73 +24,102 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onSelectRadio,
   onOpenTipModal,
   ytMonitorRef,
-  showYtMonitor = false
+  showYtMonitor = false,
+  isMobileOpen = false,
+  onCloseMobile,
 }) => {
-  return (
-    <aside className="w-80 bg-[#080B12] border-l border-[#1B2232] flex flex-col p-5 select-none shrink-0 h-full overflow-y-auto space-y-6">
-      {/* Persistent Stream Source Slot (stays >= 200x200 when active in Cover/Orbwave modes) */}
-      {showYtMonitor && (
+  const { t } = useAppPreferences();
+
+  const renderContent = (isDrawer: boolean) => (
+    <div className="flex flex-col p-5 select-none h-full overflow-y-auto space-y-6">
+      {isDrawer && onCloseMobile && (
+        <div className="flex items-center justify-between pb-2 border-b border-[var(--border-subtle)]">
+          <span className="text-sm font-bold text-[var(--text-primary)]">{t.queue}</span>
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            aria-label={t.closeLabel}
+            className="w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Persistent Stream Source Slot (>= 200x200 on desktop xl sidebar) */}
+      {!isDrawer && showYtMonitor && (
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent-text)] flex items-center gap-1.5">
               <Tv size={13} />
-              Official Stream Source
+              Stream Monitor
             </span>
-            <span className="text-[10px] text-cyan-300 font-mono bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30">
+            <span className="text-[10px] text-[var(--accent-cyan)] font-mono bg-[var(--accent-soft)] px-2 py-0.5 rounded-full border border-[var(--accent-border)]">
               100% Full
             </span>
           </div>
           <div
             ref={ytMonitorRef}
-            className="w-full h-[205px] rounded-xl bg-black border border-[#20293D] overflow-hidden"
+            className="w-full h-[205px] rounded-xl bg-black border border-[var(--border-subtle)] overflow-hidden"
           />
         </div>
       )}
 
       {/* Quick Artist Tip Card */}
-      <div className="p-4 rounded-2xl bg-gradient-to-br from-[#121927] to-[#0E131F] border border-[#20293D] shadow-lg">
+      <div
+        className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
+        style={{ boxShadow: 'var(--card-shadow)' }}
+      >
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent-text)] flex items-center gap-1">
             <Coins size={13} />
-            Direct Fan Tipping
+            {t.directTipTitle}
           </span>
-          <span className="text-[10px] bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded-full font-semibold border border-emerald-500/30">
-            Solana Devnet
+          <span className="text-[10px] bg-[var(--accent-soft)] text-[var(--accent-text)] px-2 py-0.5 rounded-full font-semibold border border-[var(--accent-border)]">
+            Devnet
           </span>
         </div>
-        <p className="text-xs text-gray-300 font-medium mb-3">
-          Appreciate &ldquo;{currentTrack.title}&rdquo; by {currentTrack.artist} with instant on-chain SOL.
+        <p className="text-xs text-[var(--text-secondary)] font-medium mb-3">
+          &ldquo;{currentTrack.title}&rdquo; &mdash; {currentTrack.artist}
         </p>
         <button
-          onClick={onOpenTipModal}
-          className="w-full py-2 px-3 rounded-xl bg-emerald-500 text-black text-xs font-bold hover:bg-emerald-400 transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
+          type="button"
+          onClick={() => {
+            onOpenTipModal();
+            if (isDrawer && onCloseMobile) onCloseMobile();
+          }}
+          className="w-full min-h-[40px] py-2 px-3 rounded-xl bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold hover:bg-[var(--accent-emerald-hover)] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
         >
           <Coins size={14} />
-          Tip Artist (0.1 SOL)
+          <span>{t.tipArtist} (0.1 SOL)</span>
         </button>
       </div>
 
       {/* Up Next Queue */}
       <div>
         <div className="flex items-center justify-between mb-3 px-1">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-            <Disc3 size={14} className="text-emerald-400" />
-            Up Next In Queue
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
+            <Disc3 size={14} className="text-[var(--accent-text)]" />
+            {t.upNextCount}
           </h3>
-          <span className="text-[11px] text-gray-400">{queue.length} tracks</span>
+          <span className="text-[11px] text-[var(--text-dim)]">{queue.length}</span>
         </div>
 
         <div className="space-y-1.5">
-          {queue.slice(0, 4).map((track) => {
+          {queue.slice(0, 5).map((track) => {
             const isPlayingThis = track.id === currentTrack.id;
             return (
-              <div
+              <button
                 key={track.id}
-                onClick={() => onSelectTrack(track)}
-                className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all ${
+                type="button"
+                onClick={() => {
+                  onSelectTrack(track);
+                  if (isDrawer && onCloseMobile) onCloseMobile();
+                }}
+                className={`w-full text-left flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all ${
                   isPlayingThis
-                    ? 'bg-emerald-500/15 border border-emerald-500/30 text-white'
-                    : 'bg-[#0E121B] border border-transparent hover:border-[#1E273C] text-gray-300 hover:text-white'
+                    ? 'bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--text-primary)]'
+                    : 'bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] text-[var(--text-primary)]'
                 }`}
               >
                 <img
@@ -97,12 +129,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 />
                 <div className="flex-1 min-w-0">
                   <h4 className="text-xs font-semibold truncate">{track.title}</h4>
-                  <p className="text-[11px] text-gray-400 truncate">{track.artist}</p>
+                  <p className="text-[11px] text-[var(--text-secondary)] truncate">{track.artist}</p>
                 </div>
-                <div className="p-1.5 rounded-lg text-gray-400 hover:text-white">
+                <div className="p-1.5 rounded-lg text-[var(--text-dim)]">
                   <Play size={13} fill={isPlayingThis ? 'currentColor' : 'none'} />
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -111,42 +143,75 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       {/* Live Radio Stations Tuner */}
       <div>
         <div className="flex items-center justify-between mb-3 px-1">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-            <Radio size={14} className="text-emerald-400" />
-            Live Radio Stations
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
+            <Radio size={14} className="text-[var(--accent-text)]" />
+            {t.liveRadio}
           </h3>
-          <span className="text-[10px] text-emerald-400 font-bold px-2 py-0.5 rounded-full bg-emerald-500/10">
-            24/7 ON AIR
+          <span className="text-[10px] text-[var(--accent-text)] font-bold px-2 py-0.5 rounded-full bg-[var(--accent-soft)]">
+            24/7
           </span>
         </div>
 
         <div className="space-y-2">
           {radioStations.slice(0, 4).map((station) => (
-            <div
+            <button
               key={station.id}
-              onClick={() => onSelectRadio(station)}
-              className="p-3 rounded-xl bg-[#0E121B] border border-[#1E273C] hover:border-emerald-500/40 cursor-pointer transition-all group"
+              type="button"
+              onClick={() => {
+                onSelectRadio(station);
+                if (isDrawer && onCloseMobile) onCloseMobile();
+              }}
+              className="w-full text-left p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent-border)] cursor-pointer transition-all group"
             >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">
+              <div className="flex items-center justify-between mb-1 gap-2">
+                <span className="text-xs font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-text)] transition-colors truncate">
                   {station.name}
                 </span>
-                <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
+                <span className="text-[10px] text-[var(--accent-text)] flex items-center gap-1 font-mono shrink-0">
                   <Users size={10} />
                   {station.listenersCount.toLocaleString()}
                 </span>
               </div>
-              <p className="text-[11px] text-gray-400 line-clamp-1">{station.tagline}</p>
-              <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#182030] text-[10px] text-gray-400">
+              <p className="text-[11px] text-[var(--text-secondary)] line-clamp-1">
+                {station.tagline}
+              </p>
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border-subtle)] text-[10px] text-[var(--text-dim)]">
                 <span>{station.bitRate}</span>
-                <span className="text-emerald-400 font-semibold group-hover:underline">
-                  Tune In &rarr;
+                <span className="text-[var(--accent-text)] font-semibold group-hover:underline">
+                  {t.tuneIn} &rarr;
                 </span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Right Panel */}
+      <aside className="hidden xl:flex xl:flex-col w-80 bg-[var(--bg-sidebar)] border-l border-[var(--border-subtle)] shrink-0 h-full transition-colors">
+        {renderContent(false)}
+      </aside>
+
+      {/* Mobile / Tablet Queue Drawer */}
+      {isMobileOpen && (
+        <div
+          className="fixed inset-0 z-50 xl:hidden flex justify-end"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t.queue}
+        >
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={onCloseMobile}
+          />
+          <aside className="relative z-10 w-80 max-w-[90vw] bg-[var(--bg-sidebar)] border-l border-[var(--border-subtle)] h-full shadow-2xl">
+            {renderContent(true)}
+          </aside>
+        </div>
+      )}
+    </>
   );
 };

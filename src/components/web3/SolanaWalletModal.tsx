@@ -90,68 +90,72 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-md bg-[#0D111A] border border-[#222A3D] rounded-2xl p-6 shadow-2xl text-white select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-md">
+      <div className="relative w-full max-w-md max-h-[92vh] overflow-y-auto bg-[var(--bg-surface)] border border-[var(--border-medium)] rounded-2xl p-5 sm:p-6 shadow-2xl text-[var(--text-primary)] select-none">
         {/* Close Button */}
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white rounded-lg hover:bg-[#1A2234] transition-colors"
+          className="absolute top-4 right-4 p-2 text-[var(--text-dim)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
         >
           <X size={18} />
         </button>
 
         {/* Title */}
         <div className="flex items-center gap-3 mb-6">
-          <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <div className="p-2.5 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]">
             <Wallet size={20} />
           </div>
           <div>
-            <h3 className="text-lg font-bold">Solana Devnet Wallet</h3>
-            <p className="text-xs text-gray-400 flex items-center gap-1">
-              <ShieldCheck size={12} className="text-emerald-400" />
+            <h3 className="text-lg font-bold text-[var(--text-primary)]">Solana Devnet Wallet</h3>
+            <p className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
+              <ShieldCheck size={12} className="text-[var(--accent-text)]" />
               Direct Micro-Settlement Protocol
             </p>
           </div>
         </div>
 
         {/* Wallet Address Bar */}
-        <div className="bg-[#121826] border border-[#1E273C] p-3 rounded-xl mb-4 flex items-center justify-between">
+        <div className="bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-3 rounded-xl mb-4 flex items-center justify-between">
           <div>
-            <span className="text-[11px] text-gray-400 block">Your Connected Address</span>
-            <span className="text-xs font-mono font-medium text-emerald-400">
+            <span className="text-[11px] text-[var(--text-dim)] block">Your Connected Address</span>
+            <span className="text-xs font-mono font-medium text-[var(--accent-text)]">
               {truncateAddress(publicKey)}
             </span>
           </div>
           <button
+            type="button"
             onClick={handleCopy}
-            className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-[#1B2335] text-gray-300 hover:text-white hover:bg-[#253047] transition-colors"
+            className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+            {copied ? <Check size={13} className="text-[var(--accent-text)]" /> : <Copy size={13} />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
           </button>
         </div>
 
         {/* Balance Card */}
-        <div className="bg-gradient-to-r from-emerald-500/10 to-[#121A28] border border-emerald-500/20 p-4 rounded-xl mb-6 flex items-center justify-between">
+        <div className="bg-[var(--accent-soft)] border border-[var(--accent-border)] p-4 rounded-xl mb-6 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <span className="text-xs text-gray-400">Devnet Balance</span>
-            <div className="text-2xl font-bold text-white flex items-center gap-1.5 mt-0.5">
+            <span className="text-xs text-[var(--text-secondary)]">Devnet Balance</span>
+            <div className="text-2xl font-bold text-[var(--text-primary)] flex items-center gap-1.5 mt-0.5">
               <span>{balance.toFixed(4)}</span>
-              <span className="text-emerald-400 text-sm font-semibold">SOL</span>
+              <span className="text-[var(--accent-text)] text-sm font-semibold">SOL</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={refreshBalance}
-              className="p-2 rounded-lg bg-[#1B2335] text-gray-300 hover:text-white transition-colors"
+              className="p-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
               title="Refresh Balance"
             >
               <RefreshCw size={15} />
             </button>
             <button
+              type="button"
               onClick={handleAirdrop}
               disabled={isAirdropping}
-              className="px-3 py-1.5 rounded-lg bg-emerald-500 text-black text-xs font-bold hover:bg-emerald-400 transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 rounded-lg bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold hover:bg-[var(--accent-emerald-hover)] transition-colors disabled:opacity-50 cursor-pointer"
             >
               {isAirdropping ? 'Airdropping...' : '+1 SOL Airdrop'}
             </button>
@@ -159,12 +163,12 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
         </div>
 
         {/* Tip Artist Section */}
-        <div className="border-t border-[#1E273C] pt-4">
-          <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <Coins size={14} className="text-emerald-400" />
+        <div className="border-t border-[var(--border-subtle)] pt-4">
+          <h4 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <Coins size={14} className="text-[var(--accent-text)]" />
             Tip Artist ({activeArtistName})
           </h4>
-          <p className="text-xs text-gray-400 mb-3">
+          <p className="text-xs text-[var(--text-dim)] mb-3">
             Send direct on-chain SOL appreciation for &ldquo;{activeTrackTitle}&rdquo;
           </p>
 
@@ -172,11 +176,12 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
             {[0.05, 0.1, 0.5, 1.0].map((amt) => (
               <button
                 key={amt}
+                type="button"
                 onClick={() => setTipAmount(amt)}
-                className={`py-2 rounded-lg text-xs font-bold border transition-all ${
+                className={`py-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
                   tipAmount === amt
-                    ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
-                    : 'border-[#1E273C] bg-[#121826] text-gray-400 hover:text-white'
+                    ? 'border-[var(--accent-emerald)] bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 {amt} SOL
@@ -185,22 +190,22 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
           </div>
 
           {errorMessage && (
-            <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs mb-3">
+            <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 text-xs mb-3">
               {errorMessage}
             </div>
           )}
 
           {tipSuccess && (
-            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs mb-3 space-y-1">
-              <div className="flex items-center gap-1 font-bold text-white">
-                <Check size={14} className="text-emerald-400" />
+            <div className="p-3 rounded-lg bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-text)] text-xs mb-3 space-y-1">
+              <div className="flex items-center gap-1 font-bold text-[var(--text-primary)]">
+                <Check size={14} className="text-[var(--accent-text)]" />
                 Tip of {tipSuccess.amountSol} SOL confirmed!
               </div>
               <a
                 href={`https://explorer.solana.com/tx/${tipSuccess.txSignature}?cluster=devnet`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[11px] text-emerald-400 underline flex items-center gap-0.5 hover:text-emerald-300"
+                className="text-[11px] text-[var(--accent-text)] underline flex items-center gap-0.5"
               >
                 View on Solana Explorer <ArrowUpRight size={11} />
               </a>
@@ -208,9 +213,10 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
           )}
 
           <button
+            type="button"
             onClick={handleSendTip}
             disabled={isTipping}
-            className="w-full py-2.5 rounded-xl bg-emerald-500 text-black font-bold text-sm hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+            className="w-full py-2.5 rounded-xl bg-[var(--accent-emerald)] text-[var(--accent-fg)] font-bold text-sm hover:bg-[var(--accent-emerald-hover)] transition-colors shadow-md disabled:opacity-50 cursor-pointer"
           >
             {isTipping ? 'Signing Transaction...' : `Send ${tipAmount} SOL Tip`}
           </button>

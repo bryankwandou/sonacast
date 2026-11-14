@@ -136,58 +136,60 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
   const current = slides[currentSlide];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="relative w-full max-w-3xl bg-[#0B0F19] border border-[#222B3E] rounded-3xl p-8 shadow-2xl text-white select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-md">
+      <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto bg-[var(--bg-surface)] border border-[var(--border-medium)] rounded-3xl p-5 sm:p-8 shadow-2xl text-[var(--text-primary)] select-none">
         {/* Close Button */}
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-6 right-6 p-2 text-gray-400 hover:text-white rounded-xl hover:bg-[#1A2234] transition-colors"
+          className="absolute top-4 right-4 sm:top-6 sm:right-6 p-2 text-[var(--text-dim)] hover:text-[var(--text-primary)] rounded-xl hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
         >
           <X size={20} />
         </button>
 
         {/* Slide Counter & Badge */}
-        <div className="flex items-center justify-between mb-4">
-          <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400 tracking-wider">
+        <div className="flex items-center justify-between pr-10 mb-4">
+          <span className="px-3 py-1 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] text-xs font-bold text-[var(--accent-text)] tracking-wider">
             {current.badge}
           </span>
-          <span className="text-xs text-gray-400 font-mono">
+          <span className="text-xs text-[var(--text-dim)] font-mono">
             {currentSlide + 1} / {slides.length}
           </span>
         </div>
 
         {/* Slide Content */}
-        <div className="min-h-[340px] flex flex-col justify-between">
+        <div className="min-h-[300px] sm:min-h-[340px] flex flex-col justify-between">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-2">
+            <h2 className="text-xl sm:text-3xl font-extrabold text-[var(--text-primary)] tracking-tight mb-2">
               {current.title}
             </h2>
-            <p className="text-sm text-gray-400 mb-6">
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-6">
               {current.subtitle}
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
               {current.points.map((pt, idx) => (
                 <div
                   key={idx}
-                  className="p-4 rounded-2xl bg-[#111726] border border-[#1E283C] hover:border-emerald-500/30 transition-all flex flex-col justify-between"
+                  className="p-4 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent-border)] transition-all flex flex-col justify-between"
                 >
-                  <div className="flex items-center gap-2 mb-2 text-emerald-400">
-                    <CheckCircle2 size={16} />
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">{pt.title}</h4>
+                  <div className="flex items-center gap-2 mb-2 text-[var(--accent-text)]">
+                    <CheckCircle2 size={16} className="shrink-0" />
+                    <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">{pt.title}</h4>
                   </div>
-                  <p className="text-xs text-gray-400 leading-relaxed">{pt.desc}</p>
+                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{pt.desc}</p>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Navigation Controls */}
-          <div className="flex items-center justify-between pt-6 border-t border-[#1E283C] mt-6">
+          <div className="flex items-center justify-between pt-5 border-t border-[var(--border-subtle)] mt-6">
             <button
+              type="button"
               onClick={() => setCurrentSlide((prev) => Math.max(0, prev - 1))}
               disabled={currentSlide === 0}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#141C2B] text-xs font-semibold text-gray-300 hover:text-white hover:bg-[#1E2A40] transition-colors disabled:opacity-40"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 cursor-pointer"
             >
               <ChevronLeft size={16} />
               Previous
@@ -198,17 +200,22 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
               {slides.map((_, i) => (
                 <button
                   key={i}
+                  type="button"
                   onClick={() => setCurrentSlide(i)}
-                  className={`w-2.5 h-2.5 rounded-full transition-all ${i === currentSlide ? 'w-6 bg-emerald-400' : 'bg-gray-700 hover:bg-gray-500'
-                    }`}
+                  className={`h-2.5 rounded-full transition-all cursor-pointer ${
+                    i === currentSlide
+                      ? 'w-6 bg-[var(--accent-emerald)]'
+                      : 'w-2.5 bg-[var(--border-medium)] hover:bg-[var(--text-dim)]'
+                  }`}
                 />
               ))}
             </div>
 
             <button
+              type="button"
               onClick={() => setCurrentSlide((prev) => Math.min(slides.length - 1, prev + 1))}
               disabled={currentSlide === slides.length - 1}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 text-black text-xs font-bold hover:bg-emerald-400 transition-colors disabled:opacity-40"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold hover:bg-[var(--accent-emerald-hover)] transition-colors disabled:opacity-40 cursor-pointer"
             >
               Next
               <ChevronRight size={16} />

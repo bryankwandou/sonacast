@@ -5,7 +5,6 @@ import type {
   RadioStation,
   PlayerMode,
   TabType,
-  Language,
   LyricLine
 } from './types';
 import { TRACK_CATALOG, PODCAST_CATALOG, RADIO_STATIONS } from './data/catalog';
@@ -17,16 +16,19 @@ import {
   findMasterAudio,
   resolveFullTrackStream
 } from './services/musicService';
+import { useAppPreferences } from './contexts/AppPreferencesContext';
 
 import { Sidebar } from './components/layout/Sidebar';
 import { RightSidebar } from './components/layout/RightSidebar';
 import { BottomPlayerBar } from './components/layout/BottomPlayerBar';
+import { ThemeLanguageControls } from './components/layout/ThemeLanguageControls';
 
 import { VinylCover } from './components/player/VinylCover';
 import { VideoPlayer } from './components/player/VideoPlayer';
 import { OrbwaveCanvas } from './components/visualizer/OrbwaveCanvas';
 import { LiveLyrics } from './components/lyrics/LiveLyrics';
 
+import { LandingView } from './components/views/LandingView';
 import { DiscoverView } from './components/views/DiscoverView';
 import { SearchView } from './components/views/SearchView';
 import { RadioView } from './components/views/RadioView';
@@ -36,18 +38,35 @@ import { ProofOfStreamView } from './components/rewards/ProofOfStreamView';
 
 import { SolanaWalletModal } from './components/web3/SolanaWalletModal';
 import { PitchDeckModal } from './components/pitch/PitchDeckModal';
-import { Globe, RefreshCw, Search } from 'lucide-react';
+import {
+  Activity,
+  Award,
+  Compass,
+  Globe,
+  Home,
+  ListMusic,
+  Menu,
+  Mic2,
+  Presentation,
+  Radio,
+  RefreshCw,
+  Search,
+  Sparkles,
+} from 'lucide-react';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<TabType>('discover');
+  const { t } = useAppPreferences();
+  const [currentTab, setCurrentTab] = useState<TabType>('landing');
   const [currentTrack, setCurrentTrack] = useState<Track>(TRACK_CATALOG[0]);
   const [queue, setQueue] = useState<Track[]>(TRACK_CATALOG);
   const [playerMode, setPlayerMode] = useState<PlayerMode>('orbwave');
+  const [isStageOpen, setIsStageOpen] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isMobileQueueOpen, setIsMobileQueueOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(0.85);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
-  const [language, setLanguage] = useState<Language>('en');
 
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
@@ -99,6 +118,8 @@ export default function App() {
     };
   }, []);
 
+  const isStageVisible = isStageOpen || currentTab === 'discover' || currentTab === 'visualizer';
+
   // Synchronize fixed overlay #sonacast-yt-host bounds with active slot (Video stage or RightSidebar monitor)
   useEffect(() => {
     const syncPosition = () => {
@@ -115,7 +136,8 @@ export default function App() {
         return;
       }
 
-      const target = playerMode === 'video' ? videoSlotRef.current : ytMonitorRef.current;
+      const target =
+        isStageVisible && playerMode === 'video' ? videoSlotRef.current : ytMonitorRef.current;
       if (!target) {
         host.style.left = '-9999px';
         host.style.top = '-9999px';
@@ -159,7 +181,7 @@ export default function App() {
       window.removeEventListener('resize', syncPosition);
       window.removeEventListener('scroll', syncPosition, true);
     };
-  }, [isYouTubeActive, playerMode, currentTab, isLyricsOpen]);
+  }, [isYouTubeActive, playerMode, currentTab, isLyricsOpen, isStageVisible]);
 
   // Periodically check Solana devnet balance
   useEffect(() => {
@@ -390,7 +412,25 @@ export default function App() {
       setIsPitchModalOpen(true);
     } else {
       setCurrentTab(tab);
+      if (tab === 'landing') {
+        setIsStageOpen(false);
+      }
     }
+  };
+
+  const handlePlayerModeChange = (mode: PlayerMode) => {
+    setPlayerMode(mode);
+    if (mode === 'video' || mode === 'orbwave') {
+      setIsStageOpen(true);
+    }
+  };
+
+  const handleToggleLyrics = () => {
+    setIsLyricsOpen((prev) => {
+      const next = !prev;
+      if (next) setIsStageOpen(true);
+      return next;
+    });
   };
 
   const navigateToSearch = (query?: string) => {
@@ -421,8 +461,19 @@ export default function App() {
     window.location.reload();
   };
 
+  const mobileNavChips: { id: TabType; label: string; icon: React.ReactNode }[] = [
+    { id: 'landing', label: t.navLanding, icon: <Home size={13} /> },
+    { id: 'discover', label: t.navDiscover, icon: <Compass size={13} /> },
+    { id: 'search', label: t.navSearch, icon: <Search size={13} /> },
+    { id: 'radio', label: t.navRadio, icon: <Radio size={13} /> },
+    { id: 'podcasts', label: t.navPodcasts, icon: <Mic2 size={13} /> },
+    { id: 'visualizer', label: t.navVisualizer, icon: <Sparkles size={13} /> },
+    { id: 'proofOfStream', label: t.navProofOfStream, icon: <Award size={13} /> },
+    { id: 'pitch', label: t.navPitchDeck, icon: <Presentation size={13} /> },
+  ];
+
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#06080E] text-white overflow-hidden font-sans">
+    <div className="flex flex-col h-screen w-full bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden font-sans transition-colors">
       {/* Persistent Official Full-Length Stream Container */}
       <div
         id="sonacast-yt-host"
@@ -441,134 +492,240 @@ export default function App() {
         }}
       />
 
-      {/* Global Top Ticker Bar */}
-      <div className="bg-[#0A0E1A] border-b border-[#1A2234] px-6 py-1.5 flex items-center justify-between text-xs z-50">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-          <span className="font-bold text-white tracking-wide shrink-0">
-            85,000,000+ GLOBAL MUSIC RELEASES ONLINE
-          </span>
-          <span className="text-gray-500 hidden sm:inline">·</span>
-          <span className="text-gray-300 truncate hidden md:inline">
-            Queen, Michael Jackson, The Weeknd, Eminem, Taylor Swift & {ARTISTS_DIRECTORY.length} Artists Indexed
-          </span>
+      {/* Global Top Bar (Responsive for Mobile + Desktop) */}
+      <header className="bg-[var(--bg-sidebar)] border-b border-[var(--border-subtle)] px-3 sm:px-6 py-2 flex items-center justify-between gap-2 text-xs z-40 shrink-0 transition-colors">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <button
+            type="button"
+            onClick={() => setIsMobileNavOpen(true)}
+            data-testid="mobile-menu-open"
+            aria-label={t.menuButton}
+            className="md:hidden w-10 h-10 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] flex items-center justify-center shrink-0 cursor-pointer"
+          >
+            <Menu size={18} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTabChange('landing')}
+            className="md:hidden flex items-center gap-2 shrink-0 cursor-pointer"
+          >
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[var(--accent-emerald)] to-[var(--accent-cyan)] p-0.5 flex items-center justify-center">
+              <div className="w-full h-full bg-[var(--bg-sidebar)] rounded-[6px] flex items-center justify-center">
+                <Activity size={15} className="text-[var(--accent-text)]" />
+              </div>
+            </div>
+            <span className="text-sm font-black tracking-tight text-[var(--text-primary)]">
+              {t.appName}
+            </span>
+          </button>
+
+          <div className="hidden md:flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-[var(--accent-emerald)] animate-pulse shrink-0" />
+            <span className="font-bold text-[var(--text-primary)] tracking-wide shrink-0">
+              {t.topTickerTitle}
+            </span>
+            <span className="text-[var(--text-dim)] hidden lg:inline">&middot;</span>
+            <span className="text-[var(--text-secondary)] truncate hidden lg:inline">
+              Queen, Michael Jackson, The Weeknd, Eminem &amp; {ARTISTS_DIRECTORY.length} Artists
+            </span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-[11px] text-emerald-400 font-mono hidden lg:flex items-center gap-1">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          <span className="text-[11px] text-[var(--accent-text)] font-mono hidden xl:flex items-center gap-1 mr-1">
             <Globe size={11} />
-            100% Full-Length Catalog & LRCLIB Sync
+            100% Full-Length &amp; LRCLIB
           </span>
+
+          <ThemeLanguageControls variant="topbar" />
+
           <button
-            onClick={handleHardRefresh}
-            className="px-2 py-0.5 rounded bg-[#161F2E] border border-[#233148] text-[11px] text-gray-300 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
-            title="Reload Latest Version"
+            type="button"
+            onClick={() => setIsMobileQueueOpen(true)}
+            aria-label={t.queue}
+            className="xl:hidden w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center shrink-0 cursor-pointer"
           >
-            <RefreshCw size={11} />
-            <span>Reload</span>
+            <ListMusic size={15} />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleHardRefresh}
+            className="hidden sm:flex min-h-[36px] px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] items-center gap-1 transition-colors cursor-pointer"
+            title={t.reloadLabel}
+          >
+            <RefreshCw size={12} />
+            <span className="hidden lg:inline">{t.reloadLabel}</span>
           </button>
         </div>
-      </div>
+      </header>
 
       {/* Top Application Workspace */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Navigation Sidebar */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        {/* Left Navigation Sidebar + Mobile Drawer */}
         <Sidebar
           currentTab={currentTab}
           onTabChange={handleTabChange}
-          language={language}
-          onLanguageChange={setLanguage}
           onOpenWallet={() => setIsWalletModalOpen(true)}
           walletBalanceSol={walletBalanceSol}
+          isMobileOpen={isMobileNavOpen}
+          onCloseMobile={() => setIsMobileNavOpen(false)}
         />
 
         {/* Center Main Stage */}
-        <main className="flex-1 flex flex-col overflow-y-auto p-6 space-y-5">
-          {/* Persistent Top Search Bar + Explicit Search Button */}
+        <main className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden p-4 sm:p-6 space-y-5 min-w-0">
+          {/* Persistent Top Search Bar + Quick Artist Directory / Stage Toggle */}
           <form
             onSubmit={handleTopSearchSubmit}
-            className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 bg-[#0A0F1A] border border-[#1B2336] p-2.5 rounded-2xl shadow-lg"
+            className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2.5 rounded-2xl transition-colors"
+            style={{ boxShadow: 'var(--card-shadow)' }}
           >
-            <div className="relative flex-1 min-w-[200px]">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <div className="relative flex-1 min-w-[180px]">
+              <Search
+                size={15}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
+              />
               <input
                 type="text"
                 value={topSearchInput}
                 onChange={(e) => setTopSearchInput(e.target.value)}
-                placeholder="Search 85,000,000+ songs or 800+ artists (Queen, Eminem, Taylor Swift, Dewa 19)..."
-                className="w-full pl-10 pr-4 py-2 rounded-xl bg-[#111726] border border-[#222D45] text-xs text-white placeholder-gray-400 focus:outline-none focus:border-emerald-500 transition-colors"
+                placeholder={t.searchPlaceholder}
+                aria-label={t.searchPlaceholder}
+                className="w-full pl-9 pr-3 min-h-[40px] py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] transition-colors"
               />
             </div>
 
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs transition-all shadow-md shadow-emerald-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer"
-            >
-              <Search size={14} />
-              <span>Search</span>
-            </button>
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <button
+                type="submit"
+                className="flex-1 sm:flex-none min-h-[40px] px-4 py-2 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] font-bold text-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <Search size={14} />
+                <span>{t.searchAction}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setCurrentTab('search')}
-              className="px-3.5 py-2 rounded-xl bg-[#12192A] hover:bg-[#192338] border border-[#24324D] text-emerald-300 font-semibold text-xs shrink-0 cursor-pointer transition-colors"
-            >
-              {ARTISTS_DIRECTORY.length} Artists Menu
-            </button>
-          </form>
+              <button
+                type="button"
+                onClick={() => handleTabChange('search')}
+                className="min-h-[40px] px-3 py-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--accent-text)] font-semibold text-xs shrink-0 cursor-pointer transition-colors"
+              >
+                {ARTISTS_DIRECTORY.length} Artists
+              </button>
 
-          {/* Top Stage Player Area */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[460px]">
-            <div className={`transition-all duration-300 ${isLyricsOpen ? 'lg:col-span-7' : 'lg:col-span-12'}`}>
-              {playerMode === 'cover' && (
-                <VinylCover
-                  coverUrl={currentTrack.coverUrl}
-                  title={currentTrack.title}
-                  artist={currentTrack.artist}
-                  album={currentTrack.album}
-                  genre={currentTrack.genre}
-                  isPlaying={isPlaying}
-                />
-              )}
-
-              {playerMode === 'video' && (
-                <VideoPlayer
-                  videoUrl={currentTrack.videoUrl}
-                  coverUrl={currentTrack.coverUrl}
-                  title={currentTrack.title}
-                  artist={currentTrack.artist}
-                  isPlaying={isPlaying}
-                  isOfficialStreamActive={isYouTubeActive}
-                  officialSlotRef={videoSlotRef}
-                />
-              )}
-
-              {playerMode === 'orbwave' && (
-                <OrbwaveCanvas
-                  coverUrl={currentTrack.coverUrl}
-                  title={currentTrack.title}
-                  artist={currentTrack.artist}
-                  lyrics={currentTrack.lyrics}
-                  currentTime={currentTime}
-                />
+              {currentTab !== 'discover' && currentTab !== 'visualizer' && (
+                <button
+                  type="button"
+                  onClick={() => setIsStageOpen((prev) => !prev)}
+                  className={`min-h-[40px] px-3 py-2 rounded-xl border text-xs font-semibold shrink-0 cursor-pointer transition-colors ${
+                    isStageOpen
+                      ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                      : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {t.playerStageToggle}
+                </button>
               )}
             </div>
+          </form>
 
-            {isLyricsOpen && (
-              <div className="lg:col-span-5 h-[460px]">
-                <LiveLyrics
-                  lyrics={currentTrack.lyrics}
-                  currentTime={currentTime}
-                  onSeek={handleSeek}
-                  title={currentTrack.title}
-                  artist={currentTrack.artist}
-                />
+          {/* Complete Mobile Horizontal Quick Navigation Strip */}
+          <nav
+            aria-label="Mobile Quick Navigation"
+            className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 -mt-1 shrink-0"
+          >
+            {mobileNavChips.map((chip) => {
+              const active = currentTab === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => handleTabChange(chip.id)}
+                  className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 border transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                      : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
+                  }`}
+                >
+                  {chip.icon}
+                  <span>{chip.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Top Stage Player Area */}
+          {isStageVisible && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[340px] lg:min-h-[460px]">
+              <div
+                className={`transition-all duration-300 ${
+                  isLyricsOpen ? 'lg:col-span-7' : 'lg:col-span-12'
+                }`}
+              >
+                {playerMode === 'cover' && (
+                  <VinylCover
+                    coverUrl={currentTrack.coverUrl}
+                    title={currentTrack.title}
+                    artist={currentTrack.artist}
+                    album={currentTrack.album}
+                    genre={currentTrack.genre}
+                    isPlaying={isPlaying}
+                  />
+                )}
+
+                {playerMode === 'video' && (
+                  <VideoPlayer
+                    videoUrl={currentTrack.videoUrl}
+                    coverUrl={currentTrack.coverUrl}
+                    title={currentTrack.title}
+                    artist={currentTrack.artist}
+                    isPlaying={isPlaying}
+                    isOfficialStreamActive={isYouTubeActive}
+                    officialSlotRef={videoSlotRef}
+                  />
+                )}
+
+                {playerMode === 'orbwave' && (
+                  <OrbwaveCanvas
+                    coverUrl={currentTrack.coverUrl}
+                    title={currentTrack.title}
+                    artist={currentTrack.artist}
+                    lyrics={currentTrack.lyrics}
+                    currentTime={currentTime}
+                  />
+                )}
               </div>
-            )}
-          </div>
+
+              {isLyricsOpen && (
+                <div className="lg:col-span-5 h-[360px] lg:h-[460px]">
+                  <LiveLyrics
+                    lyrics={currentTrack.lyrics}
+                    currentTime={currentTime}
+                    onSeek={handleSeek}
+                    title={currentTrack.title}
+                    artist={currentTrack.artist}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Sub-Views by Tab */}
-          <div className="flex-1 pb-6">
+          <div className="flex-1 pb-6 min-w-0">
+            {currentTab === 'landing' && (
+              <LandingView
+                tracks={TRACK_CATALOG}
+                currentTrack={currentTrack}
+                isPlaying={isPlaying}
+                resolvingTrackId={resolvingTrackId}
+                onSelectTrack={handleSelectTrack}
+                onTogglePlay={handleTogglePlay}
+                onNavigateTab={handleTabChange}
+                onOpenPitchDeck={() => setIsPitchModalOpen(true)}
+                onOpenStage={() => setIsStageOpen((prev) => !prev)}
+              />
+            )}
+
             {currentTab === 'discover' && (
               <DiscoverView
                 tracks={TRACK_CATALOG}
@@ -639,7 +796,9 @@ export default function App() {
           onSelectRadio={handleSelectRadio}
           onOpenTipModal={() => setIsWalletModalOpen(true)}
           ytMonitorRef={ytMonitorRef}
-          showYtMonitor={isYouTubeActive && playerMode !== 'video'}
+          showYtMonitor={isYouTubeActive && (!isStageVisible || playerMode !== 'video')}
+          isMobileOpen={isMobileQueueOpen}
+          onCloseMobile={() => setIsMobileQueueOpen(false)}
         />
       </div>
 
@@ -658,9 +817,10 @@ export default function App() {
         volume={volume}
         onVolumeChange={handleVolumeChange}
         playerMode={playerMode}
-        onPlayerModeChange={setPlayerMode}
+        onPlayerModeChange={handlePlayerModeChange}
         isLyricsOpen={isLyricsOpen}
-        onToggleLyrics={() => setIsLyricsOpen(!isLyricsOpen)}
+        onToggleLyrics={handleToggleLyrics}
+        onOpenMobileQueue={() => setIsMobileQueueOpen(true)}
       />
 
       {/* Solana Devnet Wallet Modal */}

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { sharedAudioEngine } from '../../services/audioEngine';
 import type { LyricLine } from '../../types';
+import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { Maximize2, Minimize2, Sparkles, Sliders } from 'lucide-react';
 
 interface OrbwaveCanvasProps {
@@ -47,6 +48,8 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
   currentTime,
   palette = 'emerald'
 }) => {
+  const { theme } = useAppPreferences();
+  const isLight = theme === 'light';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [selectedPalette, setSelectedPalette] = useState<'emerald' | 'cyber' | 'amber' | 'ice'>(palette);
@@ -102,7 +105,7 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
       const levelEnergy = spectrum.level;
       const colors = PALETTES[selectedPalette];
 
-      // 1. Clear with deep gradient background
+      // 1. Clear with theme-aware gradient background
       const bgGrad = ctx.createRadialGradient(
         centerX,
         centerY,
@@ -111,9 +114,15 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
         centerY,
         minDimension * 0.75
       );
-      bgGrad.addColorStop(0, '#0E131F');
-      bgGrad.addColorStop(0.6, '#080A10');
-      bgGrad.addColorStop(1, '#040507');
+      if (isLight) {
+        bgGrad.addColorStop(0, '#FFFFFF');
+        bgGrad.addColorStop(0.6, '#ECF5F1');
+        bgGrad.addColorStop(1, '#E2E8F0');
+      } else {
+        bgGrad.addColorStop(0, '#0E131F');
+        bgGrad.addColorStop(0.6, '#080A10');
+        bgGrad.addColorStop(1, '#040507');
+      }
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
@@ -124,7 +133,9 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
 
         ctx.beginPath();
         ctx.arc(p.x * width, p.y * height, p.size * (1 + bassEnergy * 0.6), 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity * (0.4 + levelEnergy * 0.6)})`;
+        ctx.fillStyle = isLight
+          ? `rgba(5, 150, 105, ${p.opacity * (0.28 + levelEnergy * 0.45)})`
+          : `rgba(255, 255, 255, ${p.opacity * (0.4 + levelEnergy * 0.6)})`;
         ctx.fill();
       });
 
@@ -191,7 +202,7 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
         if (normalized > 0.45) {
           ctx.beginPath();
           ctx.arc(x2, y2, 2.4, 0, Math.PI * 2);
-          ctx.fillStyle = '#FFFFFF';
+          ctx.fillStyle = isLight ? colors.primary : '#FFFFFF';
           ctx.fill();
         }
       }
@@ -257,19 +268,17 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
       // Current active lyric line
       if (activeLyric) {
         ctx.font = '600 20px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        // Subtle drop shadow for optimal contrast against high-energy visualizer
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillStyle = isLight ? 'rgba(255, 255, 255, 0.85)' : 'rgba(0, 0, 0, 0.75)';
         ctx.fillText(activeLyric.text, centerX + 1, hudY + 1);
 
-        // Active highlighted text with gradient glow
-        ctx.fillStyle = colors.accent;
+        ctx.fillStyle = isLight ? '#047857' : colors.accent;
         ctx.fillText(activeLyric.text, centerX, hudY);
       }
 
       // Next lyric line preview
       if (nextLyric) {
         ctx.font = '400 13px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.fillStyle = isLight ? 'rgba(15, 23, 42, 0.65)' : 'rgba(255, 255, 255, 0.45)';
         ctx.fillText(nextLyric.text, centerX, hudY + 26);
       }
 
@@ -296,7 +305,7 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
     };
-  }, [coverUrl, selectedPalette, barStyle, activeLyric, nextLyric]);
+  }, [coverUrl, selectedPalette, barStyle, activeLyric, nextLyric, isLight]);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -310,33 +319,35 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full min-h-[460px] bg-[#07090E] rounded-2xl overflow-hidden border border-[#1E2433] flex flex-col items-center justify-center select-none"
+      className="relative w-full h-full min-h-[340px] lg:min-h-[460px] bg-[var(--bg-app)] rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex flex-col items-center justify-center select-none transition-colors"
     >
       {/* Visualizer Canvas */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full block" />
 
       {/* Top HUD bar with metadata and controls */}
-      <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10 pointer-events-auto">
-        <div className="bg-[#0D111A]/80 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-[#242C3D] flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-xs font-semibold text-white tracking-wide">ORBWAVE LIVE ENGINE</span>
-          <span className="text-xs text-gray-400">·</span>
-          <span className="text-xs text-gray-300 font-medium truncate max-w-[200px]">{title}</span>
-          <span className="text-xs text-gray-400">·</span>
-          <span className="text-xs text-gray-400 truncate max-w-[140px]">{artist}</span>
+      <div className="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 flex items-center justify-between gap-2 z-10 pointer-events-auto">
+        <div className="bg-[var(--bg-surface)]/90 backdrop-blur-md px-3 sm:px-3.5 py-1.5 rounded-full border border-[var(--border-subtle)] flex items-center gap-2 min-w-0">
+          <span className="w-2 h-2 rounded-full bg-[var(--accent-emerald)] animate-pulse shrink-0" />
+          <span className="text-[11px] sm:text-xs font-semibold text-[var(--text-primary)] tracking-wide shrink-0">ORBWAVE LIVE</span>
+          <span className="text-xs text-[var(--text-dim)] hidden sm:inline">&middot;</span>
+          <span className="text-xs text-[var(--text-secondary)] font-medium truncate max-w-[140px] sm:max-w-[200px]">{title}</span>
+          <span className="text-xs text-[var(--text-dim)] hidden md:inline">&middot;</span>
+          <span className="text-xs text-[var(--text-dim)] truncate max-w-[140px] hidden md:inline">{artist}</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
+            type="button"
             onClick={() => setShowConfig(!showConfig)}
-            className="p-2 rounded-lg bg-[#0D111A]/80 backdrop-blur-md border border-[#242C3D] text-gray-300 hover:text-white hover:bg-[#161D2B] transition-colors"
+            className="p-2 rounded-lg bg-[var(--bg-surface)]/90 backdrop-blur-md border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
             title="Configure Visualizer"
           >
             <Sliders size={16} />
           </button>
           <button
+            type="button"
             onClick={toggleFullscreen}
-            className="p-2 rounded-lg bg-[#0D111A]/80 backdrop-blur-md border border-[#242C3D] text-gray-300 hover:text-white hover:bg-[#161D2B] transition-colors"
+            className="p-2 rounded-lg bg-[var(--bg-surface)]/90 backdrop-blur-md border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
             title="Toggle Fullscreen"
           >
             {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
@@ -346,18 +357,19 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
 
       {/* Configuration Drawer */}
       {showConfig && (
-        <div className="absolute top-16 right-4 z-20 bg-[#0F1420]/95 backdrop-blur-lg border border-[#242C3D] p-4 rounded-xl shadow-2xl w-64 text-xs space-y-3">
+        <div className="absolute top-16 right-4 z-20 bg-[var(--bg-surface)]/95 backdrop-blur-lg border border-[var(--border-medium)] p-4 rounded-xl shadow-2xl w-64 text-xs space-y-3">
           <div>
-            <label className="text-gray-400 font-medium block mb-1.5">Color Palette</label>
+            <label className="text-[var(--text-secondary)] font-medium block mb-1.5">Color Palette</label>
             <div className="grid grid-cols-2 gap-1.5">
               {(['emerald', 'cyber', 'amber', 'ice'] as const).map((p) => (
                 <button
                   key={p}
+                  type="button"
                   onClick={() => setSelectedPalette(p)}
-                  className={`px-2.5 py-1.5 rounded-lg border text-left capitalize font-medium transition-all ${
+                  className={`px-2.5 py-1.5 rounded-lg border text-left capitalize font-medium transition-all cursor-pointer ${
                     selectedPalette === p
-                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                      : 'border-[#242C3D] bg-[#141A26] text-gray-400 hover:text-white'
+                      ? 'border-[var(--accent-emerald)] bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                      : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   {p}
@@ -367,16 +379,17 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
           </div>
 
           <div>
-            <label className="text-gray-400 font-medium block mb-1.5">Ring Style</label>
+            <label className="text-[var(--text-secondary)] font-medium block mb-1.5">Ring Style</label>
             <div className="grid grid-cols-3 gap-1">
               {(['ring', 'spikes', 'wave'] as const).map((style) => (
                 <button
                   key={style}
+                  type="button"
                   onClick={() => setBarStyle(style)}
-                  className={`px-2 py-1 rounded-md border capitalize font-medium transition-all ${
+                  className={`px-2 py-1 rounded-md border capitalize font-medium transition-all cursor-pointer ${
                     barStyle === style
-                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                      : 'border-[#242C3D] bg-[#141A26] text-gray-400 hover:text-white'
+                      ? 'border-[var(--accent-emerald)] bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                      : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   {style}
@@ -385,9 +398,9 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
             </div>
           </div>
 
-          <div className="pt-1 border-t border-[#242C3D]/60 flex items-center justify-between text-[11px] text-gray-400">
+          <div className="pt-1 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11px] text-[var(--text-dim)]">
             <span className="flex items-center gap-1">
-              <Sparkles size={12} className="text-emerald-400" /> Web Audio FFT 512
+              <Sparkles size={12} className="text-[var(--accent-text)]" /> Web Audio FFT 512
             </span>
             <span>60 FPS</span>
           </div>

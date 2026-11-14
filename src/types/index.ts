@@ -49,8 +49,33 @@ export interface RadioStation {
 }
 
 export type PlayerMode = 'cover' | 'video' | 'orbwave';
-export type TabType = 'discover' | 'search' | 'radio' | 'podcasts' | 'visualizer' | 'pitch' | 'proofOfStream';
-export type Language = 'en' | 'id' | 'ja' | 'es' | 'de';
+export type TabType = 'landing' | 'discover' | 'search' | 'radio' | 'podcasts' | 'visualizer' | 'pitch' | 'proofOfStream';
+export type ThemeMode = 'dark' | 'light';
+export type Language =
+  | 'en'
+  | 'id'
+  | 'ms'
+  | 'jv'
+  | 'su'
+  | 'ja'
+  | 'ko'
+  | 'zh'
+  | 'zh-TW'
+  | 'es'
+  | 'fr'
+  | 'de'
+  | 'pt'
+  | 'it'
+  | 'nl'
+  | 'ru'
+  | 'ar'
+  | 'hi'
+  | 'th'
+  | 'vi'
+  | 'tl'
+  | 'tr'
+  | 'pl'
+  | 'sv';
 
 export interface TipRecord {
   id: string;
