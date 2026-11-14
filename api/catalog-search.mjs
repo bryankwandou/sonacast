@@ -66,6 +66,15 @@ function mapDeezerTrack(t, fromArtistTop) {
   };
 }
 
+async function fetchDeezerArtistTop(artistId) {
+  const res = await fetch(`https://api.deezer.com/artist/${encodeURIComponent(String(artistId))}/top?limit=50`, {
+    signal: AbortSignal.timeout(3500)
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  return Array.isArray(res?.data) ? res.data : [];
+}
+
 async function fetchAppleRssWithDurations(country, limit) {
   const rssUrl = `https://itunes.apple.com/${country}/rss/topsongs/limit=${limit}/json`;
   const res = await fetch(rssUrl, { signal: AbortSignal.timeout(3800) });
@@ -225,22 +234,11 @@ export default async function handler(req, res) {
     let artistTopTracks = [];
 
     if (topArtist) {
-      const topRes = await fetch(`https://api.deezer.com/artist/${topArtist.id}/top?limit=40`, {
-        signal: AbortSignal.timeout(3500)
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
-
-      artistTopTracks = Array.isArray(topRes?.data) ? topRes.data : [];
+      artistTopTracks = await fetchDeezerArtistTop(topArtist.id);
 
       if (artistTopTracks.length === 0 && artistCandidates[1] && artistCandidates[1].normName === normQuery) {
         topArtist = artistCandidates[1];
-        const fallbackTopRes = await fetch(`https://api.deezer.com/artist/${topArtist.id}/top?limit=40`, {
-          signal: AbortSignal.timeout(3500)
-        })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null);
-        artistTopTracks = Array.isArray(fallbackTopRes?.data) ? fallbackTopRes.data : [];
+        artistTopTracks = await fetchDeezerArtistTop(topArtist.id);
       }
     }
 
@@ -259,3 +257,4 @@ export default async function handler(req, res) {
     res.status(500).json({ matchedArtist: '', artistFans: 0, items: [] });
   }
 }
+

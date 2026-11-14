@@ -150,6 +150,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   });
   const [isLoadingCharts, setIsLoadingCharts] = useState(true);
   const searchTimeoutRef = useRef<number | null>(null);
+  const searchRequestIdRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -183,15 +184,23 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   ];
 
   const handleOnlineSearch = async (term: string) => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
+    const requestId = ++searchRequestIdRef.current;
     const trimmed = term.trim();
     if (!trimmed) {
       setOnlineResults([]);
+      setIsSearchingOnline(false);
       return;
     }
 
+    setOnlineResults([]);
     setIsSearchingOnline(true);
     try {
       const results = await searchTracksOnline(trimmed);
+      if (requestId !== searchRequestIdRef.current) return;
       const lower = trimmed.toLowerCase();
       const curatedMatches = tracks.filter(
         (t) =>
@@ -214,16 +223,26 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           : results;
       setOnlineResults(combined);
     } catch {
-      setOnlineResults([]);
+      if (requestId === searchRequestIdRef.current) {
+        setOnlineResults([]);
+      }
     } finally {
-      setIsSearchingOnline(false);
+      if (requestId === searchRequestIdRef.current) {
+        setIsSearchingOnline(false);
+      }
     }
   };
 
   const handleSearchInputChange = (val: string) => {
     setSearchQuery(val);
     if (!val.trim()) {
+      searchRequestIdRef.current++;
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = null;
+      }
       setOnlineResults([]);
+      setIsSearchingOnline(false);
       return;
     }
 
@@ -394,7 +413,11 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            handleOnlineSearch(searchQuery);
+            const rawInput = (e.currentTarget.querySelector('input') as HTMLInputElement | null)?.value ?? searchQuery;
+            if (rawInput !== searchQuery) {
+              setSearchQuery(rawInput);
+            }
+            handleOnlineSearch(rawInput);
           }}
           className="flex items-center gap-2 pt-1"
         >

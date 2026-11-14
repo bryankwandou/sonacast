@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Track, LyricLine } from '../../types';
 import { ARTISTS_DIRECTORY, ARTIST_GENRE_CATEGORIES } from '../../data/artists800';
 import { searchTracksOnline, fetchSyncedLyrics } from '../../services/musicService';
@@ -38,6 +38,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [selectedGenre, setSelectedGenre] = useState('All Genres');
   const [artistDirectoryFilter, setArtistDirectoryFilter] = useState('');
   const [showAllArtists, setShowAllArtists] = useState(false);
+  const searchRequestIdRef = useRef(0);
 
   const filteredArtists = useMemo(() => {
     const q = artistDirectoryFilter.trim().toLowerCase();
@@ -53,11 +54,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
     : filteredArtists.slice(0, INITIAL_ARTIST_CHIP_LIMIT);
 
   const executeSearch = async (term: string) => {
+    const requestId = ++searchRequestIdRef.current;
     const trimmed = term.trim();
     if (!trimmed) return;
+    setResults([]);
     setIsLoading(true);
     try {
       const online = await searchTracksOnline(trimmed);
+      if (requestId !== searchRequestIdRef.current) return;
       const lower = trimmed.toLowerCase();
       const matchingCurated = curatedTracks.filter(
         (t) =>
@@ -75,9 +79,13 @@ export const SearchView: React.FC<SearchViewProps> = ({
       );
       setResults([...matchingCurated, ...dedupedOnline]);
     } catch {
-      setResults([]);
+      if (requestId === searchRequestIdRef.current) {
+        setResults([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === searchRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
