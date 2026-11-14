@@ -13,7 +13,7 @@ import {
   Trash2,
   Users
 } from 'lucide-react';
-import type { BlendRoom, FavoriteTrack, Track } from '../../types';
+import type { BlendRoom, FavoriteTrack, PlaybackContextInfo, Track } from '../../types';
 import { ARTISTS_DIRECTORY } from '../../data/artists800';
 import { searchTracksOnline } from '../../services/musicService';
 import {
@@ -35,7 +35,12 @@ interface BlendViewProps {
   isCloudConnected: boolean;
   currentTrack: Track;
   onSelectTrack: (track: Track) => void;
-  onPlayTrackList: (tracks: Track[], shuffle?: boolean) => void;
+  onPlayTrackList: (
+    tracks: Track[],
+    shuffle?: boolean,
+    contextInfo?: PlaybackContextInfo,
+    startIndex?: number
+  ) => void;
   onRefreshBlends: () => Promise<void>;
   onSaveBlendAsAlbum: (name: string, tracks: Track[]) => Promise<void>;
   onOpenAddToAlbum: (track: Track) => void;
@@ -89,7 +94,7 @@ export const BlendView: React.FC<BlendViewProps> = ({
   initialBlendCode,
   isCloudConnected,
   currentTrack,
-  onSelectTrack,
+  onSelectTrack: _onSelectTrack,
   onPlayTrackList,
   onRefreshBlends,
   onSaveBlendAsAlbum,
@@ -578,7 +583,16 @@ export const BlendView: React.FC<BlendViewProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => onPlayTrackList(selectedBlend.blendedTracks, false)}
+                        onClick={() =>
+                          onPlayTrackList(selectedBlend.blendedTracks, false, {
+                            id: `blend-${selectedBlend.blendCode}`,
+                            type: 'blend',
+                            title: selectedBlend.title,
+                            subtitle: `${selectedBlend.matchScore}% Taste Match`,
+                            coverUrl: selectedBlend.blendedTracks[0]?.coverUrl,
+                            ordered: true
+                          })
+                        }
                         className="min-h-[36px] px-4 rounded-xl bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
                       >
                         <Play size={13} className="fill-current" />
@@ -587,7 +601,16 @@ export const BlendView: React.FC<BlendViewProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => onPlayTrackList(selectedBlend.blendedTracks, true)}
+                        onClick={() =>
+                          onPlayTrackList(selectedBlend.blendedTracks, true, {
+                            id: `blend-${selectedBlend.blendCode}`,
+                            type: 'blend',
+                            title: selectedBlend.title,
+                            subtitle: `${selectedBlend.matchScore}% Taste Match`,
+                            coverUrl: selectedBlend.blendedTracks[0]?.coverUrl,
+                            ordered: false
+                          })
+                        }
                         aria-label="Shuffle Blend"
                         className="min-h-[36px] px-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] cursor-pointer"
                       >
@@ -613,7 +636,21 @@ export const BlendView: React.FC<BlendViewProps> = ({
                     >
                       <button
                         type="button"
-                        onClick={() => onSelectTrack(tr)}
+                        onClick={() =>
+                          onPlayTrackList(
+                            selectedBlend.blendedTracks,
+                            false,
+                            {
+                              id: `blend-${selectedBlend.blendCode}`,
+                              type: 'blend',
+                              title: selectedBlend.title,
+                              subtitle: `${selectedBlend.matchScore}% Taste Match`,
+                              coverUrl: selectedBlend.blendedTracks[0]?.coverUrl,
+                              ordered: true
+                            },
+                            idx
+                          )
+                        }
                         className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
                       >
                         <span className="text-[11px] font-mono text-[var(--text-dim)] w-5 shrink-0">

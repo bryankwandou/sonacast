@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { Track, LyricLine } from '../../types';
+import type { CatalogAlbum, Track, LyricLine, PlaybackContextInfo } from '../../types';
 import { ARTISTS_DIRECTORY, ARTIST_GENRE_CATEGORIES } from '../../data/artists800';
-import { searchTracksOnline, fetchSyncedLyrics } from '../../services/musicService';
+import {
+  fetchAlbumTracksOnline,
+  fetchSyncedLyrics,
+  searchAlbumsOnline,
+  searchTracksOnline
+} from '../../services/musicService';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { TrackCard } from '../common/TrackCard';
-import { Search, Sparkles, Loader2, Globe, Users, Shuffle } from 'lucide-react';
+import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
+import { Disc3, Globe, Loader2, Play, Search, Shuffle, Sparkles, Users, X } from 'lucide-react';
 
 interface SearchViewProps {
   curatedTracks: Track[];
@@ -21,6 +27,12 @@ interface SearchViewProps {
   onAddToAlbum?: (track: Track) => void;
   onAddToQueue?: (track: Track) => void;
   onStartRadio?: (track: Track) => void;
+  onPlayTrackList?: (
+    tracks: Track[],
+    shuffle?: boolean,
+    contextInfo?: PlaybackContextInfo,
+    startIndex?: number
+  ) => void;
 }
 
 const INITIAL_ARTIST_CHIP_LIMIT = 42;
@@ -38,13 +50,19 @@ export const SearchView: React.FC<SearchViewProps> = ({
   onToggleLike,
   onAddToAlbum,
   onAddToQueue,
-  onStartRadio
+  onStartRadio,
+  onPlayTrackList
 }) => {
   const { t } = useAppPreferences();
   const [searchQuery, setSearchQuery] = useState(
     externalTrigger > 0 && externalQuery?.trim() ? externalQuery.trim() : 'Queen'
   );
+  const [searchMode, setSearchMode] = useState<'songs' | 'albums'>('songs');
   const [results, setResults] = useState<Track[]>([]);
+  const [albumResults, setAlbumResults] = useState<CatalogAlbum[]>([]);
+  const [selectedAlbum, setSelectedAlbum] = useState<CatalogAlbum | null>(null);
+  const [selectedAlbumTracks, setSelectedAlbumTracks] = useState<Track[]>([]);
+  const [loadingAlbumId, setLoadingAlbumId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeArtistFilter, setActiveArtistFilter] = useState('Queen');
   const [selectedGenre, setSelectedGenre] = useState('All Genres');
@@ -65,39 +83,91 @@ export const SearchView: React.FC<SearchViewProps> = ({
     ? filteredArtists
     : filteredArtists.slice(0, INITIAL_ARTIST_CHIP_LIMIT);
 
-  const executeSearch = async (term: string) => {
+  const executeSearch = async (term: string, modeOverride?: 'songs' | 'albums') => {
     const requestId = ++searchRequestIdRef.current;
     const trimmed = term.trim();
     if (!trimmed) return;
-    setResults([]);
+    const activeMode = modeOverride || searchMode;
+    setSelectedAlbum(null);
+    setSelectedAlbumTracks([]);
     setIsLoading(true);
     try {
-      const online = await searchTracksOnline(trimmed);
-      if (requestId !== searchRequestIdRef.current) return;
-      const lower = trimmed.toLowerCase();
-      const matchingCurated = curatedTracks.filter(
-        (t) =>
-          t.title.toLowerCase().includes(lower) ||
-          t.artist.toLowerCase().includes(lower) ||
-          t.album.toLowerCase().includes(lower)
-      );
-      const dedupedOnline = online.filter(
-        (o) =>
-          !matchingCurated.some(
-            (c) =>
-              c.title.toLowerCase() === o.title.toLowerCase() &&
-              c.artist.toLowerCase().split(' ')[0] === o.artist.toLowerCase().split(' ')[0]
-          )
-      );
-      setResults([...matchingCurated, ...dedupedOnline]);
+      if (activeMode === 'albums') {
+        setAlbumResults([]);
+        const albums = await searchAlbumsOnline(trimmed);
+        if (requestId !== searchRequestIdRef.current) return;
+        setAlbumResults(albums);
+      } else {
+        setResults([]);
+        const online = await searchTracksOnline(trimmed);
+        if (requestId !== searchRequestIdRef.current) return;
+        const lower = trimmed.toLowerCase();
+        const matchingCurated = curatedTracks.filter(
+          (t) =>
+            t.title.toLowerCase().includes(lower) ||
+            t.artist.toLowerCase().includes(lower) ||
+            t.album.toLowerCase().includes(lower)
+        );
+        const dedupedOnline = online.filter(
+          (o) =>
+            !matchingCurated.some(
+              (c) =>
+                c.title.toLowerCase() === o.title.toLowerCase() &&
+                c.artist.toLowerCase().split(' ')[0] === o.artist.toLowerCase().split(' ')[0]
+            )
+        );
+        setResults([...matchingCurated, ...dedupedOnline]);
+      }
     } catch {
       if (requestId === searchRequestIdRef.current) {
-        setResults([]);
+        if (activeMode === 'albums') setAlbumResults([]);
+        else setResults([]);
       }
     } finally {
       if (requestId === searchRequestIdRef.current) {
         setIsLoading(false);
       }
+    }
+  };
+
+  const handleOpenSearchAlbum = async (alb: CatalogAlbum) => {
+    setSelectedAlbum(alb);
+    setLoadingAlbumId(alb.id);
+    try {
+      const res = await fetchAlbumTracksOnline(alb);
+      setSelectedAlbum(res.album);
+      setSelectedAlbumTracks(res.tracks);
+    } finally {
+      setLoadingAlbumId(null);
+    }
+  };
+
+  const handlePlaySearchAlbum = async (alb: CatalogAlbum, shuffle = false, startIndex = 0) => {
+    setLoadingAlbumId(alb.id);
+    try {
+      const res =
+        selectedAlbum?.id === alb.id && selectedAlbumTracks.length > 0
+          ? { album: selectedAlbum, tracks: selectedAlbumTracks }
+          : await fetchAlbumTracksOnline(alb);
+      setSelectedAlbum(res.album);
+      setSelectedAlbumTracks(res.tracks);
+      if (res.tracks.length > 0 && onPlayTrackList) {
+        onPlayTrackList(
+          res.tracks,
+          shuffle,
+          {
+            id: `release-album-${res.album.id}`,
+            type: 'release-album',
+            title: res.album.title,
+            subtitle: res.album.artist,
+            coverUrl: res.album.coverUrl,
+            ordered: !shuffle
+          },
+          startIndex
+        );
+      }
+    } finally {
+      setLoadingAlbumId(null);
     }
   };
 
@@ -203,6 +273,43 @@ export const SearchView: React.FC<SearchViewProps> = ({
               )}
             </button>
           </form>
+
+          {/* Search Mode Selector: Songs | Albums */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid="search-mode-songs"
+              onClick={() => {
+                setSearchMode('songs');
+                if (searchQuery.trim()) executeSearch(searchQuery, 'songs');
+              }}
+              className={`h-8 px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                searchMode === 'songs'
+                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
+              }`}
+            >
+              <Search size={12} />
+              <span>{t.searchSongsTab}</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="search-mode-albums"
+              onClick={() => {
+                setSearchMode('albums');
+                if (searchQuery.trim()) executeSearch(searchQuery, 'albums');
+              }}
+              className={`h-8 px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                searchMode === 'albums'
+                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
+              }`}
+            >
+              <Disc3 size={12} />
+              <span>{t.searchAlbumsTab}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -303,18 +410,45 @@ export const SearchView: React.FC<SearchViewProps> = ({
       </div>
 
       {/* Search Results Grid */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 px-1">
           <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <Globe size={15} className="text-[var(--accent-text)]" />
-            <span>Search Results for &ldquo;{searchQuery}&rdquo;</span>
+            {searchMode === 'albums' ? (
+              <Disc3 size={15} className="text-[var(--accent-text)]" />
+            ) : (
+              <Globe size={15} className="text-[var(--accent-text)]" />
+            )}
+            <span>
+              {searchMode === 'albums' ? 'Album' : 'Search'} Results for &ldquo;{searchQuery}&rdquo;
+            </span>
           </h3>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {searchMode === 'songs' && results.length > 0 && onPlayTrackList && (
+              <button
+                type="button"
+                data-testid="search-play-ordered"
+                onClick={() =>
+                  onPlayTrackList(results, false, {
+                    id: `search-${searchQuery}`,
+                    type: 'search',
+                    title: `Search: ${searchQuery}`,
+                    coverUrl: results[0]?.coverUrl,
+                    ordered: true
+                  })
+                }
+                className="h-7 px-3 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+              >
+                <Play size={10} className="fill-current" />
+                <span>{t.playOrdered}</span>
+              </button>
+            )}
             <span className="text-[11px] text-[var(--accent-text)] font-mono bg-[var(--accent-soft)] px-2 py-0.5 rounded-md border border-[var(--accent-border)]">
               100% Full-Length
             </span>
             <span className="text-xs text-[var(--accent-text)] font-mono">
-              {results.length} releases found
+              {searchMode === 'albums'
+                ? `${albumResults.length} albums found`
+                : `${results.length} releases found`}
             </span>
           </div>
         </div>
@@ -322,7 +456,165 @@ export const SearchView: React.FC<SearchViewProps> = ({
         {isLoading ? (
           <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-tint)] flex items-center justify-center gap-3">
             <Loader2 size={18} className="animate-spin text-[var(--accent-text)]" />
-            <span>Searching global catalog across multi-region mirrors...</span>
+            <span>
+              {searchMode === 'albums'
+                ? 'Searching studio albums & tracklists...'
+                : 'Searching global catalog across multi-region mirrors...'}
+            </span>
+          </div>
+        ) : searchMode === 'albums' ? (
+          <div className="space-y-5">
+            {albumResults.length === 0 ? (
+              <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-tint)]">
+                <p>No albums found for &ldquo;{searchQuery}&rdquo;. Try another artist or album title.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
+                {albumResults.map((alb) => {
+                  const isActiveAlb = selectedAlbum?.id === alb.id;
+                  const isBusy = loadingAlbumId === alb.id;
+                  return (
+                    <div
+                      key={alb.id}
+                      data-testid={`search-album-card-${alb.id}`}
+                      className={`rounded-2xl p-3 border transition-all flex flex-col justify-between gap-2.5 ${
+                        isActiveAlb
+                          ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'
+                          : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] hover:border-[var(--border-medium)]'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSearchAlbum(alb)}
+                        className="text-left space-y-2 cursor-pointer"
+                      >
+                        <div className="relative aspect-square rounded-xl overflow-hidden bg-[var(--bg-elevated)]">
+                          <img
+                            src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
+                            alt={alb.title}
+                            loading="lazy"
+                            onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
+                            className="w-full h-full object-cover"
+                          />
+                          {isBusy && (
+                            <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
+                              <Loader2 size={18} className="animate-spin text-white" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-[var(--text-primary)] truncate">
+                            {alb.title}
+                          </p>
+                          <p className="text-[11px] text-[var(--text-secondary)] truncate">
+                            {alb.artist}
+                          </p>
+                        </div>
+                      </button>
+
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <span className="text-[10px] font-mono text-[var(--text-dim)]">
+                          {alb.nbTracks ? `${alb.nbTracks} tracks` : 'Album'}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => handlePlaySearchAlbum(alb, false, 0)}
+                          className="h-7 px-2.5 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                        >
+                          <Play size={10} className="fill-current" />
+                          <span>{t.playAlbum}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedAlbum && (
+              <div
+                data-testid="search-selected-album-tracklist"
+                className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-medium)] p-4 sm:p-5 space-y-4"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <img
+                      src={selectedAlbum.coverUrl || DEFAULT_COVER_DATA_URI}
+                      alt={selectedAlbum.title}
+                      onError={(e) => applyCoverFallback(e, selectedAlbum.title, selectedAlbum.artist)}
+                      className="w-12 h-12 rounded-xl object-cover shrink-0 bg-[var(--bg-elevated)]"
+                    />
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
+                        Ordered Album Tracklist
+                      </span>
+                      <h4 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)] truncate">
+                        {selectedAlbum.title} &middot; {selectedAlbum.artist}
+                      </h4>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {selectedAlbumTracks.length > 0 && onPlayTrackList && (
+                      <button
+                        type="button"
+                        onClick={() => handlePlaySearchAlbum(selectedAlbum, false, 0)}
+                        className="h-8 px-3.5 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Play size={12} className="fill-current" />
+                        <span>{t.playOrdered}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAlbum(null)}
+                      aria-label={t.closeLabel}
+                      className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)] flex items-center justify-center cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {loadingAlbumId === selectedAlbum.id ? (
+                  <div className="py-8 flex items-center justify-center gap-2 text-xs text-[var(--text-dim)]">
+                    <Loader2 size={16} className="animate-spin text-[var(--accent-text)]" />
+                    <span>Fetching ordered album tracks...</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto pr-1">
+                    {selectedAlbumTracks.map((tr, idx) => (
+                      <button
+                        key={`${selectedAlbum.id}-trk-${tr.id}-${idx}`}
+                        type="button"
+                        onClick={() => handlePlaySearchAlbum(selectedAlbum, false, idx)}
+                        className={`flex items-center justify-between gap-2.5 px-3 py-2 rounded-xl text-left transition-colors cursor-pointer ${
+                          tr.id === currentTrack.id
+                            ? 'bg-[var(--accent-soft)] border border-[var(--accent-border)]'
+                            : 'bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)]'
+                        }`}
+                      >
+                        <span className="text-[11px] font-mono text-[var(--text-dim)] w-5 shrink-0">
+                          {idx + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                            {tr.title}
+                          </div>
+                          <div className="text-[10px] text-[var(--text-dim)] truncate">
+                            {tr.artist}
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-mono text-[var(--text-dim)] shrink-0">
+                          {Math.floor((tr.duration || 0) / 60)}:
+                          {((tr.duration || 0) % 60).toString().padStart(2, '0')}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : results.length === 0 ? (
           <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-tint)]">
@@ -330,7 +622,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-            {results.map((track) => (
+            {results.map((track, idx) => (
               <TrackCard
                 key={track.id}
                 track={track}
@@ -339,6 +631,19 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 onSelect={(chosen) => {
                   if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id) {
                     onTogglePlay();
+                  } else if (onPlayTrackList) {
+                    onPlayTrackList(
+                      results,
+                      false,
+                      {
+                        id: `search-${searchQuery}`,
+                        type: 'search',
+                        title: `Search: ${searchQuery}`,
+                        coverUrl: chosen.coverUrl,
+                        ordered: true
+                      },
+                      idx
+                    );
                   } else {
                     handlePlayTrackWithLyrics(chosen);
                   }

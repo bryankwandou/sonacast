@@ -122,6 +122,26 @@ export interface TranslationKeys {
   keyboardShortcutsLabel: string;
   cloudSyncedLabel: string;
   importSharedAlbum: string;
+  madeForYou: string;
+  featuredAlbums: string;
+  searchSongsTab: string;
+  searchAlbumsTab: string;
+  playingFrom: string;
+  queuedByYou: string;
+  autoplaySimilar: string;
+  playAlbum: string;
+  playOrdered: string;
+  switchToRadio: string;
+  authSignIn: string;
+  authSignUp: string;
+  authSignOut: string;
+  authAccountLabel: string;
+  authEmailLabel: string;
+  authPasswordLabel: string;
+  authNameLabel: string;
+  authGoogleCta: string;
+  authGoogleComingSoon: string;
+  authGoogleDesc: string;
 }
 
 export interface LanguageOption {
@@ -279,7 +299,27 @@ const EN_BASE: TranslationKeys = {
   listeningStatsLabel: 'Listening Stats',
   keyboardShortcutsLabel: 'Shortcuts',
   cloudSyncedLabel: 'Neon DB Synced',
-  importSharedAlbum: 'Import Shared Album'
+  importSharedAlbum: 'Import Shared Album',
+  madeForYou: 'Made For You',
+  featuredAlbums: 'Featured Studio Albums',
+  searchSongsTab: 'Songs',
+  searchAlbumsTab: 'Albums',
+  playingFrom: 'Playing From',
+  queuedByYou: 'Queued by You',
+  autoplaySimilar: 'Autoplay Similar Tracks',
+  playAlbum: 'Play Album',
+  playOrdered: 'Play In Order',
+  switchToRadio: 'Switch to Radio',
+  authSignIn: 'Sign In',
+  authSignUp: 'Create Account',
+  authSignOut: 'Sign Out',
+  authAccountLabel: 'Account',
+  authEmailLabel: 'Email Address',
+  authPasswordLabel: 'Password',
+  authNameLabel: 'Display Name',
+  authGoogleCta: 'Continue with Google',
+  authGoogleComingSoon: 'Coming Soon',
+  authGoogleDesc: 'Google OAuth sign-in is coming soon. Use email login backed by Neon Postgres.'
 };
 
 const loc = (overrides: Partial<TranslationKeys>): TranslationKeys => ({
@@ -409,7 +449,27 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     listeningStatsLabel: 'Statistik Dengar',
     keyboardShortcutsLabel: 'Pintasan',
     cloudSyncedLabel: 'Neon DB Tersinkron',
-    importSharedAlbum: 'Impor Album Teman'
+    importSharedAlbum: 'Impor Album Teman',
+    madeForYou: 'Rekomendasi Pilihan',
+    featuredAlbums: 'Album Studio Pilihan',
+    searchSongsTab: 'Lagu',
+    searchAlbumsTab: 'Album',
+    playingFrom: 'Memutar Dari',
+    queuedByYou: 'Antrean Kamu',
+    autoplaySimilar: 'Autoplay Lagu Serupa',
+    playAlbum: 'Putar Album',
+    playOrdered: 'Putar Berurutan',
+    switchToRadio: 'Mode Radio',
+    authSignIn: 'Masuk',
+    authSignUp: 'Buat Akun',
+    authSignOut: 'Keluar',
+    authAccountLabel: 'Akun',
+    authEmailLabel: 'Alamat Email',
+    authPasswordLabel: 'Kata Sandi',
+    authNameLabel: 'Nama Tampilan',
+    authGoogleCta: 'Lanjutkan dengan Google',
+    authGoogleComingSoon: 'Segera Hadir',
+    authGoogleDesc: 'Login Google OAuth segera hadir. Gunakan login email yang tersinkron di Neon Postgres.'
   }),
   ms: loc({
     navLanding: 'Halaman Utama',

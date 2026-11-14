@@ -1,5 +1,5 @@
 import React from 'react';
-import type { TabType } from '../../types';
+import type { AuthUser, TabType } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { ThemeLanguageControls } from './ThemeLanguageControls';
 import {
@@ -9,11 +9,13 @@ import {
   Compass,
   Heart,
   Home,
+  LogIn,
   Mic2,
   Presentation,
   Radio,
   Search,
   Sparkles,
+  User,
   Users,
   Wallet,
   X,
@@ -23,6 +25,8 @@ interface SidebarProps {
   currentTab: TabType;
   onTabChange: (tab: TabType) => void;
   onOpenWallet: () => void;
+  onOpenAuth?: () => void;
+  authUser?: AuthUser | null;
   walletBalanceSol: number;
   walletCluster?: 'devnet' | 'mainnet-beta';
   isCloudConnected?: boolean;
@@ -35,6 +39,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentTab,
   onTabChange,
   onOpenWallet,
+  onOpenAuth,
+  authUser = null,
   walletBalanceSol,
   walletCluster = 'devnet',
   isCloudConnected = false,
@@ -130,6 +136,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Bottom Controls: Theme/Language (mobile drawer only) & Wallet */}
       <div className="space-y-3 pt-4 mt-4 border-t border-[var(--border-subtle)]">
         {isDrawer && <ThemeLanguageControls variant="sidebar" />}
+
+        {onOpenAuth && (
+          <button
+            type="button"
+            data-testid="sidebar-auth-btn"
+            onClick={() => {
+              onOpenAuth();
+              if (onCloseMobile) onCloseMobile();
+            }}
+            className="w-full px-3 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent-emerald)] transition-colors flex items-center justify-between gap-2 text-left cursor-pointer"
+          >
+            <span className="inline-flex items-center gap-2 min-w-0">
+              <span className="w-6 h-6 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] flex items-center justify-center text-[var(--accent-text)] shrink-0">
+                {authUser ? <User size={12} /> : <LogIn size={12} />}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[11px] font-bold text-[var(--text-primary)] truncate">
+                  {authUser ? authUser.displayName : t.authSignIn}
+                </span>
+                <span className="block text-[10px] text-[var(--text-dim)] truncate">
+                  {authUser ? authUser.email : 'Neon Account'}
+                </span>
+              </span>
+            </span>
+          </button>
+        )}
 
         <button
           type="button"

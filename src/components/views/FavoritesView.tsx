@@ -27,6 +27,7 @@ import type {
   FollowedArtist,
   ListenerProfile,
   ListeningStats,
+  PlaybackContextInfo,
   Track,
   UserPlaylist
 } from '../../types';
@@ -43,7 +44,12 @@ interface FavoritesViewProps {
   isCloudConnected: boolean;
   currentTrack: Track;
   onSelectTrack: (track: Track) => void;
-  onPlayTrackList: (tracks: Track[], shuffle?: boolean) => void;
+  onPlayTrackList: (
+    tracks: Track[],
+    shuffle?: boolean,
+    contextInfo?: PlaybackContextInfo,
+    startIndex?: number
+  ) => void;
   onToggleLike: (track: Track) => void;
   onTogglePin: (trackId: string, pinned: boolean) => void;
   onSaveNote: (trackId: string, note: string) => void;
@@ -391,7 +397,16 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
                 <>
                   <button
                     type="button"
-                    onClick={() => onPlayTrackList(filteredFavorites, false)}
+                    onClick={() =>
+                      onPlayTrackList(filteredFavorites, false, {
+                        id: 'liked-songs',
+                        type: 'playlist',
+                        title: t.likedSongs,
+                        subtitle: `${filteredFavorites.length} tracks`,
+                        coverUrl: filteredFavorites[0]?.coverUrl,
+                        ordered: true
+                      })
+                    }
                     className="min-h-[38px] px-4 py-1.5 rounded-xl bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <Play size={13} className="fill-current" />
@@ -399,7 +414,16 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onPlayTrackList(filteredFavorites, true)}
+                    onClick={() =>
+                      onPlayTrackList(filteredFavorites, true, {
+                        id: 'liked-songs',
+                        type: 'playlist',
+                        title: t.likedSongs,
+                        subtitle: `${filteredFavorites.length} tracks`,
+                        coverUrl: filteredFavorites[0]?.coverUrl,
+                        ordered: false
+                      })
+                    }
                     className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <Shuffle size={13} />
@@ -422,7 +446,7 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredFavorites.map((track) => {
+              {filteredFavorites.map((track, idx) => {
                 const isSelected = track.id === currentTrack.id;
                 const isEditingNote = editingNoteTrackId === track.id;
                 return (
@@ -437,7 +461,21 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <button
                         type="button"
-                        onClick={() => onSelectTrack(track)}
+                        onClick={() =>
+                          onPlayTrackList(
+                            filteredFavorites,
+                            false,
+                            {
+                              id: 'liked-songs',
+                              type: 'playlist',
+                              title: t.likedSongs,
+                              subtitle: `${filteredFavorites.length} tracks`,
+                              coverUrl: filteredFavorites[0]?.coverUrl,
+                              ordered: true
+                            },
+                            idx
+                          )
+                        }
                         className="flex items-center gap-3 text-left min-w-0 flex-1 cursor-pointer"
                       >
                         <img
@@ -696,7 +734,14 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              onPlayTrackList(alb.tracks, false);
+                              onPlayTrackList(alb.tracks, false, {
+                                id: `album-${alb.id}`,
+                                type: 'album',
+                                title: alb.name,
+                                subtitle: alb.description || `${alb.tracks.length} tracks`,
+                                coverUrl: alb.tracks[0]?.coverUrl,
+                                ordered: true
+                              });
                             }}
                             aria-label="Play Album"
                             className="w-8 h-8 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] flex items-center justify-center cursor-pointer"
@@ -775,7 +820,21 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
                         >
                           <button
                             type="button"
-                            onClick={() => onSelectTrack(tr)}
+                            onClick={() =>
+                              onPlayTrackList(
+                                activeAlbum.tracks,
+                                false,
+                                {
+                                  id: `album-${activeAlbum.id}`,
+                                  type: 'album',
+                                  title: activeAlbum.name,
+                                  subtitle: activeAlbum.description || `${activeAlbum.tracks.length} tracks`,
+                                  coverUrl: activeAlbum.tracks[0]?.coverUrl,
+                                  ordered: true
+                                },
+                                idx
+                              )
+                            }
                             className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
                           >
                             <span className="text-[11px] font-mono text-[var(--text-dim)] w-5 shrink-0">

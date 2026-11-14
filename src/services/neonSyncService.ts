@@ -32,6 +32,29 @@ export function saveListenerDisplayName(name: string): void {
   }
 }
 
+export function setAuthenticatedListenerIdentity(listenerId: string, displayName: string): void {
+  if (typeof window === 'undefined') return;
+  if (/^lst_[a-z0-9_]+$/i.test(listenerId)) {
+    window.localStorage.setItem(LISTENER_ID_KEY, listenerId);
+  }
+  const cleanName = displayName.trim().slice(0, 60);
+  if (cleanName) {
+    window.localStorage.setItem(DISPLAY_NAME_KEY, cleanName);
+  }
+}
+
+export function rotateGuestListenerIdentity(): ListenerIdentity {
+  if (typeof window === 'undefined') {
+    return { listenerId: 'lst_default', displayName: 'Listener' };
+  }
+  const rand = Math.random().toString(36).slice(2, 10);
+  const listenerId = `lst_${Date.now().toString(36)}_${rand}`;
+  const displayName = `Listener ${listenerId.slice(-4).toUpperCase()}`;
+  window.localStorage.setItem(LISTENER_ID_KEY, listenerId);
+  window.localStorage.setItem(DISPLAY_NAME_KEY, displayName);
+  return { listenerId, displayName };
+}
+
 export async function fetchNeonLibrary(listenerId: string): Promise<CloudLibrarySnapshot | null> {
   try {
     const controller = new AbortController();

@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import type { RadioStation, Track } from '../../types';
+import type { PlaybackContextInfo, RadioStation, Track } from '../../types';
 import {
+  Disc3,
   Heart,
+  Infinity as InfinityIcon,
   ListMusic,
   Mic2,
   Play,
   Radio,
   RefreshCw,
   Send,
+  Shuffle,
   X
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
@@ -21,6 +24,11 @@ interface RightSidebarProps {
   onSelectTrack: (track: Track) => void;
   onRemoveFromManualQueue?: (index: number) => void;
   onRefreshRadioMix?: () => void;
+  playbackContext?: PlaybackContextInfo;
+  autoplayEnabled?: boolean;
+  onToggleAutoplay?: () => void;
+  isShuffled?: boolean;
+  onToggleShuffle?: () => void;
   likedTrackIds?: Set<string>;
   onToggleLike?: (track: Track) => void;
   onSeek?: (seconds: number) => void;
@@ -41,6 +49,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onSelectTrack,
   onRemoveFromManualQueue,
   onRefreshRadioMix,
+  playbackContext,
+  autoplayEnabled = true,
+  onToggleAutoplay,
+  isShuffled = false,
+  onToggleShuffle,
   likedTrackIds,
   onToggleLike,
   onSeek,
@@ -56,7 +69,28 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const { t } = useAppPreferences();
   const [activePanelTab, setActivePanelTab] = useState<'queue' | 'lyrics' | 'tip'>('queue');
 
-  const upNextTracks = queue.filter((item) => item.id !== currentTrack.id).slice(0, 12);
+  const currentQueueIdx = queue.findIndex((item) => item.id === currentTrack.id);
+  const orderedUpcoming =
+    currentQueueIdx >= 0
+      ? queue.slice(currentQueueIdx + 1, currentQueueIdx + 19)
+      : queue.filter((item) => item.id !== currentTrack.id).slice(0, 14);
+  const upNextTracks = orderedUpcoming;
+  const contextKindLabel =
+    playbackContext?.type === 'album' || playbackContext?.type === 'release-album'
+      ? 'Album'
+      : playbackContext?.type === 'recommendation'
+        ? 'Mix'
+        : playbackContext?.type === 'charts'
+          ? 'Charts'
+          : playbackContext?.type === 'blend'
+            ? 'Blend'
+            : playbackContext?.type === 'search'
+              ? 'Search'
+              : playbackContext?.type === 'playlist'
+                ? 'Playlist'
+                : playbackContext?.type === 'radio'
+                  ? 'Radio'
+                  : 'Catalog';
   const lyrics = currentTrack.lyrics || [];
   let activeLyricIdx = -1;
   for (let i = lyrics.length - 1; i >= 0; i--) {
@@ -156,12 +190,88 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       <div className="flex-1 overflow-y-auto space-y-5 pr-1">
         {activePanelTab === 'queue' && (
           <>
-            {/* Manual User Queue ("Play Next / Added to Queue") */}
+            {/* Tier-0: Active Playback Context & Queue Mode Controls */}
+            <div
+              data-testid="queue-context-card"
+              className="p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] space-y-2.5"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
+                    <Disc3 size={11} />
+                    <span>
+                      {t.playingFrom} &middot; {contextKindLabel}
+                    </span>
+                  </div>
+                  <div
+                    data-testid="queue-context-title"
+                    className="text-xs font-extrabold text-[var(--text-primary)] truncate mt-0.5"
+                  >
+                    {playbackContext?.title || currentTrack.album || 'Featured Catalog'}
+                  </div>
+                  {currentQueueIdx >= 0 && (
+                    <div className="text-[10px] font-mono text-[var(--text-dim)] mt-0.5">
+                      Track {currentQueueIdx + 1} of {queue.length}
+                      {playbackContext?.ordered && !isShuffled ? ' · Ordered' : ''}
+                    </div>
+                  )}
+                </div>
+
+                {onRefreshRadioMix && (
+                  <button
+                    type="button"
+                    onClick={onRefreshRadioMix}
+                    title={t.switchToRadio}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[10px] font-semibold text-[var(--accent-text)] cursor-pointer transition-colors shrink-0"
+                  >
+                    <RefreshCw size={10} />
+                    <span>{t.switchToRadio}</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                {onToggleShuffle && (
+                  <button
+                    type="button"
+                    onClick={onToggleShuffle}
+                    data-testid="queue-shuffle-toggle"
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
+                      isShuffled
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
+                        : 'bg-[var(--bg-surface)] text-[var(--text-dim)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
+                    }`}
+                  >
+                    <Shuffle size={10} />
+                    <span>{isShuffled ? `${t.shuffleLabel}: ON` : `${t.shuffleLabel}: OFF`}</span>
+                  </button>
+                )}
+
+                {onToggleAutoplay && (
+                  <button
+                    type="button"
+                    onClick={onToggleAutoplay}
+                    data-testid="queue-autoplay-toggle"
+                    title={t.autoplaySimilar}
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
+                      autoplayEnabled
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
+                        : 'bg-[var(--bg-surface)] text-[var(--text-dim)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
+                    }`}
+                  >
+                    <InfinityIcon size={11} />
+                    <span>Autoplay: {autoplayEnabled ? 'ON' : 'OFF'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Tier-1: Manual User Queue ("Play Next / Added to Queue") */}
             {manualQueue.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between px-1">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
-                    Queued by You ({manualQueue.length})
+                    {t.queuedByYou} ({manualQueue.length})
                   </span>
                 </div>
                 <div className="space-y-1">
@@ -206,31 +316,30 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               </div>
             )}
 
-            {/* Pure Algorithm Smart Queue */}
+            {/* Tier-2: Next From Active Context */}
             <div className="space-y-2">
               <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-                  <span>{t.queue}</span>
+                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] truncate">
+                  <span className="truncate">
+                    {upNextTracks.length > 0 ? `${t.upNext} · ${playbackContext?.title || t.queue}` : t.queue}
+                  </span>
                 </div>
-                {onRefreshRadioMix && (
-                  <button
-                    type="button"
-                    onClick={onRefreshRadioMix}
-                    title={t.refreshMix}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[10px] font-semibold text-[var(--accent-text)] cursor-pointer transition-colors"
-                  >
-                    <RefreshCw size={10} />
-                    <span>{t.refreshMix}</span>
-                  </button>
-                )}
               </div>
 
+              {upNextTracks.length === 0 ? (
+                <div className="p-3 rounded-xl bg-[var(--bg-tint)] text-[11px] text-[var(--text-dim)] leading-relaxed">
+                  {autoplayEnabled
+                    ? 'End of current context. Autoplay will seamlessly continue with matching tracks next.'
+                    : 'End of current album / mix. Enable Autoplay or pick a recommendation mix to keep playing.'}
+                </div>
+              ) : (
               <div className="space-y-1">
-                {upNextTracks.map((item) => {
+                {upNextTracks.map((item, relIdx) => {
                   const isLiked = likedTrackIds?.has(item.id) || false;
+                  const trackPosition = currentQueueIdx >= 0 ? currentQueueIdx + relIdx + 2 : relIdx + 1;
                   return (
                     <div
-                      key={item.id}
+                      key={`${item.id}-${trackPosition}`}
                       className="flex items-center gap-2 p-2 rounded-lg hover:bg-[var(--bg-tint-hover)] transition-all group"
                     >
                       <button
@@ -238,6 +347,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         onClick={() => onSelectTrack(item)}
                         className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
                       >
+                        <span className="text-[10px] font-mono text-[var(--text-dim)] w-4 shrink-0 text-right">
+                          {trackPosition}
+                        </span>
                         <div className="relative w-9 h-9 rounded-md overflow-hidden shrink-0 bg-[var(--bg-elevated)]">
                           <img
                             src={item.coverUrl}
@@ -278,6 +390,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   );
                 })}
               </div>
+              )}
             </div>
 
             {/* Live Radio Stations */}

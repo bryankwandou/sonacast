@@ -56,6 +56,7 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
   const [web3Config, setWeb3Config] = useState<Web3TipsConfig | null>(null);
   const [artistStatus, setArtistStatus] = useState<ArtistWalletStatus | null>(null);
   const [ledger, setLedger] = useState<TipLedgerResponse | null>(null);
+  const [isLoadingMeta, setIsLoadingMeta] = useState(true);
 
   const [copied, setCopied] = useState(false);
   const [isAirdropping, setIsAirdropping] = useState(false);
@@ -79,20 +80,25 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
   }, []);
 
   const refreshAll = useCallback(async () => {
+    setIsLoadingMeta(true);
     syncWalletState();
     const curCluster = solanaService.getCluster();
-    const [bal, cfg, status, led] = await Promise.all([
-      solanaService.fetchBalance().catch(() => solanaService.getCachedBalance()),
-      solanaService.fetchWeb3Config(true).catch(() => null),
-      activeArtistName
-        ? solanaService.fetchArtistStatus(activeArtistName, curCluster).catch(() => null)
-        : Promise.resolve(null),
-      solanaService.fetchLedger(curCluster).catch(() => null)
-    ]);
-    setBalance(bal);
-    if (cfg) setWeb3Config(cfg);
-    if (status) setArtistStatus(status);
-    if (led) setLedger(led);
+    try {
+      const [bal, cfg, status, led] = await Promise.all([
+        solanaService.fetchBalance().catch(() => solanaService.getCachedBalance()),
+        solanaService.fetchWeb3Config(true).catch(() => null),
+        activeArtistName
+          ? solanaService.fetchArtistStatus(activeArtistName, curCluster).catch(() => null)
+          : Promise.resolve(null),
+        solanaService.fetchLedger(curCluster).catch(() => null)
+      ]);
+      setBalance(bal);
+      if (cfg) setWeb3Config(cfg);
+      if (status) setArtistStatus(status);
+      if (led) setLedger(led);
+    } finally {
+      setIsLoadingMeta(false);
+    }
   }, [activeArtistName, syncWalletState]);
 
   useEffect(() => {
@@ -123,9 +129,11 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
   const split = computeSplitPreview(Number.isFinite(parsedAmount) ? parsedAmount : 0);
   const currentClusterCfg = web3Config?.clusters?.[cluster];
   const treasuryConfigured = Boolean(currentClusterCfg?.treasuryAddress);
+  const clusterLabel = cluster === 'mainnet-beta' ? 'Mainnet-Beta' : 'Devnet';
+  const scopedArtistStatus = artistStatus?.cluster === cluster ? artistStatus : null;
   const signerReady = solanaService.isReadyToSign();
   const canRouteRecipient =
-    Boolean(artistStatus?.verified) ||
+    Boolean(scopedArtistStatus?.verified) ||
     Boolean(currentClusterCfg?.escrowAddress) ||
     Boolean(activeArtistAddress);
 
@@ -176,7 +184,7 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
       } else {
         setErrorMessage(
           result.error ||
-            'Devnet faucet rate-limited. Open faucet.solana.com and paste your wallet address.'
+          'Devnet faucet rate-limited. Open faucet.solana.com and paste your wallet address.'
         );
       }
     } finally {
@@ -281,13 +289,12 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
                   key={c}
                   type="button"
                   onClick={() => handleSwitchCluster(c)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                    active
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${active
                       ? c === 'mainnet-beta'
                         ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
                         : 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
                       : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
-                  }`}
+                    }`}
                 >
                   {c === 'devnet' ? 'Devnet (Sandbox)' : 'Mainnet-Beta (Real SOL)'}
                 </button>
@@ -303,13 +310,12 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-[var(--text-dim)]">Signer Mode:</span>
                 <span
-                  className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                    usingBrowserWallet
+                  className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${usingBrowserWallet
                       ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
                       : cluster === 'devnet'
                         ? 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)]'
                         : 'bg-red-500/15 text-red-400 border border-red-500/30'
-                  }`}
+                    }`}
                 >
                   {walletLabel}
                 </span>
@@ -421,7 +427,7 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
             </div>
           )}
 
-          {!treasuryConfigured && (
+          {!isLoadingMeta && !treasuryConfigured && (
             <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2">
               <AlertTriangle size={14} className="shrink-0 mt-0.5" />
               <span>
@@ -438,11 +444,10 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('tip')}
-            className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-              activeTab === 'tip'
+            className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${activeTab === 'tip'
                 ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm border border-[var(--border-subtle)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
+              }`}
           >
             <Coins size={13} />
             <span>Split Tip (85/15)</span>
@@ -450,11 +455,10 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('claim')}
-            className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-              activeTab === 'claim'
+            className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${activeTab === 'claim'
                 ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm border border-[var(--border-subtle)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
+              }`}
           >
             <CheckCircle2 size={13} />
             <span>Claim Artist</span>
@@ -462,11 +466,10 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('ledger')}
-            className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-              activeTab === 'ledger'
+            className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${activeTab === 'ledger'
                 ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm border border-[var(--border-subtle)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
+              }`}
           >
             <BarChart3 size={13} />
             <span>Ledger &amp; Escrow</span>
@@ -497,9 +500,13 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
                     {activeArtistName} &middot; &ldquo;{activeTrackTitle}&rdquo;
                   </span>
                 </div>
-                {artistStatus?.verified ? (
+                {scopedArtistStatus?.verified ? (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[11px] font-bold text-[var(--accent-text)]">
                     <CheckCircle2 size={12} /> Verified Direct Wallet
+                  </span>
+                ) : isLoadingMeta && !scopedArtistStatus ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-dim)]">
+                    <RefreshCw size={11} className="animate-spin" /> Syncing {clusterLabel}...
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-[11px] font-bold text-amber-300">
@@ -510,13 +517,15 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
 
               <div className="text-[11px] text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-2 pt-1">
                 <span>
-                  {artistStatus?.verified && artistStatus.verifiedWallet
-                    ? `85% goes directly to ${truncateAddress(artistStatus.verifiedWallet)}`
-                    : artistStatus?.escrowAddress
-                      ? `No verified artist wallet yet — 85% held safely in Escrow Vault (${truncateAddress(artistStatus.escrowAddress)}) until artist claims.`
-                      : 'Escrow Vault unavailable on this cluster until configured.'}
+                  {scopedArtistStatus?.verified && scopedArtistStatus.verifiedWallet
+                    ? `85% goes directly to ${truncateAddress(scopedArtistStatus.verifiedWallet)}`
+                    : isLoadingMeta && !scopedArtistStatus
+                      ? `Checking verified artist routing on Solana ${clusterLabel}...`
+                      : scopedArtistStatus?.escrowAddress
+                        ? `No verified artist wallet yet — 85% held safely in Escrow Vault (${truncateAddress(scopedArtistStatus.escrowAddress)}) until artist claims.`
+                        : 'Escrow Vault unavailable on this cluster until configured.'}
                 </span>
-                {!artistStatus?.verified && (
+                {!scopedArtistStatus?.verified && !isLoadingMeta && (
                   <button
                     type="button"
                     onClick={() => setActiveTab('claim')}
@@ -527,13 +536,13 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
                 )}
               </div>
 
-              {artistStatus && artistStatus.stats.tipCount > 0 && (
+              {scopedArtistStatus && scopedArtistStatus.stats.tipCount > 0 && (
                 <div className="text-[11px] text-[var(--text-dim)] pt-1 border-t border-[var(--border-subtle)] flex flex-wrap gap-3">
-                  <span>Tips: {artistStatus.stats.tipCount}</span>
-                  <span>Artist Share: {artistStatus.stats.totalArtistSol.toFixed(4)} SOL</span>
-                  {artistStatus.stats.unclaimedEscrowSol > 0 && (
+                  <span>Tips: {scopedArtistStatus.stats.tipCount}</span>
+                  <span>Artist Share: {scopedArtistStatus.stats.totalArtistSol.toFixed(4)} SOL</span>
+                  {scopedArtistStatus.stats.unclaimedEscrowSol > 0 && (
                     <span className="text-amber-300">
-                      Unclaimed Escrow: {artistStatus.stats.unclaimedEscrowSol.toFixed(4)} SOL
+                      Unclaimed Escrow: {scopedArtistStatus.stats.unclaimedEscrowSol.toFixed(4)} SOL
                     </span>
                   )}
                 </div>
@@ -548,11 +557,10 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
                     key={amt}
                     type="button"
                     onClick={() => setTipAmountInput(String(amt))}
-                    className={`py-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                      parsedAmount === amt
+                    className={`py-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${parsedAmount === amt
                         ? 'border-[var(--accent-emerald)] bg-[var(--accent-soft)] text-[var(--accent-text)]'
                         : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                    }`}
+                      }`}
                   >
                     {amt} SOL
                   </button>
@@ -749,11 +757,10 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
                 ]).map((b) => (
                   <div
                     key={b.platform}
-                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg ${
-                      b.platform.includes('Sonacast')
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg ${b.platform.includes('Sonacast')
                         ? 'bg-[var(--accent-soft)] border border-[var(--accent-border)] font-bold text-[var(--accent-text)]'
                         : 'bg-[var(--bg-surface)] text-[var(--text-secondary)]'
-                    }`}
+                      }`}
                   >
                     <span>{b.platform}</span>
                     <span className="font-mono">

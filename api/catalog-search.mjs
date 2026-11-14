@@ -139,6 +139,217 @@ export default async function handler(req, res) {
 
   const mode = typeof req.query?.mode === 'string' ? req.query.mode.trim() : '';
 
+  if (mode === 'albums') {
+    const rawQuery = typeof req.query?.q === 'string' ? req.query.q.trim() : '';
+    if (!rawQuery) {
+      res.status(400).json({ albums: [] });
+      return;
+    }
+    try {
+      const [dzRes, itRes] = await Promise.all([
+        fetch(`https://api.deezer.com/search/album?q=${encodeURIComponent(rawQuery)}&limit=18`, {
+          signal: AbortSignal.timeout(4500)
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        fetch(
+          `https://itunes.apple.com/search?term=${encodeURIComponent(rawQuery)}&entity=album&limit=12`,
+          { signal: AbortSignal.timeout(4500) }
+        )
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)
+      ]);
+
+      const albums = [];
+      const seen = new Set();
+      const noiseRe = /\b(karaoke|8-bit|ringtone|lullaby|tribute to|made famous by|cover version)\b/i;
+
+      const dzRows = Array.isArray(dzRes?.data) ? dzRes.data : [];
+      for (const a of dzRows) {
+        const title = String(a?.title || '').trim();
+        const artist = String(a?.artist?.name || '').trim();
+        if (!title || !artist || noiseRe.test(`${title} ${artist}`)) continue;
+        const dedupKey = `${title.toLowerCase()}::${artist.toLowerCase()}`;
+        if (seen.has(dedupKey)) continue;
+        seen.add(dedupKey);
+        albums.push({
+          id: String(a.id),
+          title,
+          artist,
+          coverUrl: a.cover_xl || a.cover_big || a.cover_medium || '',
+          nbTracks: Number(a.nb_tracks) || 0,
+          recordType: String(a.record_type || 'album')
+        });
+      }
+
+      const itRows = Array.isArray(itRes?.results) ? itRes.results : [];
+      for (const a of itRows) {
+        const title = String(a?.collectionName || '').trim();
+        const artist = String(a?.artistName || '').trim();
+        if (!title || !artist || noiseRe.test(`${title} ${artist}`)) continue;
+        const dedupKey = `${title.toLowerCase()}::${artist.toLowerCase()}`;
+        if (seen.has(dedupKey)) continue;
+        seen.add(dedupKey);
+        albums.push({
+          id: `it-${a.collectionId}`,
+          title,
+          artist,
+          coverUrl: typeof a.artworkUrl100 === 'string' ? a.artworkUrl100.replace('100x100bb', '600x600bb') : '',
+          nbTracks: Number(a.trackCount) || 0,
+          releaseDate: typeof a.releaseDate === 'string' ? a.releaseDate.slice(0, 10) : undefined,
+          genre: String(a.primaryGenreName || 'Album'),
+          recordType: (Number(a.trackCount) || 0) <= 5 ? 'single' : 'album'
+        });
+      }
+
+      const queryNorm = rawQuery.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      const queryTokens = queryNorm.split(' ').filter((w) => w.length >= 2);
+      const scoreAlbum = (a) => {
+        let s = 0;
+        const tNorm = a.title.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        const artNorm = a.artist.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        const combined = `${tNorm} ${artNorm}`;
+        if (tNorm === queryNorm) s += 260;
+        else if (combined.includes(queryNorm)) s += 160;
+        const hits = queryTokens.filter((tok) => combined.includes(tok)).length;
+        s += hits * 45;
+        if (hits === queryTokens.length && queryTokens.length > 0) s += 90;
+        if (a.recordType === 'album') s += 45;
+        else if (a.recordType === 'ep') s += 20;
+        else s -= 25;
+        const cnt = a.nbTracks || 0;
+        if (cnt >= 7 && cnt <= 24) s += 35;
+        else if (cnt > 30) s -= 20;
+        if (/various artists/i.test(a.artist)) s -= 180;
+        if (/\blive at\b|\blive in\b/i.test(a.title) && !queryNorm.includes('live')) s -= 65;
+        if (!a.id.startsWith('it-')) s += 15;
+        return s;
+      };
+
+      albums.sort((x, y) => scoreAlbum(y) - scoreAlbum(x));
+      res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=900');
+      res.status(200).json({ albums: albums.slice(0, 18) });
+    } catch {
+      res.status(500).json({ albums: [] });
+    }
+    return;
+  }
+
+  if (mode === 'album_tracks') {
+    const albumId = typeof req.query?.albumId === 'string' ? req.query.albumId.trim() : '';
+    if (!albumId) {
+      res.status(400).json({ album: null, items: [] });
+      return;
+    }
+    try {
+      if (albumId.startsWith('it-')) {
+        const numericId = albumId.slice(3).replace(/[^0-9]/g, '');
+        if (!numericId) {
+          res.status(400).json({ album: null, items: [] });
+          return;
+        }
+        const itRes = await fetch(
+          `https://itunes.apple.com/lookup?id=${numericId}&entity=song&limit=100`,
+          { signal: AbortSignal.timeout(4800) }
+        );
+        const itJson = itRes.ok ? await itRes.json() : null;
+        const rows = Array.isArray(itJson?.results) ? itJson.results : [];
+        const col = rows.find((r) => r.wrapperType === 'collection');
+        const tracks = rows
+          .filter((r) => r.wrapperType === 'track' && r.trackName)
+          .sort(
+            (a, b) =>
+              (Number(a.discNumber) || 1) - (Number(b.discNumber) || 1) ||
+              (Number(a.trackNumber) || 0) - (Number(b.trackNumber) || 0)
+          );
+        const albumMeta = col
+          ? {
+              id: albumId,
+              title: String(col.collectionName || ''),
+              artist: String(col.artistName || ''),
+              coverUrl:
+                typeof col.artworkUrl100 === 'string'
+                  ? col.artworkUrl100.replace('100x100bb', '600x600bb')
+                  : '',
+              nbTracks: Number(col.trackCount) || tracks.length,
+              releaseDate: typeof col.releaseDate === 'string' ? col.releaseDate.slice(0, 10) : undefined,
+              genre: String(col.primaryGenreName || 'Album')
+            }
+          : null;
+        const items = tracks.map((t, idx) => ({
+          id: `it-trk-${t.trackId || idx}`,
+          title: String(t.trackName || ''),
+          artist: String(t.artistName || albumMeta?.artist || ''),
+          album: albumMeta?.title || String(t.collectionName || ''),
+          genre: String(t.primaryGenreName || albumMeta?.genre || 'Album'),
+          duration: Math.max(30, Math.round((Number(t.trackTimeMillis) || 200000) / 1000)),
+          coverUrl:
+            (typeof t.artworkUrl100 === 'string' ? t.artworkUrl100.replace('100x100bb', '600x600bb') : '') ||
+            albumMeta?.coverUrl ||
+            '',
+          trackNumber: Number(t.trackNumber) || idx + 1,
+          discNumber: Number(t.discNumber) || 1
+        }));
+        res.setHeader('Cache-Control', 'public, s-maxage=600, stale-while-revalidate=1800');
+        res.status(200).json({ album: albumMeta, items });
+        return;
+      }
+
+      const cleanId = albumId.replace(/[^0-9]/g, '');
+      if (!cleanId) {
+        res.status(400).json({ album: null, items: [] });
+        return;
+      }
+      const dzRes = await fetch(`https://api.deezer.com/album/${cleanId}`, {
+        signal: AbortSignal.timeout(4800)
+      });
+      if (!dzRes.ok) {
+        res.status(200).json({ album: null, items: [] });
+        return;
+      }
+      const data = await dzRes.json();
+      if (!data || data.error) {
+        res.status(200).json({ album: null, items: [] });
+        return;
+      }
+      const coverUrl = data.cover_xl || data.cover_big || data.cover_medium || '';
+      const albumMeta = {
+        id: String(data.id || cleanId),
+        title: String(data.title || ''),
+        artist: String(data.artist?.name || ''),
+        coverUrl,
+        nbTracks: Number(data.nb_tracks) || 0,
+        releaseDate: typeof data.release_date === 'string' ? data.release_date : undefined,
+        genre: String(data.genres?.data?.[0]?.name || 'Album'),
+        recordType: String(data.record_type || 'album')
+      };
+      const rawTracks = Array.isArray(data.tracks?.data) ? data.tracks.data : [];
+      const sortedTracks = [...rawTracks].sort(
+        (a, b) =>
+          (Number(a.disk_number) || 1) - (Number(b.disk_number) || 1) ||
+          (Number(a.track_position) || 0) - (Number(b.track_position) || 0)
+      );
+      const items = sortedTracks
+        .filter((t) => Boolean(t?.title))
+        .map((t, idx) => ({
+          id: `dz-alb-${t.id || idx}`,
+          title: String(t.title),
+          artist: String(t.artist?.name || albumMeta.artist),
+          album: albumMeta.title,
+          genre: albumMeta.genre,
+          duration: Math.max(20, Number(t.duration) || 210),
+          coverUrl: coverUrl || t.album?.cover_big || '',
+          trackNumber: Number(t.track_position) || idx + 1,
+          discNumber: Number(t.disk_number) || 1
+        }));
+      res.setHeader('Cache-Control', 'public, s-maxage=600, stale-while-revalidate=1800');
+      res.status(200).json({ album: albumMeta, items });
+    } catch {
+      res.status(500).json({ album: null, items: [] });
+    }
+    return;
+  }
+
   if (mode === 'charts') {
     try {
       const [dzGlobal, usRss, idRss] = await Promise.all([

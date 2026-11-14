@@ -1,7 +1,21 @@
-import React, { useRef, useState } from 'react';
-import type { LyricLine, MoodPreset, Track, UserPlaylist } from '../../types';
+import React, { useMemo, useRef, useState } from 'react';
+import type {
+  CatalogAlbum,
+  FollowedArtist,
+  LyricLine,
+  MoodPreset,
+  PlaybackContextInfo,
+  Track,
+  UserPlaylist
+} from '../../types';
 import { ARTISTS_DIRECTORY } from '../../data/artists800';
-import { fetchSyncedLyrics, searchTracksOnline } from '../../services/musicService';
+import {
+  FEATURED_RELEASE_ALBUMS,
+  fetchAlbumTracksOnline,
+  fetchSyncedLyrics,
+  searchTracksOnline
+} from '../../services/musicService';
+import { buildRecommendationMixes } from '../../services/mixEngine';
 import { MOOD_PRESETS } from '../../services/recommendationEngine';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { usePopularCharts } from '../../hooks/usePopularCharts';
@@ -19,6 +33,7 @@ import {
   Plus,
   Search,
   Shuffle,
+  Sparkles,
   Trash2,
   TrendingUp,
   Upload,
@@ -38,12 +53,18 @@ interface DiscoverViewProps {
   likedTracks?: Track[];
   recentTracks?: Track[];
   playlists?: UserPlaylist[];
+  followedArtists?: FollowedArtist[];
   likedTrackIds?: Set<string>;
   onToggleLike?: (track: Track) => void;
   onAddToAlbum?: (track: Track) => void;
   onAddToQueue?: (track: Track) => void;
   onStartRadio?: (track: Track) => void;
-  onPlayTrackList?: (tracks: Track[], shuffle?: boolean) => void;
+  onPlayTrackList?: (
+    tracks: Track[],
+    shuffle?: boolean,
+    contextInfo?: PlaybackContextInfo,
+    startIndex?: number
+  ) => void;
   onCreatePlaylist?: (name: string) => void;
   onAddTrackToPlaylist?: (playlistId: string, track: Track) => void;
   onRemoveTrackFromPlaylist?: (playlistId: string, trackId: string) => void;
@@ -72,6 +93,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   likedTracks = [],
   recentTracks = [],
   playlists = [],
+  followedArtists = [],
   likedTrackIds,
   onToggleLike,
   onAddToAlbum,
@@ -95,6 +117,64 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const [chartRegion, setChartRegion] = useState<'global' | 'indonesia'>('global');
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
+  const [selectedAlbum, setSelectedAlbum] = useState<CatalogAlbum | null>(null);
+  const [selectedAlbumTracks, setSelectedAlbumTracks] = useState<Track[]>([]);
+  const [loadingAlbumId, setLoadingAlbumId] = useState<string | null>(null);
+  const [expandedMixId, setExpandedMixId] = useState<string | null>(null);
+
+  const recommendedMixes = useMemo(
+    () =>
+      buildRecommendationMixes({
+        catalogTracks: tracks,
+        chartTracks: [...popularCharts.global, ...popularCharts.indonesia],
+        recentTracks,
+        likedTracks,
+        followedArtists,
+        mood: activeMood
+      }),
+    [tracks, popularCharts.global, popularCharts.indonesia, recentTracks, likedTracks, followedArtists, activeMood]
+  );
+
+  const handleOpenAlbum = async (alb: CatalogAlbum) => {
+    setSelectedAlbum(alb);
+    setLoadingAlbumId(alb.id);
+    try {
+      const res = await fetchAlbumTracksOnline(alb);
+      setSelectedAlbum(res.album);
+      setSelectedAlbumTracks(res.tracks);
+    } finally {
+      setLoadingAlbumId(null);
+    }
+  };
+
+  const handlePlayReleaseAlbum = async (alb: CatalogAlbum, shuffle = false, startIndex = 0) => {
+    setLoadingAlbumId(alb.id);
+    try {
+      const res =
+        selectedAlbum?.id === alb.id && selectedAlbumTracks.length > 0
+          ? { album: selectedAlbum, tracks: selectedAlbumTracks }
+          : await fetchAlbumTracksOnline(alb);
+      setSelectedAlbum(res.album);
+      setSelectedAlbumTracks(res.tracks);
+      if (res.tracks.length > 0 && onPlayTrackList) {
+        onPlayTrackList(
+          res.tracks,
+          shuffle,
+          {
+            id: `release-album-${res.album.id}`,
+            type: 'release-album',
+            title: res.album.title,
+            subtitle: res.album.artist,
+            coverUrl: res.album.coverUrl,
+            ordered: !shuffle
+          },
+          startIndex
+        );
+      }
+    } finally {
+      setLoadingAlbumId(null);
+    }
+  };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const featuredTrack = currentTrack || tracks[0];
@@ -459,19 +539,373 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </section>
           )}
 
+          {/* Made For You · Recommendation Mixes */}
+          {recommendedMixes.length > 0 && (
+            <section data-testid="made-for-you-section" className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={16} className="text-[var(--accent-text)]" />
+                  <h3 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
+                    {t.madeForYou}
+                  </h3>
+                </div>
+                <span className="text-[11px] font-mono text-[var(--text-dim)]">
+                  Deterministic · Ordered Playback
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                {recommendedMixes.map((mix) => {
+                  const isExpanded = expandedMixId === mix.id;
+                  const coverTrack = mix.tracks[0];
+                  return (
+                    <div
+                      key={mix.id}
+                      data-testid={`mix-card-${mix.id}`}
+                      className="rounded-2xl bg-[var(--bg-tint)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] p-4 flex flex-col justify-between gap-3 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <img
+                          src={coverTrack?.coverUrl || DEFAULT_COVER_DATA_URI}
+                          alt={mix.title}
+                          onError={(e) =>
+                            applyCoverFallback(e, mix.title, coverTrack?.artist || 'Sonacast')
+                          }
+                          className="w-14 h-14 rounded-xl object-cover shrink-0 bg-[var(--bg-surface)]"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <span className="inline-block px-2 py-0.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)] text-[10px] font-bold uppercase tracking-wider">
+                            {mix.badge}
+                          </span>
+                          <h4 className="text-sm font-extrabold text-[var(--text-primary)] truncate mt-1">
+                            {mix.title}
+                          </h4>
+                          <p className="text-[11px] text-[var(--text-dim)] truncate">
+                            {mix.subtitle}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] text-[var(--text-secondary)] space-y-1">
+                        {(isExpanded ? mix.tracks : mix.tracks.slice(0, 3)).map((tr, idx) => (
+                          <button
+                            key={`${mix.id}-${tr.id}`}
+                            type="button"
+                            onClick={() =>
+                              onPlayTrackList?.(
+                                mix.tracks,
+                                false,
+                                {
+                                  id: mix.id,
+                                  type: 'recommendation',
+                                  title: mix.title,
+                                  subtitle: mix.subtitle,
+                                  coverUrl: coverTrack?.coverUrl,
+                                  ordered: true
+                                },
+                                idx
+                              )
+                            }
+                            className="w-full flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[var(--bg-surface)] text-left transition-colors cursor-pointer"
+                          >
+                            <span className="font-mono text-[10px] text-[var(--text-dim)] w-4 shrink-0">
+                              {idx + 1}.
+                            </span>
+                            <span className="truncate font-semibold text-[var(--text-primary)] flex-1">
+                              {tr.title}
+                            </span>
+                            <span className="text-[10px] text-[var(--text-dim)] truncate max-w-[90px]">
+                              {tr.artist}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            data-testid={`play-mix-${mix.id}`}
+                            onClick={() =>
+                              onPlayTrackList?.(mix.tracks, false, {
+                                id: mix.id,
+                                type: 'recommendation',
+                                title: mix.title,
+                                subtitle: mix.subtitle,
+                                coverUrl: coverTrack?.coverUrl,
+                                ordered: true
+                              })
+                            }
+                            className="h-8 px-3 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Play size={11} className="fill-current" />
+                            <span>{t.playOrdered}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onPlayTrackList?.(mix.tracks, true, {
+                                id: mix.id,
+                                type: 'recommendation',
+                                title: mix.title,
+                                subtitle: mix.subtitle,
+                                coverUrl: coverTrack?.coverUrl,
+                                ordered: false
+                              })
+                            }
+                            aria-label={`Shuffle ${mix.title}`}
+                            className="w-8 h-8 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center cursor-pointer"
+                          >
+                            <Shuffle size={12} />
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setExpandedMixId(isExpanded ? null : mix.id)}
+                          className="text-[11px] font-semibold text-[var(--accent-text)] hover:underline cursor-pointer"
+                        >
+                          {isExpanded ? t.closeLabel : `${mix.tracks.length} tracks`}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* Featured Studio Albums (Ordered Tracklist Playback) */}
+          <section data-testid="featured-albums-section" className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Disc3 size={16} className="text-[var(--accent-text)]" />
+                <h3 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
+                  {t.featuredAlbums}
+                </h3>
+              </div>
+              <span className="text-[11px] font-mono text-[var(--text-dim)]">
+                Sequential Tracklist 1 &rarr; N
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+              {FEATURED_RELEASE_ALBUMS.map((alb) => {
+                const isActiveAlb = selectedAlbum?.id === alb.id;
+                const isLoadingAlb = loadingAlbumId === alb.id;
+                return (
+                  <div
+                    key={alb.id}
+                    data-testid={`featured-album-${alb.id}`}
+                    className={`group rounded-2xl p-2.5 border transition-all flex flex-col justify-between gap-2 ${
+                      isActiveAlb
+                        ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'
+                        : 'bg-[var(--bg-tint)] border-[var(--border-subtle)] hover:border-[var(--border-medium)]'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAlbum(alb)}
+                      className="text-left space-y-2 cursor-pointer"
+                    >
+                      <div className="relative aspect-square rounded-xl overflow-hidden bg-[var(--bg-surface)]">
+                        <img
+                          src={alb.coverUrl}
+                          alt={alb.title}
+                          loading="lazy"
+                          onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+                        {isLoadingAlb && (
+                          <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
+                            <Loader2 size={18} className="animate-spin text-white" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                          {alb.title}
+                        </div>
+                        <div className="text-[11px] text-[var(--text-dim)] truncate">
+                          {alb.artist}
+                        </div>
+                      </div>
+                    </button>
+
+                    <div className="flex items-center justify-between gap-1.5 pt-1">
+                      <span className="text-[10px] font-mono text-[var(--text-dim)]">
+                        {alb.nbTracks ? `${alb.nbTracks}t` : 'LP'}
+                      </span>
+                      <button
+                        type="button"
+                        data-testid={`play-album-${alb.id}`}
+                        disabled={isLoadingAlb}
+                        onClick={() => handlePlayReleaseAlbum(alb, false, 0)}
+                        className="h-7 px-2.5 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                      >
+                        <Play size={10} className="fill-current" />
+                        <span>{t.playAlbum}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {selectedAlbum && (
+              <div
+                data-testid="selected-album-tracklist"
+                className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-medium)] p-4 sm:p-5 space-y-4"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <img
+                      src={selectedAlbum.coverUrl || DEFAULT_COVER_DATA_URI}
+                      alt={selectedAlbum.title}
+                      onError={(e) => applyCoverFallback(e, selectedAlbum.title, selectedAlbum.artist)}
+                      className="w-12 h-12 rounded-xl object-cover shrink-0 bg-[var(--bg-elevated)]"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
+                        Official Album Tracklist
+                      </div>
+                      <h4 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)] truncate">
+                        {selectedAlbum.title} &middot; {selectedAlbum.artist}
+                      </h4>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {selectedAlbumTracks.length > 0 && onPlayTrackList && (
+                      <>
+                        <button
+                          type="button"
+                          data-testid="selected-album-play-all"
+                          onClick={() => handlePlayReleaseAlbum(selectedAlbum, false, 0)}
+                          className="h-8 px-3.5 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Play size={12} className="fill-current" />
+                          <span>{t.playOrdered}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePlayReleaseAlbum(selectedAlbum, true, 0)}
+                          className="h-8 px-3 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Shuffle size={12} />
+                          <span>{t.shuffleLabel}</span>
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAlbum(null)}
+                      aria-label={t.closeLabel}
+                      className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {loadingAlbumId === selectedAlbum.id ? (
+                  <div className="py-8 flex items-center justify-center gap-2 text-xs text-[var(--text-dim)]">
+                    <Loader2 size={16} className="animate-spin text-[var(--accent-text)]" />
+                    <span>Loading ordered album tracks...</span>
+                  </div>
+                ) : selectedAlbumTracks.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-[var(--text-dim)]">
+                    No tracklist items returned for this album right now.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto pr-1">
+                    {selectedAlbumTracks.map((tr, idx) => {
+                      const active = tr.id === currentTrack.id;
+                      return (
+                        <button
+                          key={`${selectedAlbum.id}-${tr.id}-${idx}`}
+                          type="button"
+                          data-testid={`album-track-row-${idx}`}
+                          onClick={() => handlePlayReleaseAlbum(selectedAlbum, false, idx)}
+                          className={`flex items-center justify-between gap-2.5 px-3 py-2 rounded-xl text-left transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-[var(--accent-soft)] border border-[var(--accent-border)]'
+                              : 'bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)]'
+                          }`}
+                        >
+                          <span className="text-[11px] font-mono text-[var(--text-dim)] w-5 shrink-0">
+                            {idx + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                              {tr.title}
+                            </div>
+                            <div className="text-[10px] text-[var(--text-dim)] truncate">
+                              {tr.artist}
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-mono text-[var(--text-dim)] shrink-0">
+                            {Math.floor((tr.duration || 0) / 60)}:
+                            {((tr.duration || 0) % 60).toString().padStart(2, '0')}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
           {/* Featured Studio Masters */}
           <section className="space-y-3">
-            <h3 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
-              {t.featuredMastersHeading}
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
+                {t.featuredMastersHeading}
+              </h3>
+              {onPlayTrackList && filteredMasters.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onPlayTrackList(filteredMasters, false, {
+                      id: 'featured-masters',
+                      type: 'library',
+                      title: t.featuredMastersHeading,
+                      ordered: true
+                    })
+                  }
+                  className="text-xs font-bold text-[var(--accent-text)] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Play size={11} className="fill-current" />
+                  <span>{t.playOrdered}</span>
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
-              {filteredMasters.map((track) => (
+              {filteredMasters.map((track, idx) => (
                 <TrackCard
                   key={track.id}
                   track={track}
                   isSelected={track.id === currentTrack.id}
                   isResolving={resolvingTrackId === track.id}
-                  onSelect={handlePlayTrackWithLyrics}
+                  onSelect={(chosen) => {
+                    if (onPlayTrackList) {
+                      onPlayTrackList(
+                        filteredMasters,
+                        false,
+                        {
+                          id: 'featured-masters',
+                          type: 'library',
+                          title: t.featuredMastersHeading,
+                          coverUrl: filteredMasters[0]?.coverUrl,
+                          ordered: true
+                        },
+                        idx
+                      );
+                    } else {
+                      handlePlayTrackWithLyrics(chosen);
+                    }
+                  }}
                   isLiked={likedTrackIds?.has(track.id)}
                   onToggleLike={onToggleLike}
                   onAddToAlbum={onAddToAlbum}
@@ -491,6 +925,25 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   {t.chartsHeading}
                 </h3>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {onPlayTrackList && activeCharts.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onPlayTrackList(activeCharts, false, {
+                        id: `charts-${chartRegion}`,
+                        type: 'charts',
+                        title: chartRegion === 'global' ? t.chartsGlobal : t.chartsIndonesia,
+                        coverUrl: activeCharts[0]?.coverUrl,
+                        ordered: true
+                      })
+                    }
+                    className="h-7 px-3 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Play size={10} className="fill-current" />
+                    <span>{t.playOrdered}</span>
+                  </button>
+                )}
               <div className="flex items-center gap-1 p-1 rounded-full bg-[var(--bg-tint)]">
                 <button
                   type="button"
@@ -513,6 +966,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   {t.chartsIndonesia}
                 </button>
               </div>
+              </div>
             </div>
 
             {isLoadingCharts && activeCharts.length === 0 ? (
@@ -530,7 +984,24 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     rank={idx + 1}
                     isSelected={track.id === currentTrack.id}
                     isResolving={resolvingTrackId === track.id}
-                    onSelect={handlePlayTrackWithLyrics}
+                    onSelect={(chosen) => {
+                      if (onPlayTrackList) {
+                        onPlayTrackList(
+                          activeCharts,
+                          false,
+                          {
+                            id: `charts-${chartRegion}`,
+                            type: 'charts',
+                            title: chartRegion === 'global' ? t.chartsGlobal : t.chartsIndonesia,
+                            coverUrl: activeCharts[0]?.coverUrl,
+                            ordered: true
+                          },
+                          idx
+                        );
+                      } else {
+                        handlePlayTrackWithLyrics(chosen);
+                      }
+                    }}
                     isLiked={likedTrackIds?.has(track.id)}
                     onToggleLike={onToggleLike}
                     onAddToAlbum={onAddToAlbum}

@@ -14,7 +14,10 @@ import type {
   FavoriteTrack,
   FollowedArtist,
   ListenerProfile,
-  ListeningStats
+  ListeningStats,
+  PlaybackContextInfo,
+  AuthUser,
+  AuthProvidersMeta
 } from './types';
 import { TRACK_CATALOG, PODCAST_CATALOG, RADIO_STATIONS } from './data/catalog';
 import { ARTISTS_DIRECTORY } from './data/artists800';
@@ -42,8 +45,11 @@ import {
   fetchNeonLibrary,
   getOrCreateListenerIdentity,
   mutateNeonLibrary,
-  saveListenerDisplayName
+  rotateGuestListenerIdentity,
+  saveListenerDisplayName,
+  setAuthenticatedListenerIdentity
 } from './services/neonSyncService';
+import { fetchAuthSession, logoutFromNeon } from './services/authService';
 import { useAppPreferences } from './contexts/AppPreferencesContext';
 
 import { Sidebar } from './components/layout/Sidebar';
@@ -68,6 +74,7 @@ import { VisualizerStudioView } from './components/views/VisualizerStudioView';
 import { ProofOfStreamView } from './components/rewards/ProofOfStreamView';
 
 import { AddToAlbumModal } from './components/modals/AddToAlbumModal';
+import { AuthModal } from './components/auth/AuthModal';
 import { ShortcutsModal } from './components/modals/ShortcutsModal';
 import { SolanaWalletModal } from './components/web3/SolanaWalletModal';
 import { PitchDeckModal } from './components/pitch/PitchDeckModal';
@@ -86,6 +93,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  User,
   Users
 } from 'lucide-react';
 
@@ -105,6 +113,9 @@ export default function App() {
 
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authProviders, setAuthProviders] = useState<AuthProvidersMeta | undefined>(undefined);
   const [walletBalanceSol, setWalletBalanceSol] = useState(0);
   const [walletCluster, setWalletCluster] = useState<'devnet' | 'mainnet-beta'>(() =>
     solanaService.getCluster()
@@ -119,6 +130,20 @@ export default function App() {
   const [manualQueue, setManualQueue] = useState<Track[]>([]);
   const [playHistory, setPlayHistory] = useState<Track[]>([]);
   const [activeMood, setActiveMood] = useState<MoodPreset>('all');
+  const [playbackContext, setPlaybackContext] = useState<PlaybackContextInfo>({
+    id: 'featured-catalog',
+    type: 'library',
+    title: 'Featured Masters',
+    ordered: true
+  });
+  const [autoplayEnabled, setAutoplayEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('sonacast_autoplay_enabled');
+      return saved === null ? true : saved === 'true';
+    } catch {
+      return true;
+    }
+  });
   const [isExpandedPlayerOpen, setIsExpandedPlayerOpen] = useState(false);
   const [sleepEndAtMs, setSleepEndAtMs] = useState<number | null>(null);
   const [sleepMinutesRemaining, setSleepMinutesRemaining] = useState<number | null>(null);
@@ -196,7 +221,7 @@ export default function App() {
   const [resolvingTrackId, setResolvingTrackId] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
 
-  const handleNextRef = useRef<(fromEnded?: boolean) => void>(() => {});
+  const handleNextRef = useRef<(fromEnded?: boolean) => void>(() => { });
   const selectionCounterRef = useRef(0);
   const loadedTrackIdRef = useRef<string | null>(null);
   const isRefillingRadioRef = useRef(false);
@@ -209,6 +234,9 @@ export default function App() {
   const recStateRef = useRef(recState);
   const activeMoodRef = useRef(activeMood);
   const playHistoryRef = useRef(playHistory);
+  const playbackContextRef = useRef(playbackContext);
+  const autoplayEnabledRef = useRef(autoplayEnabled);
+  const refillRadioRef = useRef<(seedTrack: Track, force?: boolean) => void>(() => { });
 
   useEffect(() => {
     currentTrackRef.current = currentTrack;
@@ -218,7 +246,19 @@ export default function App() {
     recStateRef.current = recState;
     activeMoodRef.current = activeMood;
     playHistoryRef.current = playHistory;
-  }, [currentTrack, currentTime, queue, manualQueue, recState, activeMood, playHistory]);
+    playbackContextRef.current = playbackContext;
+    autoplayEnabledRef.current = autoplayEnabled;
+  }, [
+    currentTrack,
+    currentTime,
+    queue,
+    manualQueue,
+    recState,
+    activeMood,
+    playHistory,
+    playbackContext,
+    autoplayEnabled
+  ]);
 
   // Apply persisted Audio DSP (Equalizer, Speed, Crossfade)
   useEffect(() => {
@@ -302,7 +342,81 @@ export default function App() {
     [applyCloudSnapshot]
   );
 
-  // Hydrate Neon Postgres library, blends, and share deep-links (?blend= / ?album=)
+  const hydrateListenerData = useCallback(
+    async (targetListenerId: string, syncLocalIfNeeded: boolean) => {
+      const snapshot = await fetchNeonLibrary(targetListenerId);
+      if (snapshot && snapshot.connected) {
+        if (syncLocalIfNeeded) {
+          const local = recStateRef.current;
+          const missingFavs = local.likedTracks.some(
+            (lf) => !snapshot.favorites.some((cf) => cf.id === lf.id)
+          );
+          const missingAlbums = local.playlists.some(
+            (lp) => !snapshot.albums.some((ca) => ca.id === lp.id)
+          );
+          if (missingFavs || missingAlbums) {
+            const merged = await mutateNeonLibrary('sync_local_state', {
+              favorites: local.likedTracks,
+              albums: local.playlists
+            });
+            applyCloudSnapshot(merged || snapshot);
+          } else {
+            applyCloudSnapshot(snapshot);
+          }
+        } else {
+          applyCloudSnapshot(snapshot);
+        }
+      }
+      const listenerBlends = await fetchListenerBlends(targetListenerId);
+      setBlends(listenerBlends);
+      return snapshot;
+    },
+    [applyCloudSnapshot]
+  );
+
+  const handleAuthSuccess = useCallback(
+    async (user: AuthUser) => {
+      const sameListener = user.listenerId === getOrCreateListenerIdentity().listenerId;
+      setAuthenticatedListenerIdentity(user.listenerId, user.displayName);
+      setAuthUser(user);
+      setListenerProfile((prev) => ({
+        ...prev,
+        listenerId: user.listenerId,
+        displayName: user.displayName
+      }));
+      await hydrateListenerData(user.listenerId, sameListener);
+    },
+    [hydrateListenerData]
+  );
+
+  const handleLogout = useCallback(async () => {
+    await logoutFromNeon();
+    const guest = rotateGuestListenerIdentity();
+    setAuthUser(null);
+    setFavoritesMeta([]);
+    setFollowedArtists([]);
+    setCloudStats(null);
+    setBlends([]);
+    setListenerProfile({
+      listenerId: guest.listenerId,
+      displayName: guest.displayName,
+      handle: '@listener',
+      bio: ''
+    });
+    setRecState((prev) => {
+      const next: RecommendationState = {
+        ...prev,
+        likedTracks: [],
+        playlists: [],
+        recentTracks: []
+      };
+      saveRecommendationState(next);
+      return next;
+    });
+    await hydrateListenerData(guest.listenerId, false);
+  }, [hydrateListenerData]);
+
+  // Hydrate Neon Auth session, Postgres library, blends, and share deep-links (?blend= / ?album=)
   useEffect(() => {
     let cancelled = false;
     const params =
@@ -311,44 +425,34 @@ export default function App() {
     const albumParam = params?.get('album')?.trim().toUpperCase() || '';
 
     const hydrateCloud = async () => {
-      const snapshot = await fetchNeonLibrary(initialIdentity.listenerId);
+      const authSession = await fetchAuthSession();
+      if (cancelled) return;
+      setAuthProviders(authSession.providers);
+
+      let activeListenerId = initialIdentity.listenerId;
+      if (authSession.authenticated && authSession.user) {
+        activeListenerId = authSession.user.listenerId;
+        setAuthenticatedListenerIdentity(
+          authSession.user.listenerId,
+          authSession.user.displayName
+        );
+        setAuthUser(authSession.user);
+      }
+
+      const snapshot = await hydrateListenerData(activeListenerId, true);
       if (cancelled) return;
 
-      if (snapshot && snapshot.connected) {
-        const local = recStateRef.current;
-        const missingFavs = local.likedTracks.some(
-          (lf) => !snapshot.favorites.some((cf) => cf.id === lf.id)
-        );
-        const missingAlbums = local.playlists.some(
-          (lp) => !snapshot.albums.some((ca) => ca.id === lp.id)
-        );
-
-        if (missingFavs || missingAlbums) {
-          const merged = await mutateNeonLibrary('sync_local_state', {
-            favorites: local.likedTracks,
-            albums: local.playlists
-          });
-          if (!cancelled) applyCloudSnapshot(merged || snapshot);
-        } else {
-          applyCloudSnapshot(snapshot);
-        }
-
-        if (albumParam) {
-          const cloned = await cloneSharedAlbumToNeon(albumParam);
-          if (!cancelled && cloned) {
-            applyCloudSnapshot(cloned);
-            setCurrentTab('favorites');
-          }
+      if (snapshot && snapshot.connected && albumParam) {
+        const cloned = await cloneSharedAlbumToNeon(albumParam);
+        if (!cancelled && cloned) {
+          applyCloudSnapshot(cloned);
+          setCurrentTab('favorites');
         }
       }
 
-      const listenerBlends = await fetchListenerBlends(initialIdentity.listenerId);
-      if (!cancelled) {
-        setBlends(listenerBlends);
-        if (blendParam) {
-          setInitialBlendCode(blendParam);
-          setCurrentTab('blend');
-        }
+      if (!cancelled && blendParam) {
+        setInitialBlendCode(blendParam);
+        setCurrentTab('blend');
       }
     };
 
@@ -356,7 +460,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [initialIdentity.listenerId, applyCloudSnapshot]);
+  }, [initialIdentity.listenerId, applyCloudSnapshot, hydrateListenerData]);
 
   // Persistent YouTube host and layout target slots
   const ytHostRef = useRef<HTMLDivElement | null>(null);
@@ -566,12 +670,17 @@ export default function App() {
 
       setQueue((prevQueue) => {
         if (!prevQueue.some((t) => t.id === track.id)) {
-          return [track, ...prevQueue];
+          const nextQ = [track, ...prevQueue];
+          queueRef.current = nextQ;
+          return nextQ;
         }
         return prevQueue;
       });
 
-      refillRadioQueueIfNeeded(track, false);
+      const ctxType = playbackContextRef.current.type;
+      if (ctxType === 'radio') {
+        refillRadioQueueIfNeeded(track, false);
+      }
 
       if (track.lyrics.length <= 4) {
         fetchSyncedLyrics(track.title, track.artist, track.duration).then((synced) => {
@@ -581,89 +690,89 @@ export default function App() {
         });
       }
 
-    // 1. Direct Studio Master MP3 or local user file
-    if (track.audioUrl) {
-      setResolvingTrackId(null);
-      setIsYouTubeActive(false);
-      sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl);
-      return;
-    }
-
-    // 2. Check bundled master fallback by exact title + artist
-    const masterMatch = findMasterAudio(track.title, track.artist);
-    if (masterMatch) {
-      setResolvingTrackId(null);
-      setIsYouTubeActive(false);
-      const updatedTrack: Track = {
-        ...track,
-        audioUrl: masterMatch.audioUrl,
-        duration: masterMatch.duration,
-        streamSource: 'studio-master'
-      };
-      setCurrentTrack(updatedTrack);
-      setQueue((prevQ) => prevQ.map((t) => (t.id === track.id ? updatedTrack : t)));
-      sharedAudioEngine.playTrack(updatedTrack.duration, updatedTrack.bpm, updatedTrack.audioUrl);
-      return;
-    }
-
-    // 3. Pre-resolved candidate YouTube official stream IDs
-    const existingIds =
-      track.candidateVideoIds && track.candidateVideoIds.length > 0
-        ? track.candidateVideoIds
-        : track.youtubeId
-        ? [track.youtubeId]
-        : [];
-
-    if (existingIds.length > 0) {
-      setResolvingTrackId(null);
-      setIsYouTubeActive(true);
-      sharedAudioEngine.playYouTubeTrack(existingIds, track.duration, track.bpm);
-      if (existingIds.length < 4) {
-        const activeGen = sharedAudioEngine.getPlayGeneration();
-        resolveFullTrackStream(track.title, track.artist, track.duration)
-          .then((resolved) => {
-            if (!resolved || selectionSeq !== selectionCounterRef.current) return;
-            sharedAudioEngine.appendCandidateIds(resolved.candidateIds, activeGen);
-          })
-          .catch(() => {});
+      // 1. Direct Studio Master MP3 or local user file
+      if (track.audioUrl) {
+        setResolvingTrackId(null);
+        setIsYouTubeActive(false);
+        sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl);
+        return;
       }
-      return;
-    }
 
-    // 4. Resolve 100% full-length official stream dynamically for 85M+ catalog search items
-    sharedAudioEngine.pause();
-    setResolvingTrackId(track.id);
-    setIsYouTubeActive(true);
-    try {
-      const resolved = await resolveFullTrackStream(track.title, track.artist, track.duration);
-      if (selectionSeq !== selectionCounterRef.current) return;
-
-      setResolvingTrackId(null);
-
-      if (resolved && resolved.candidateIds.length > 0) {
+      // 2. Check bundled master fallback by exact title + artist
+      const masterMatch = findMasterAudio(track.title, track.artist);
+      if (masterMatch) {
+        setResolvingTrackId(null);
+        setIsYouTubeActive(false);
         const updatedTrack: Track = {
           ...track,
-          youtubeId: resolved.youtubeId,
-          candidateVideoIds: resolved.candidateIds,
-          duration: resolved.duration,
-          streamSource: 'official-stream'
+          audioUrl: masterMatch.audioUrl,
+          duration: masterMatch.duration,
+          streamSource: 'studio-master'
         };
-        setCurrentTrack((prev) => (prev.id === track.id ? updatedTrack : prev));
+        setCurrentTrack(updatedTrack);
         setQueue((prevQ) => prevQ.map((t) => (t.id === track.id ? updatedTrack : t)));
-        sharedAudioEngine.playYouTubeTrack(resolved.candidateIds, resolved.duration, track.bpm);
-      } else {
+        sharedAudioEngine.playTrack(updatedTrack.duration, updatedTrack.bpm, updatedTrack.audioUrl);
+        return;
+      }
+
+      // 3. Pre-resolved candidate YouTube official stream IDs
+      const existingIds =
+        track.candidateVideoIds && track.candidateVideoIds.length > 0
+          ? track.candidateVideoIds
+          : track.youtubeId
+            ? [track.youtubeId]
+            : [];
+
+      if (existingIds.length > 0) {
+        setResolvingTrackId(null);
+        setIsYouTubeActive(true);
+        sharedAudioEngine.playYouTubeTrack(existingIds, track.duration, track.bpm);
+        if (existingIds.length < 4) {
+          const activeGen = sharedAudioEngine.getPlayGeneration();
+          resolveFullTrackStream(track.title, track.artist, track.duration)
+            .then((resolved) => {
+              if (!resolved || selectionSeq !== selectionCounterRef.current) return;
+              sharedAudioEngine.appendCandidateIds(resolved.candidateIds, activeGen);
+            })
+            .catch(() => { });
+        }
+        return;
+      }
+
+      // 4. Resolve 100% full-length official stream dynamically for 85M+ catalog search items
+      sharedAudioEngine.pause();
+      setResolvingTrackId(track.id);
+      setIsYouTubeActive(true);
+      try {
+        const resolved = await resolveFullTrackStream(track.title, track.artist, track.duration);
+        if (selectionSeq !== selectionCounterRef.current) return;
+
+        setResolvingTrackId(null);
+
+        if (resolved && resolved.candidateIds.length > 0) {
+          const updatedTrack: Track = {
+            ...track,
+            youtubeId: resolved.youtubeId,
+            candidateVideoIds: resolved.candidateIds,
+            duration: resolved.duration,
+            streamSource: 'official-stream'
+          };
+          setCurrentTrack((prev) => (prev.id === track.id ? updatedTrack : prev));
+          setQueue((prevQ) => prevQ.map((t) => (t.id === track.id ? updatedTrack : t)));
+          sharedAudioEngine.playYouTubeTrack(resolved.candidateIds, resolved.duration, track.bpm);
+        } else {
+          setIsYouTubeActive(false);
+          setStreamError('Full official stream unavailable for this release. Try another track.');
+          sharedAudioEngine.pause();
+        }
+      } catch {
+        if (selectionSeq !== selectionCounterRef.current) return;
+        setResolvingTrackId(null);
         setIsYouTubeActive(false);
-        setStreamError('Full official stream unavailable for this release. Try another track.');
+        setStreamError('Unable to resolve full-length stream. Try another release.');
         sharedAudioEngine.pause();
       }
-    } catch {
-      if (selectionSeq !== selectionCounterRef.current) return;
-      setResolvingTrackId(null);
-      setIsYouTubeActive(false);
-      setStreamError('Unable to resolve full-length stream. Try another release.');
-      sharedAudioEngine.pause();
-    }
-  }, [refillRadioQueueIfNeeded]);
+    }, [refillRadioQueueIfNeeded]);
 
   const handleSelectRadio = (station: RadioStation) => {
     handleSelectTrack(station.currentTrack);
@@ -753,8 +862,39 @@ export default function App() {
       if (fromEnded && recStateRef.current.repeatMode === 'off') {
         const curIdx = queueRef.current.findIndex((t) => t.id === currentTrackRef.current.id);
         if (curIdx === queueRef.current.length - 1 && manualQueueRef.current.length === 0) {
-          // Record completion feedback then stop cleanly at end of queue when Repeat is Off
           setRecState((prev) => recordTrackSignal(prev, currentTrackRef.current, 'complete'));
+          if (autoplayEnabledRef.current) {
+            const seed = currentTrackRef.current;
+            const autoCtx: PlaybackContextInfo = {
+              id: `autoplay-${seed.id}`,
+              type: 'radio',
+              title: `Autoplay · Similar to ${seed.title}`,
+              subtitle: seed.artist,
+              coverUrl: seed.coverUrl,
+              ordered: false
+            };
+            playbackContextRef.current = autoCtx;
+            setPlaybackContext(autoCtx);
+            const fallbackPool = buildSmartQueueFromPool(
+              seed,
+              TRACK_CATALOG,
+              recStateRef.current.recentTracks,
+              recStateRef.current,
+              activeMoodRef.current,
+              12
+            );
+            const additions = fallbackPool.filter(
+              (t) => !queueRef.current.some((existing) => existing.id === t.id)
+            );
+            const nextAuto = additions[0] || fallbackPool.find((t) => t.id !== seed.id);
+            if (nextAuto) {
+              const extendedQueue = [...queueRef.current, ...additions];
+              queueRef.current = extendedQueue;
+              setQueue(extendedQueue);
+              handleSelectTrack(nextAuto, { fromEnded: true });
+            }
+            refillRadioRef.current(seed, true);
+          }
           return;
         }
       }
@@ -846,6 +986,17 @@ export default function App() {
 
   const handleStartRadio = useCallback(
     (seedTrack: Track) => {
+      const radioCtx: PlaybackContextInfo = {
+        id: `radio-${seedTrack.id}`,
+        type: 'radio',
+        title: `Radio · ${seedTrack.title}`,
+        subtitle: seedTrack.artist,
+        coverUrl: seedTrack.coverUrl,
+        ordered: false
+      };
+      playbackContextRef.current = radioCtx;
+      setPlaybackContext(radioCtx);
+
       const smartNext = buildSmartQueueFromPool(
         seedTrack,
         [...queueRef.current, ...TRACK_CATALOG],
@@ -854,7 +1005,9 @@ export default function App() {
         activeMoodRef.current,
         24
       );
-      setQueue([seedTrack, ...smartNext]);
+      const nextQueue = [seedTrack, ...smartNext];
+      queueRef.current = nextQueue;
+      setQueue(nextQueue);
       if (seedTrack.id !== currentTrackRef.current.id) {
         handleSelectTrack(seedTrack);
       } else {
@@ -866,6 +1019,17 @@ export default function App() {
 
   const handleRefreshRadioMix = useCallback(() => {
     const seed = currentTrackRef.current;
+    const radioCtx: PlaybackContextInfo = {
+      id: `radio-${seed.id}`,
+      type: 'radio',
+      title: `Radio · ${seed.title}`,
+      subtitle: seed.artist,
+      coverUrl: seed.coverUrl,
+      ordered: false
+    };
+    playbackContextRef.current = radioCtx;
+    setPlaybackContext(radioCtx);
+
     const smartNext = buildSmartQueueFromPool(
       seed,
       [...queueRef.current, ...TRACK_CATALOG],
@@ -874,8 +1038,14 @@ export default function App() {
       activeMoodRef.current,
       24
     );
-    setQueue([seed, ...smartNext]);
+    const nextQueue = [seed, ...smartNext];
+    queueRef.current = nextQueue;
+    setQueue(nextQueue);
     refillRadioQueueIfNeeded(seed, true);
+  }, [refillRadioQueueIfNeeded]);
+
+  useEffect(() => {
+    refillRadioRef.current = refillRadioQueueIfNeeded;
   }, [refillRadioQueueIfNeeded]);
 
   const handleSelectMood = useCallback(
@@ -914,20 +1084,61 @@ export default function App() {
     [handleSelectTrack]
   );
 
+  const handleToggleAutoplay = useCallback(() => {
+    setAutoplayEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('sonacast_autoplay_enabled', String(next));
+      } catch {
+        // Ignore storage errors
+      }
+      return next;
+    });
+  }, []);
+
   const handlePlayTrackList = useCallback(
-    (tracksList: Track[], shouldShuffle = false) => {
+    (
+      tracksList: Track[],
+      shouldShuffle = false,
+      contextInfo?: PlaybackContextInfo,
+      startIndex = 0
+    ) => {
       if (tracksList.length === 0) return;
+      const orderedPlay = !shouldShuffle;
+      const safeStart = Math.max(0, Math.min(startIndex, tracksList.length - 1));
+      const resolvedTracks = shouldShuffle
+        ? (() => {
+            const copy = [...tracksList];
+            const firstPick = copy.splice(safeStart, 1)[0];
+            for (let i = copy.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return firstPick ? [firstPick, ...copy] : copy;
+          })()
+        : tracksList;
+
+      const resolvedCtx: PlaybackContextInfo = contextInfo || {
+        id: `list-${resolvedTracks[0]?.id || 'mix'}`,
+        type: 'playlist',
+        title: resolvedTracks[0]?.album || 'Ordered Collection',
+        subtitle: `${resolvedTracks.length} tracks`,
+        coverUrl: resolvedTracks[0]?.coverUrl,
+        ordered: orderedPlay
+      };
+
       setRecState((prev) => {
         const next = { ...prev, shuffle: shouldShuffle };
         saveRecommendationState(next);
         return next;
       });
-      setQueue(tracksList);
-      const firstTrack =
-        shouldShuffle && tracksList.length > 1
-          ? tracksList[Math.floor(Math.random() * tracksList.length)]
-          : tracksList[0];
-      handleSelectTrack(firstTrack);
+      playbackContextRef.current = resolvedCtx;
+      setPlaybackContext(resolvedCtx);
+      queueRef.current = resolvedTracks;
+      setQueue(resolvedTracks);
+
+      const initialTrack = resolvedTracks[shouldShuffle ? 0 : safeStart] || resolvedTracks[0];
+      handleSelectTrack(initialTrack);
     },
     [handleSelectTrack]
   );
@@ -1207,7 +1418,7 @@ export default function App() {
       !preResolvedIdsRef.current.has(preview.id)
     ) {
       preResolvedIdsRef.current.add(preview.id);
-      resolveFullTrackStream(preview.title, preview.artist, preview.duration).catch(() => {});
+      resolveFullTrackStream(preview.title, preview.artist, preview.duration).catch(() => { });
     }
   }, [isPlaying, currentTime, currentTrack, queue, manualQueue, recState, activeMood]);
 
@@ -1428,6 +1639,8 @@ export default function App() {
           onEnterApp={handleEnterApp}
           onOpenWallet={() => setIsWalletModalOpen(true)}
           onOpenPitchDeck={() => setIsPitchModalOpen(true)}
+          onOpenAuth={() => setIsAuthModalOpen(true)}
+          authUser={authUser}
           likedTrackIds={likedTrackIds}
           onToggleLike={handleToggleLike}
           onOpenAddToAlbum={(tr) => setAlbumModalTrack(tr)}
@@ -1483,6 +1696,18 @@ export default function App() {
 
               <button
                 type="button"
+                data-testid="topbar-auth-btn"
+                onClick={() => setIsAuthModalOpen(true)}
+                className="min-h-[36px] px-2.5 sm:px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--accent-emerald)] text-[var(--text-primary)] text-[11px] font-semibold inline-flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors"
+              >
+                <User size={13} className="text-[var(--accent-text)] shrink-0" />
+                <span className="hidden sm:inline max-w-[110px] truncate">
+                  {authUser ? authUser.displayName : t.authSignIn}
+                </span>
+              </button>
+
+              <button
+                type="button"
                 data-testid="shortcuts-open-btn"
                 onClick={() => setIsShortcutsOpen(true)}
                 aria-label={t.keyboardShortcutsLabel}
@@ -1520,6 +1745,8 @@ export default function App() {
               currentTab={currentTab}
               onTabChange={handleTabChange}
               onOpenWallet={() => setIsWalletModalOpen(true)}
+              onOpenAuth={() => setIsAuthModalOpen(true)}
+              authUser={authUser}
               walletBalanceSol={walletBalanceSol}
               walletCluster={walletCluster}
               isCloudConnected={cloudConnected}
@@ -1572,11 +1799,10 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setIsStageOpen((prev) => !prev)}
-                      className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-medium shrink-0 cursor-pointer transition-colors ${
-                        isStageOpen
+                      className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-medium shrink-0 cursor-pointer transition-colors ${isStageOpen
                           ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
                           : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                      }`}
+                        }`}
                     >
                       {t.playerStageToggle}
                     </button>
@@ -1596,11 +1822,10 @@ export default function App() {
                       key={chip.id}
                       type="button"
                       onClick={() => handleTabChange(chip.id)}
-                      className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 border transition-colors cursor-pointer ${
-                        active
+                      className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 border transition-colors cursor-pointer ${active
                           ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
                           : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
-                      }`}
+                        }`}
                     >
                       {chip.icon}
                       <span>{chip.label}</span>
@@ -1613,9 +1838,8 @@ export default function App() {
               {isStageVisible && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[260px] sm:min-h-[300px] xl:min-h-[400px]">
                   <div
-                    className={`transition-all duration-300 ${
-                      isLyricsOpen ? 'lg:col-span-7' : 'lg:col-span-12'
-                    }`}
+                    className={`transition-all duration-300 ${isLyricsOpen ? 'lg:col-span-7' : 'lg:col-span-12'
+                      }`}
                   >
                     {playerMode === 'cover' && (
                       <VinylCover
@@ -1687,6 +1911,7 @@ export default function App() {
                     onAddToQueue={handleAddToQueue}
                     onStartRadio={handleStartRadio}
                     onPlayTrackList={handlePlayTrackList}
+                    followedArtists={followedArtists}
                     onCreatePlaylist={(name) => handleCreatePlaylist(name)}
                     onAddTrackToPlaylist={handleAddTrackToPlaylist}
                     onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
@@ -1762,6 +1987,7 @@ export default function App() {
                     onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
                     onAddToQueue={handleAddToQueue}
                     onStartRadio={handleStartRadio}
+                    onPlayTrackList={handlePlayTrackList}
                   />
                 )}
 
@@ -1808,6 +2034,11 @@ export default function App() {
               onSelectTrack={handleSelectTrack}
               onRemoveFromManualQueue={handleRemoveFromManualQueue}
               onRefreshRadioMix={handleRefreshRadioMix}
+              playbackContext={playbackContext}
+              autoplayEnabled={autoplayEnabled}
+              onToggleAutoplay={handleToggleAutoplay}
+              isShuffled={recState.shuffle}
+              onToggleShuffle={handleToggleShuffle}
               likedTrackIds={likedTrackIds}
               onToggleLike={handleToggleLike}
               onSeek={handleSeek}
@@ -1866,11 +2097,11 @@ export default function App() {
         isArtistFollowed={
           albumModalTrack
             ? followedArtists.some((a) => {
-                const primary =
-                  albumModalTrack.artist.split(/,|feat\.?|ft\.?|&/i)[0].trim() ||
-                  albumModalTrack.artist;
-                return a.name.toLowerCase() === primary.toLowerCase();
-              })
+              const primary =
+                albumModalTrack.artist.split(/,|feat\.?|ft\.?|&/i)[0].trim() ||
+                albumModalTrack.artist;
+              return a.name.toLowerCase() === primary.toLowerCase();
+            })
             : false
         }
         onToggleLike={handleToggleLike}
@@ -1914,6 +2145,18 @@ export default function App() {
         onSetSleepTimer={handleSetSleepTimer}
         onStartRadio={handleStartRadio}
         onAddToPlaylist={handleAddTrackToPlaylist}
+      />
+
+      {/* Neon Auth Login / Account Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        authUser={authUser}
+        authProviders={authProviders}
+        isCloudConnected={cloudConnected}
+        onAuthSuccess={handleAuthSuccess}
+        onLogout={handleLogout}
+        onOpenLibrary={() => setCurrentTab('favorites')}
       />
 
       {/* Solana Devnet Wallet Modal */}

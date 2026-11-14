@@ -1,4 +1,4 @@
-import type { Track, LyricLine } from '../types';
+import type { Track, LyricLine, CatalogAlbum } from '../types';
 import { ARTISTS_DIRECTORY } from '../data/artists800';
 
 export function parseLrc(lrcText: string): LyricLine[] {
@@ -1199,5 +1199,276 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
     indonesia: idItems.map(toTrack)
   };
 }
+
+export const FEATURED_RELEASE_ALBUMS: CatalogAlbum[] = [
+  {
+    id: '299400142',
+    title: 'Manusia',
+    artist: 'Tulus',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/ec4b98e50b1c776c71774097eb1aee95/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 10,
+    genre: 'Indonesian Pop',
+    recordType: 'album'
+  },
+  {
+    id: '137272602',
+    title: 'After Hours',
+    artist: 'The Weeknd',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/f520bf0be2e3cfc476824e75d20a164a/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 14,
+    genre: 'Synth-Pop / R&B',
+    recordType: 'album'
+  },
+  {
+    id: '1007321681',
+    title: 'A Night At The Opera',
+    artist: 'Queen',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/0b56f4eee05fa1ea753c5654b2cdb70c/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 12,
+    genre: 'Classic Rock',
+    recordType: 'album'
+  },
+  {
+    id: '9007779',
+    title: '1989',
+    artist: 'Taylor Swift',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/8c39b232a5edecdf5fffc14f551fa42b/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 13,
+    genre: 'Pop',
+    recordType: 'album'
+  },
+  {
+    id: '13664586',
+    title: 'Monokrom',
+    artist: 'Tulus',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/f831ff7e281ca044205fe4e48288ee51/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 10,
+    genre: 'Indonesian Pop',
+    recordType: 'album'
+  },
+  {
+    id: '6575789',
+    title: 'Random Access Memories',
+    artist: 'Daft Punk',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/311bba0fc112d15f72c8b5a65f0456c1/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 13,
+    genre: 'Electronic',
+    recordType: 'album'
+  },
+  {
+    id: '96126',
+    title: 'Thriller',
+    artist: 'Michael Jackson',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/f01e09ceb8ad1e96707c1b4aadb5911b/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 9,
+    genre: 'Pop / Funk',
+    recordType: 'album'
+  },
+  {
+    id: 'it-1644431615',
+    title: 'BORN PINK',
+    artist: 'BLACKPINK',
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/52/8e/5a/528e5a30-52b0-b68c-f184-635fcf15e6d7/22UM1IM01017.rgb.jpg/600x600bb.jpg',
+    nbTracks: 9,
+    genre: 'K-Pop',
+    recordType: 'album'
+  }
+];
+
+const albumTracksCache = new Map<string, { album: CatalogAlbum; tracks: Track[] }>();
+
+/** Searches release albums via server proxy with direct iTunes CORS fallback. */
+export async function searchAlbumsOnline(query: string): Promise<CatalogAlbum[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  try {
+    const res = await fetch(
+      `${getApiEndpoint('/api/catalog-search')}?mode=albums&q=${encodeURIComponent(trimmed)}`,
+      { signal: AbortSignal.timeout(5200) }
+    );
+    if (res.ok) {
+      const data: { albums?: CatalogAlbum[] } = await res.json();
+      if (Array.isArray(data?.albums) && data.albums.length > 0) {
+        return data.albums;
+      }
+    }
+  } catch {
+    // Fall back to direct CORS iTunes album search
+  }
+
+  try {
+    const res = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&entity=album&limit=14`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const rows = Array.isArray(data?.results) ? data.results : [];
+    return rows
+      .filter((a: { collectionName?: string; artistName?: string }) => Boolean(a.collectionName && a.artistName))
+      .map(
+        (a: {
+          collectionId?: number;
+          collectionName?: string;
+          artistName?: string;
+          artworkUrl100?: string;
+          trackCount?: number;
+          releaseDate?: string;
+          primaryGenreName?: string;
+        }): CatalogAlbum => ({
+          id: `it-${a.collectionId || ''}`,
+          title: String(a.collectionName || ''),
+          artist: String(a.artistName || ''),
+          coverUrl:
+            typeof a.artworkUrl100 === 'string'
+              ? a.artworkUrl100.replace('100x100bb', '600x600bb')
+              : DEFAULT_FALLBACK_COVER,
+          nbTracks: Number(a.trackCount) || 0,
+          releaseDate: typeof a.releaseDate === 'string' ? a.releaseDate.slice(0, 10) : undefined,
+          genre: String(a.primaryGenreName || 'Album'),
+          recordType: (Number(a.trackCount) || 0) <= 5 ? 'single' : 'album'
+        })
+      );
+  } catch {
+    return [];
+  }
+}
+
+interface AlbumTrackApiItem extends CatalogApiItem {
+  trackNumber?: number;
+  discNumber?: number;
+}
+
+/** Fetches the ordered official tracklist for an album, preserving disc/track numbering. */
+export async function fetchAlbumTracksOnline(
+  album: CatalogAlbum
+): Promise<{ album: CatalogAlbum; tracks: Track[] }> {
+  const cached = albumTracksCache.get(album.id);
+  if (cached && cached.tracks.length > 0) {
+    return cached;
+  }
+
+  const emptyIds = new Set<string>();
+  const mapItems = (items: AlbumTrackApiItem[], resolvedAlbum: CatalogAlbum): Track[] =>
+    items.map((item, idx) => {
+      const base = buildTrackFromUnified(
+        {
+          id: item.id || `${resolvedAlbum.id}-${idx + 1}`,
+          title: item.title,
+          artist: item.artist || resolvedAlbum.artist,
+          album: item.album || resolvedAlbum.title,
+          genre: item.genre || resolvedAlbum.genre || 'Album',
+          duration: item.duration || 210,
+          coverUrl: item.coverUrl || resolvedAlbum.coverUrl || DEFAULT_FALLBACK_COVER
+        },
+        [],
+        emptyIds
+      );
+      return {
+        ...base,
+        album: resolvedAlbum.title || base.album,
+        coverUrl: resolvedAlbum.coverUrl || base.coverUrl,
+        sourceTag: `Track ${item.trackNumber || idx + 1}`
+      };
+    });
+
+  try {
+    const res = await fetch(
+      `${getApiEndpoint('/api/catalog-search')}?mode=album_tracks&albumId=${encodeURIComponent(album.id)}`,
+      { signal: AbortSignal.timeout(5500) }
+    );
+    if (res.ok) {
+      const data: { album?: CatalogAlbum | null; items?: AlbumTrackApiItem[] } = await res.json();
+      const resolvedMeta: CatalogAlbum = data?.album?.title
+        ? { ...album, ...data.album, coverUrl: data.album.coverUrl || album.coverUrl }
+        : album;
+      const items = Array.isArray(data?.items) ? data.items : [];
+      if (items.length > 0) {
+        const tracks = mapItems(items, resolvedMeta);
+        const result = { album: resolvedMeta, tracks };
+        albumTracksCache.set(album.id, result);
+        return result;
+      }
+    }
+  } catch {
+    // Fall back to direct iTunes lookup if album ID uses it- prefix or API proxy unavailable
+  }
+
+  if (album.id.startsWith('it-')) {
+    try {
+      const numericId = album.id.slice(3).replace(/[^0-9]/g, '');
+      const res = await fetch(
+        `https://itunes.apple.com/lookup?id=${numericId}&entity=song&limit=100`,
+        { signal: AbortSignal.timeout(4500) }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const rows = Array.isArray(data?.results) ? data.results : [];
+        const rawTracks = rows
+          .filter((r: { wrapperType?: string; trackName?: string }) => r.wrapperType === 'track' && r.trackName)
+          .sort(
+            (
+              a: { discNumber?: number; trackNumber?: number },
+              b: { discNumber?: number; trackNumber?: number }
+            ) =>
+              (Number(a.discNumber) || 1) - (Number(b.discNumber) || 1) ||
+              (Number(a.trackNumber) || 0) - (Number(b.trackNumber) || 0)
+          );
+        const mapped: AlbumTrackApiItem[] = rawTracks.map(
+          (
+            t: {
+              trackId?: number;
+              trackName?: string;
+              artistName?: string;
+              collectionName?: string;
+              primaryGenreName?: string;
+              trackTimeMillis?: number;
+              artworkUrl100?: string;
+              trackNumber?: number;
+              discNumber?: number;
+            },
+            idx: number
+          ) => ({
+            id: `it-trk-${t.trackId || idx}`,
+            title: String(t.trackName || ''),
+            artist: String(t.artistName || album.artist),
+            album: String(t.collectionName || album.title),
+            genre: String(t.primaryGenreName || album.genre || 'Album'),
+            duration: Math.max(30, Math.round((Number(t.trackTimeMillis) || 200000) / 1000)),
+            coverUrl:
+              (typeof t.artworkUrl100 === 'string'
+                ? t.artworkUrl100.replace('100x100bb', '600x600bb')
+                : '') || album.coverUrl,
+            trackNumber: Number(t.trackNumber) || idx + 1,
+            discNumber: Number(t.discNumber) || 1
+          })
+        );
+        if (mapped.length > 0) {
+          const tracks = mapItems(mapped, album);
+          const result = { album, tracks };
+          albumTracksCache.set(album.id, result);
+          return result;
+        }
+      }
+    } catch {
+      // Fall through to search tracks by album + artist
+    }
+  }
+
+  // Final resilient fallback: query album + artist tracks
+  const searchFallback = await searchTracksOnline(`${album.title} ${album.artist}`);
+  const filtered = searchFallback.slice(0, Math.min(14, searchFallback.length));
+  return { album, tracks: filtered };
+}
+
 
 

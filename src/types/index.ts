@@ -252,3 +252,71 @@ export interface ProofOfStreamRecord {
   createdAt?: string;
 }
 
+export type PlaybackContextType =
+  | 'album'
+  | 'release-album'
+  | 'recommendation'
+  | 'playlist'
+  | 'charts'
+  | 'search'
+  | 'blend'
+  | 'radio'
+  | 'library';
+
+export interface PlaybackContextInfo {
+  id: string;
+  type: PlaybackContextType;
+  title: string;
+  subtitle?: string;
+  coverUrl?: string;
+  ordered?: boolean;
+}
+
+export interface CatalogAlbum {
+  id: string;
+  title: string;
+  artist: string;
+  coverUrl: string;
+  nbTracks?: number;
+  releaseDate?: string;
+  recordType?: string;
+  genre?: string;
+  fallbackTracks?: Track[];
+}
+
+export interface RecommendationMix {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  tracks: Track[];
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+  listenerId: string;
+  authProvider: 'email' | 'google' | 'privy';
+  privyDid?: string;
+  embeddedSolanaWallet?: string;
+  createdAt: number;
+  lastLoginAt?: number;
+}
+
+export interface AuthProvidersMeta {
+  email: boolean;
+  google: {
+    enabled: boolean;
+    status: 'coming_soon' | 'active';
+  };
+  privy?: {
+    enabled: boolean;
+    appId: string | null;
+    embeddedWalletChain: 'solana';
+    loginMethods: ('email' | 'wallet')[];
+  };
+}
+
+
+

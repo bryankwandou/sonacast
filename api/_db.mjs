@@ -223,6 +223,35 @@ export async function ensureSchema(sql) {
         )
       `;
 
+      await sql`
+        CREATE TABLE IF NOT EXISTS auth_users (
+          id TEXT PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          display_name TEXT NOT NULL DEFAULT 'Listener',
+          listener_id TEXT NOT NULL,
+          auth_provider TEXT NOT NULL DEFAULT 'email',
+          google_sub TEXT,
+          privy_did TEXT UNIQUE,
+          embedded_solana_wallet TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_login_at TIMESTAMPTZ
+        )
+      `;
+
+      await sql`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS privy_did TEXT`;
+      await sql`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS embedded_solana_wallet TEXT`;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+          token_hash TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+          expires_at TIMESTAMPTZ NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+
       await sql`CREATE INDEX IF NOT EXISTS idx_favorites_listener ON favorites (listener_id, pinned DESC, created_at DESC)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_albums_listener ON albums (listener_id, updated_at DESC)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_history_listener ON play_history (listener_id, played_at DESC)`;
@@ -231,6 +260,9 @@ export async function ensureSchema(sql) {
       await sql`CREATE INDEX IF NOT EXISTS idx_tips_artist_key ON tip_transactions (artist_key, created_at DESC)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_tips_created ON tip_transactions (created_at DESC)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_pos_listener ON proof_of_stream_logs (listener_id, created_at DESC)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_auth_users_listener ON auth_users (listener_id)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_auth_users_privy_did ON auth_users (privy_did)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions (user_id, expires_at DESC)`;
       return true;
     })().catch((err) => {
       schemaReadyPromise = null;

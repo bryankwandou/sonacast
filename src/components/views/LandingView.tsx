@@ -9,9 +9,10 @@ import {
   Pause,
   Play,
   Search,
-  SkipForward
+  SkipForward,
+  User
 } from 'lucide-react';
-import type { TabType, Track } from '../../types';
+import type { AuthUser, TabType, Track } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { usePopularCharts } from '../../hooks/usePopularCharts';
 import { extractPrimaryArtist } from '../../services/recommendationEngine';
@@ -31,6 +32,8 @@ interface LandingViewProps {
   onEnterApp: (tab?: TabType, searchQuery?: string) => void;
   onOpenWallet: () => void;
   onOpenPitchDeck: () => void;
+  onOpenAuth?: () => void;
+  authUser?: AuthUser | null;
   likedTrackIds?: Set<string>;
   onToggleLike?: (track: Track) => void;
   onOpenAddToAlbum?: (track: Track) => void;
@@ -68,6 +71,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onEnterApp,
   onOpenWallet,
   onOpenPitchDeck,
+  onOpenAuth,
+  authUser = null,
   likedTrackIds,
   onToggleLike,
   onOpenAddToAlbum
@@ -220,8 +225,22 @@ export const LandingView: React.FC<LandingViewProps> = ({
             </span>
           </button>
 
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 min-w-0 [&_select]:max-w-[74px] sm:[&_select]:max-w-none">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 min-w-0 [&_select]:max-w-[74px] sm:[&_select]:max-w-none">
             <ThemeLanguageControls variant="landing" />
+
+            {onOpenAuth && (
+              <button
+                type="button"
+                data-testid="landing-auth-btn"
+                onClick={onOpenAuth}
+                className="min-h-[36px] sm:min-h-[38px] px-2.5 sm:px-3.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-medium)] hover:border-[var(--text-primary)] text-[var(--text-primary)] text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+              >
+                <User size={13} className="text-[var(--accent-text)] shrink-0" />
+                <span className="max-w-[80px] sm:max-w-[120px] truncate">
+                  {authUser ? authUser.displayName : t.authSignIn}
+                </span>
+              </button>
+            )}
 
             <button
               type="button"
