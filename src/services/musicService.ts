@@ -480,8 +480,11 @@ function classifyArtistRole(artistStr: string, targetNorm: string): 'primary' | 
 
   if (coLeads[0] === targetNorm) return 'primary';
   if (coLeads.slice(1).includes(targetNorm)) return 'co-lead';
-  if (coLeads.some((c) => c.includes(targetNorm) && targetNorm.length >= 4)) return 'co-lead';
-  if (normalizeText(featRaw).includes(targetNorm)) return 'featured';
+  const featured = featRaw
+    .split(/[,&+/]|\band\b|\bx\b/i)
+    .map((part) => normalizeText(part))
+    .filter(Boolean);
+  if (featured.includes(targetNorm)) return 'featured';
   return 'none';
 }
 

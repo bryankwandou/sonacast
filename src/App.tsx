@@ -404,7 +404,12 @@ export default function App() {
 
   const handleTopSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = topSearchInput.trim();
+    const rawValue =
+      (e.currentTarget.querySelector('input') as HTMLInputElement | null)?.value ?? topSearchInput;
+    if (rawValue !== topSearchInput) {
+      setTopSearchInput(rawValue);
+    }
+    const trimmed = rawValue.trim();
     if (trimmed) {
       navigateToSearch(trimmed);
     } else {

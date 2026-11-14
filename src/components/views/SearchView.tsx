@@ -102,9 +102,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
+    const rawValue =
+      (e.currentTarget.querySelector('input') as HTMLInputElement | null)?.value ?? searchQuery;
+    if (rawValue !== searchQuery) {
+      setSearchQuery(rawValue);
+    }
+    if (rawValue.trim()) {
       setActiveArtistFilter('');
-      executeSearch(searchQuery);
+      executeSearch(rawValue);
     }
   };
 
@@ -234,11 +239,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   setSelectedGenre(genre);
                   setShowAllArtists(false);
                 }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                    : 'bg-[#121724] text-gray-400 hover:text-white border border-[#1E2638]'
-                }`}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 transition-all cursor-pointer ${isActive
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  : 'bg-[#121724] text-gray-400 hover:text-white border border-[#1E2638]'
+                  }`}
               >
                 {genre}
               </button>
@@ -255,11 +259,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 key={artist.name}
                 type="button"
                 onClick={() => handleArtistClick(artist.name)}
-                className={`px-3 py-1.5 rounded-xl border transition-all font-semibold text-xs flex items-center gap-1.5 cursor-pointer ${
-                  isSelected
-                    ? 'bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/20'
-                    : 'bg-[#121724] border-[#1E2638] text-gray-300 hover:text-white hover:border-[#2C3850]'
-                }`}
+                className={`px-3 py-1.5 rounded-xl border transition-all font-semibold text-xs flex items-center gap-1.5 cursor-pointer ${isSelected
+                  ? 'bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/20'
+                  : 'bg-[#121724] border-[#1E2638] text-gray-300 hover:text-white hover:border-[#2C3850]'
+                  }`}
               >
                 <span>{artist.name}</span>
               </button>
@@ -326,11 +329,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       handlePlayTrackWithLyrics(track);
                     }
                   }}
-                  className={`group relative p-3 rounded-2xl bg-[#0D111A] border transition-all duration-200 cursor-pointer hover:-translate-y-1 ${
-                    isSelected
-                      ? 'border-emerald-500/60 shadow-lg shadow-emerald-500/10'
-                      : 'border-[#1B2232] hover:border-[#2C3850]'
-                  }`}
+                  className={`group relative p-3 rounded-2xl bg-[#0D111A] border transition-all duration-200 cursor-pointer hover:-translate-y-1 ${isSelected
+                    ? 'border-emerald-500/60 shadow-lg shadow-emerald-500/10'
+                    : 'border-[#1B2232] hover:border-[#2C3850]'
+                    }`}
                 >
                   <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-[#161C2A]">
                     <img
@@ -339,9 +341,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div
-                      className={`absolute inset-0 bg-black/45 transition-opacity flex items-center justify-center ${
-                        isResolving ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                      }`}
+                      className={`absolute inset-0 bg-black/45 transition-opacity flex items-center justify-center ${isResolving ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}
                     >
                       <div className="w-10 h-10 rounded-full bg-emerald-500 text-black flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
                         {isResolving ? (
@@ -354,9 +355,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       </div>
                     </div>
                     <span
-                      className={`absolute bottom-2 left-2 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[10px] font-mono font-bold border border-white/10 ${
-                        isMaster ? 'text-emerald-400' : 'text-cyan-300'
-                      }`}
+                      className={`absolute bottom-2 left-2 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[10px] font-mono font-bold border border-white/10 ${isMaster ? 'text-emerald-400' : 'text-cyan-300'
+                        }`}
                     >
                       {isResolving ? 'LOADING...' : isMaster ? 'STUDIO MASTER' : 'FULL TRACK'}
                     </span>
