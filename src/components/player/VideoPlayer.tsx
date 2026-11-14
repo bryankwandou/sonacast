@@ -7,6 +7,8 @@ interface VideoPlayerProps {
   title: string;
   artist: string;
   isPlaying: boolean;
+  isOfficialStreamActive?: boolean;
+  officialSlotRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -14,7 +16,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   coverUrl,
   title,
   artist,
-  isPlaying
+  isPlaying,
+  isOfficialStreamActive = false,
+  officialSlotRef
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -23,18 +27,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || isOfficialStreamActive) return;
 
     if (isPlaying) {
       video.play().catch(() => {
-        // Autoplay policy fallback: muted video loop
         video.muted = true;
         video.play().catch(() => {});
       });
     } else {
       video.pause();
     }
-  }, [isPlaying, videoUrl]);
+  }, [isPlaying, videoUrl, isOfficialStreamActive]);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -50,7 +53,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       ref={containerRef}
       className="relative w-full h-full min-h-[460px] bg-black rounded-2xl overflow-hidden border border-[#1E2433] flex items-center justify-center select-none group"
     >
-      {videoUrl && !videoError ? (
+      {isOfficialStreamActive ? (
+        <div
+          ref={officialSlotRef}
+          className="w-full h-full min-h-[460px] bg-black"
+        />
+      ) : videoUrl && !videoError ? (
         <video
           ref={videoRef}
           src={videoUrl}
@@ -62,7 +70,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           className="w-full h-full object-cover"
         />
       ) : (
-        // Ambient fallback visual video loop
         <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-tr from-[#080B12] via-[#121826] to-[#0A0E17]">
           <img
             src={coverUrl}
@@ -78,7 +85,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Top Overlay Badge */}
-      <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10 opacity-90 transition-opacity">
+      <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10 opacity-90 transition-opacity pointer-events-none">
         <div className="bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2 text-xs">
           <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
           <span className="text-white font-semibold tracking-wider">LIVE STREAM 1080P</span>
@@ -88,25 +95,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         <button
           onClick={toggleFullscreen}
-          className="p-2 rounded-lg bg-black/70 backdrop-blur-md border border-white/10 text-gray-300 hover:text-white transition-colors"
+          className="p-2 rounded-lg bg-black/70 backdrop-blur-md border border-white/10 text-gray-300 hover:text-white transition-colors pointer-events-auto cursor-pointer"
           title="Toggle Fullscreen"
         >
           {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
       </div>
 
-      {/* Bottom Bar Info */}
-      <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 rounded-xl">
-        <div>
-          <h4 className="text-white font-bold text-base truncate">{title}</h4>
-          <p className="text-gray-300 text-xs">{artist}</p>
+      {/* Bottom Bar Info (hidden in active official video mode so player controls stay unobstructed) */}
+      {!isOfficialStreamActive && (
+        <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 rounded-xl pointer-events-none">
+          <div>
+            <h3 className="text-white font-bold text-lg leading-tight">{title}</h3>
+            <p className="text-emerald-400 text-xs font-medium">{artist}</p>
+          </div>
+          <div className="flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-1 rounded-full text-emerald-300 text-xs font-semibold">
+            <Radio size={12} />
+            <span>320 kbps Master</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/30">
-          <Radio size={12} />
-          <span>Synced with Master Audio</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
-

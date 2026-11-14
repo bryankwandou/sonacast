@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Track, RadioStation } from '../../types';
-import { Play, Radio, Coins, Users, Disc3 } from 'lucide-react';
+import { Play, Radio, Coins, Users, Disc3, Tv } from 'lucide-react';
 
 interface RightSidebarProps {
   queue: Track[];
@@ -9,6 +9,8 @@ interface RightSidebarProps {
   radioStations: RadioStation[];
   onSelectRadio: (station: RadioStation) => void;
   onOpenTipModal: () => void;
+  ytMonitorRef?: React.RefObject<HTMLDivElement | null>;
+  showYtMonitor?: boolean;
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -17,10 +19,31 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onSelectTrack,
   radioStations,
   onSelectRadio,
-  onOpenTipModal
+  onOpenTipModal,
+  ytMonitorRef,
+  showYtMonitor = false
 }) => {
   return (
     <aside className="w-80 bg-[#080B12] border-l border-[#1B2232] flex flex-col p-5 select-none shrink-0 h-full overflow-y-auto space-y-6">
+      {/* Persistent Stream Source Slot (stays >= 200x200 when active in Cover/Orbwave modes) */}
+      {showYtMonitor && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <Tv size={13} />
+              Official Stream Source
+            </span>
+            <span className="text-[10px] text-cyan-300 font-mono bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30">
+              100% Full
+            </span>
+          </div>
+          <div
+            ref={ytMonitorRef}
+            className="w-full h-[205px] rounded-xl bg-black border border-[#20293D] overflow-hidden"
+          />
+        </div>
+      )}
+
       {/* Quick Artist Tip Card */}
       <div className="p-4 rounded-2xl bg-gradient-to-br from-[#121927] to-[#0E131F] border border-[#20293D] shadow-lg">
         <div className="flex items-center justify-between mb-2">
@@ -37,7 +60,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         </p>
         <button
           onClick={onOpenTipModal}
-          className="w-full py-2 px-3 rounded-xl bg-emerald-500 text-black text-xs font-bold hover:bg-emerald-400 transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20"
+          className="w-full py-2 px-3 rounded-xl bg-emerald-500 text-black text-xs font-bold hover:bg-emerald-400 transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
         >
           <Coins size={14} />
           Tip Artist (0.1 SOL)
@@ -127,4 +150,3 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     </aside>
   );
 };
-

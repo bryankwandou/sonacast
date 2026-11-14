@@ -3,6 +3,7 @@ import type { TabType, Language } from '../../types';
 import { TRANSLATIONS } from '../../locales/translations';
 import {
   Compass,
+  Search,
   Radio,
   Mic2,
   Sparkles,
@@ -34,6 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'discover', label: t.navDiscover, icon: <Compass size={18} /> },
+    { id: 'search', label: t.navSearch, icon: <Search size={18} /> },
     { id: 'radio', label: t.navRadio, icon: <Radio size={18} /> },
     { id: 'podcasts', label: t.navPodcasts, icon: <Mic2 size={18} /> },
     { id: 'visualizer', label: t.navVisualizer, icon: <Sparkles size={18} /> },

@@ -12,12 +12,15 @@ import {
   Sparkles,
   Mic2,
   Shuffle,
-  Repeat
+  Repeat,
+  Loader2
 } from 'lucide-react';
 
 interface BottomPlayerBarProps {
   currentTrack: Track;
   isPlaying: boolean;
+  isResolvingStream?: boolean;
+  streamError?: string | null;
   onTogglePlay: () => void;
   onNext: () => void;
   onPrev: () => void;
@@ -35,6 +38,8 @@ interface BottomPlayerBarProps {
 export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   currentTrack,
   isPlaying,
+  isResolvingStream = false,
+  streamError = null,
   onTogglePlay,
   onNext,
   onPrev,
@@ -49,12 +54,13 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   onToggleLyrics
 }) => {
   const formatTime = (secs: number) => {
-    const mins = Math.floor(secs / 60);
-    const rem = Math.floor(secs % 60);
+    const safe = Math.max(0, Math.floor(secs));
+    const mins = Math.floor(safe / 60);
+    const rem = safe % 60;
     return `${mins}:${rem < 10 ? '0' : ''}${rem}`;
   };
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
 
   return (
     <footer className="h-24 bg-[#080B12]/95 backdrop-blur-xl border-t border-[#1B2232] px-6 flex items-center justify-between z-40 select-none">
@@ -66,9 +72,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
           className="w-14 h-14 rounded-xl object-cover shadow-md border border-[#1E2638] shrink-0"
         />
         <div className="min-w-0">
-          <h4 className="text-sm font-bold text-white truncate hover:underline cursor-pointer">
-            {currentTrack.title}
-          </h4>
+          <h4 className="text-sm font-bold text-white truncate">{currentTrack.title}</h4>
           <p className="text-xs text-gray-400 truncate">{currentTrack.artist}</p>
           <span className="inline-block mt-0.5 text-[10px] text-emerald-400 font-semibold px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">
             {currentTrack.genre}
@@ -78,28 +82,33 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
 
       {/* Center: Controls & Scrubber */}
       <div className="flex flex-col items-center gap-1.5 w-2/4 max-w-xl">
-        {/* Buttons */}
         <div className="flex items-center gap-4">
           <button className="text-gray-400 hover:text-white transition-colors" title="Shuffle">
             <Shuffle size={15} />
           </button>
           <button
             onClick={onPrev}
-            className="text-gray-300 hover:text-white transition-colors"
+            className="text-gray-300 hover:text-white transition-colors cursor-pointer"
             title="Previous Track"
           >
             <SkipBack size={18} />
           </button>
           <button
             onClick={onTogglePlay}
-            className="w-10 h-10 rounded-full bg-emerald-500 text-black flex items-center justify-center hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/25 active:scale-95"
+            className="w-10 h-10 rounded-full bg-emerald-500 text-black flex items-center justify-center hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/25 active:scale-95 cursor-pointer"
             title={isPlaying ? 'Pause' : 'Play'}
           >
-            {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
+            {isResolvingStream ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : isPlaying ? (
+              <Pause size={18} fill="currentColor" />
+            ) : (
+              <Play size={18} fill="currentColor" className="ml-0.5" />
+            )}
           </button>
           <button
             onClick={onNext}
-            className="text-gray-300 hover:text-white transition-colors"
+            className="text-gray-300 hover:text-white transition-colors cursor-pointer"
             title="Next Track"
           >
             <SkipForward size={18} />
@@ -116,7 +125,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             className="relative flex-1 h-1.5 bg-[#1C2333] rounded-full overflow-hidden cursor-pointer group"
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
-              const clickPos = (e.clientX - rect.left) / rect.width;
+              const clickPos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
               onSeek(clickPos * duration);
             }}
           >
@@ -127,19 +136,30 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
           </div>
           <span>{formatTime(duration)}</span>
         </div>
-        <div className="flex items-center gap-2 text-[9px] font-mono text-emerald-400/80 -mt-0.5">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span>100% Full-Length Continuity Active</span>
+
+        <div className="flex items-center gap-2 text-[9px] font-mono -mt-0.5">
+          {isResolvingStream ? (
+            <span className="text-cyan-300 flex items-center gap-1">
+              <Loader2 size={10} className="animate-spin" />
+              Loading Full Master...
+            </span>
+          ) : streamError ? (
+            <span className="text-amber-400 truncate max-w-md">{streamError}</span>
+          ) : (
+            <span className="text-emerald-400/85 flex items-center gap-1.5">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>100% Full-Length Continuity Active</span>
+            </span>
+          )}
         </div>
       </div>
 
       {/* Right: Display Mode Switcher & Volume */}
       <div className="flex items-center justify-end gap-3 w-1/4 min-w-[240px]">
-        {/* Tri-Mode Selector */}
         <div className="flex items-center p-1 bg-[#101420] border border-[#1E2638] rounded-xl gap-1">
           <button
             onClick={() => onPlayerModeChange('cover')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all ${
+            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
               playerMode === 'cover'
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                 : 'text-gray-400 hover:text-white'
@@ -151,7 +171,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
 
           <button
             onClick={() => onPlayerModeChange('video')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all ${
+            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
               playerMode === 'video'
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                 : 'text-gray-400 hover:text-white'
@@ -163,7 +183,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
 
           <button
             onClick={() => onPlayerModeChange('orbwave')}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all ${
+            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
               playerMode === 'orbwave'
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                 : 'text-gray-400 hover:text-white'
@@ -174,10 +194,9 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
           </button>
         </div>
 
-        {/* Live Lyrics Toggle */}
         <button
           onClick={onToggleLyrics}
-          className={`p-2 rounded-xl border text-xs font-semibold transition-all ${
+          className={`p-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
             isLyricsOpen
               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
               : 'bg-[#101420] border-[#1E2638] text-gray-400 hover:text-white'
@@ -187,11 +206,10 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
           <Mic2 size={15} />
         </button>
 
-        {/* Volume Slider */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => onVolumeChange(volume > 0 ? 0 : 0.8)}
-            className="text-gray-400 hover:text-white transition-colors"
+            onClick={() => onVolumeChange(volume > 0 ? 0 : 0.85)}
+            className="text-gray-400 hover:text-white transition-colors cursor-pointer"
           >
             {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
@@ -199,14 +217,13 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             type="range"
             min="0"
             max="1"
-            step="0.05"
+            step="0.01"
             value={volume}
             onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-            className="w-16 h-1 accent-emerald-500 bg-[#1C2333] rounded-lg cursor-pointer"
+            className="w-20 accent-emerald-500 cursor-pointer"
           />
         </div>
       </div>
     </footer>
   );
 };
-

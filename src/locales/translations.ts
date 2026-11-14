@@ -4,6 +4,7 @@ export const TRANSLATIONS: Record<Language, {
   appName: string;
   tagline: string;
   navDiscover: string;
+  navSearch: string;
   navRadio: string;
   navPodcasts: string;
   navVisualizer: string;
@@ -29,6 +30,7 @@ export const TRANSLATIONS: Record<Language, {
     appName: 'Sonacast',
     tagline: 'Browser-First Streaming, Live Video & Audio Spectrum Engine',
     navDiscover: 'Music Library',
+    navSearch: 'Search 85M+ Tracks',
     navRadio: 'Live Radio',
     navPodcasts: 'Podcasts',
     navVisualizer: 'Orbwave Studio',
@@ -54,6 +56,7 @@ export const TRANSLATIONS: Record<Language, {
     appName: 'Sonacast',
     tagline: 'Platform Pemutar Musik, Video Live & Visualisasi Spektrum',
     navDiscover: 'Koleksi Musik',
+    navSearch: 'Cari 85Jt+ Lagu',
     navRadio: 'Radio Langsung',
     navPodcasts: 'Podcast',
     navVisualizer: 'Studio Orbwave',
@@ -79,6 +82,7 @@ export const TRANSLATIONS: Record<Language, {
     appName: 'Sonacast',
     tagline: 'ブラウザ完結型ストリーミング・ライブ動画・スペクトラム解析エンジン',
     navDiscover: '音楽ライブラリ',
+    navSearch: '8500万曲を検索',
     navRadio: 'ライブラジオ',
     navPodcasts: 'ポッドキャスト',
     navVisualizer: 'Orbwaveスタジオ',
@@ -104,6 +108,7 @@ export const TRANSLATIONS: Record<Language, {
     appName: 'Sonacast',
     tagline: 'Streaming en navegador, video en directo y espectro de audio',
     navDiscover: 'Biblioteca Musical',
+    navSearch: 'Buscar 85M+ Canciones',
     navRadio: 'Radio en Vivo',
     navPodcasts: 'Pódcasts',
     navVisualizer: 'Estudio Orbwave',
@@ -129,6 +134,7 @@ export const TRANSLATIONS: Record<Language, {
     appName: 'Sonacast',
     tagline: 'Browser-basiertes Streaming, Live-Video & Audio-Spektrumanalyse',
     navDiscover: 'Musikbibliothek',
+    navSearch: '85M+ Titel suchen',
     navRadio: 'Live-Radio',
     navPodcasts: 'Podcasts',
     navVisualizer: 'Orbwave-Studio',

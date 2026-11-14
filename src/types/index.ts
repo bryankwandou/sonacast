@@ -12,7 +12,10 @@ export interface Track {
   duration: number; // seconds
   coverUrl: string;
   videoUrl?: string;
-  audioUrl?: string; // fallback synthetic sound if offline
+  audioUrl?: string; // bundled studio master MP3 or local user upload blob URL
+  youtubeId?: string; // primary official full-length YouTube stream ID
+  candidateVideoIds?: string[]; // failover official embed-safe stream IDs
+  streamSource?: 'studio-master' | 'official-stream' | 'local-upload' | 'synth';
   genre: string;
   lyrics: LyricLine[];
   artistSolanaAddress: string;
@@ -46,7 +49,7 @@ export interface RadioStation {
 }
 
 export type PlayerMode = 'cover' | 'video' | 'orbwave';
-export type TabType = 'discover' | 'radio' | 'podcasts' | 'visualizer' | 'pitch' | 'proofOfStream';
+export type TabType = 'discover' | 'search' | 'radio' | 'podcasts' | 'visualizer' | 'pitch' | 'proofOfStream';
 export type Language = 'en' | 'id' | 'ja' | 'es' | 'de';
 
 export interface TipRecord {
