@@ -194,6 +194,13 @@ function getYtSearchEndpoint(): string {
   return '/api/yt-search';
 }
 
+function safeYtThumbnail(rawThumb: string | undefined, videoId: string): string {
+  if (rawThumb && !rawThumb.includes('piped.private.coffee')) {
+    return rawThumb;
+  }
+  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+}
+
 async function searchPipedMusic(query: string): Promise<StreamCandidate[]> {
   try {
     const url = `https://api.piped.private.coffee/search?q=${encodeURIComponent(query)}&filter=music_songs`;
@@ -210,7 +217,7 @@ async function searchPipedMusic(query: string): Promise<StreamCandidate[]> {
           title: item.title || '',
           author: item.uploaderName || '',
           duration: Number(item.duration) || 0,
-          thumbnail: item.thumbnail || ''
+          thumbnail: videoId ? safeYtThumbnail(item.thumbnail, videoId) : ''
         };
       })
       .filter(
@@ -222,28 +229,44 @@ async function searchPipedMusic(query: string): Promise<StreamCandidate[]> {
   }
 }
 
-async function searchVercelYtApi(query: string): Promise<StreamCandidate[]> {
+async function searchVercelYtApi(query: string, mode?: 'yt'): Promise<StreamCandidate[]> {
   try {
     const endpoint = getYtSearchEndpoint();
-    const res = await fetch(`${endpoint}?q=${encodeURIComponent(query)}`, {
+    const modeParam = mode ? `&mode=${mode}` : '';
+    const res = await fetch(`${endpoint}?q=${encodeURIComponent(query)}${modeParam}`, {
       signal: AbortSignal.timeout(6500)
     });
     if (!res.ok) return [];
     const data = await res.json();
     const items = Array.isArray(data?.items) ? data.items : [];
-    return items.filter(
-      (x: StreamCandidate) =>
-        Boolean(x.videoId) && (x.duration === 0 || x.duration >= 60) && !isNonOriginalTitle(x.title, query)
-    );
+    return items
+      .filter(
+        (x: StreamCandidate) =>
+          Boolean(x.videoId) && (x.duration === 0 || x.duration >= 60) && !isNonOriginalTitle(x.title, query)
+      )
+      .map((x: StreamCandidate) => ({
+        ...x,
+        thumbnail: safeYtThumbnail(x.thumbnail, x.videoId)
+      }));
   } catch {
     return [];
   }
 }
 
 export async function searchFullStreams(query: string): Promise<StreamCandidate[]> {
-  const piped = await searchPipedMusic(query);
-  if (piped.length > 0) return piped;
-  return await searchVercelYtApi(query);
+  const [piped, ytApi] = await Promise.all([
+    searchPipedMusic(query),
+    searchVercelYtApi(`${query} official audio`, 'yt')
+  ]);
+  const seen = new Set<string>();
+  const merged: StreamCandidate[] = [];
+  for (const item of [...piped, ...ytApi]) {
+    if (!seen.has(item.videoId)) {
+      seen.add(item.videoId);
+      merged.push(item);
+    }
+  }
+  return merged;
 }
 
 function scoreCandidate(
@@ -256,10 +279,13 @@ function scoreCandidate(
   const candTitle = normalizeText(candidate.title);
   const candAuthor = normalizeText(candidate.author);
   const normTitle = normalizeText(stripTitleModifiers(targetTitle));
+  const rawLowerTitle = (targetTitle || '').toLowerCase();
+  const candRawLower = (candidate.title || '').toLowerCase();
+  const candAuthorLower = (candidate.author || '').toLowerCase();
   const primaryArtist = normalizeText(targetArtist.split(/[,&]|ft\.?|feat\.?/i)[0] || '');
 
-  if (candTitle === normTitle) score += 60;
-  else if (normTitle && candTitle.includes(normTitle)) score += 35;
+  if (candTitle === normTitle) score += 65;
+  else if (normTitle && candTitle.includes(normTitle)) score += 40;
 
   const titleWords = normTitle.split(' ').filter((w) => w.length >= 2);
   let matchedWords = 0;
@@ -267,15 +293,33 @@ function scoreCandidate(
     if (candTitle.includes(word)) matchedWords++;
   }
   if (titleWords.length > 0) {
-    score += Math.round((matchedWords / titleWords.length) * 30);
+    score += Math.round((matchedWords / titleWords.length) * 35);
+    if (matchedWords === 0) score -= 60;
   }
 
+  let artistMatched = false;
   if (primaryArtist) {
     if (candAuthor.includes(primaryArtist) || candTitle.includes(primaryArtist)) {
-      score += 40;
+      score += 45;
+      artistMatched = true;
     } else if (primaryArtist.split(' ').every((part) => candAuthor.includes(part) || candTitle.includes(part))) {
-      score += 25;
+      score += 28;
+      artistMatched = true;
     }
+  }
+
+  if (
+    artistMatched &&
+    (candAuthorLower.includes('- topic') ||
+      candAuthorLower.includes('vevo') ||
+      candRawLower.includes('official audio') ||
+      candRawLower.includes('lyrics'))
+  ) {
+    score += 12;
+  }
+
+  if (!rawLowerTitle.includes('live') && (candRawLower.includes('(live') || candRawLower.includes('live in ') || candRawLower.includes('concert'))) {
+    score -= 22;
   }
 
   if (expectedDuration && expectedDuration >= 60 && candidate.duration >= 60) {
@@ -285,7 +329,7 @@ function scoreCandidate(
     else if (diff > 90) score -= 35;
   }
 
-  if (candidate.duration < 60) score -= 100;
+  if (candidate.duration > 0 && candidate.duration < 60) score -= 100;
   return score;
 }
 
@@ -306,12 +350,14 @@ export async function resolveFullTrackStream(
     ? `${cleanArtist} ${cleanTitle}`
     : cleanTitle;
 
-  const piped = await searchPipedMusic(query);
-  const apiFallback = piped.length >= 3 ? [] : await searchVercelYtApi(`${query} audio`);
+  const [piped, ytFallback] = await Promise.all([
+    searchPipedMusic(query),
+    searchVercelYtApi(`${query} official audio`, 'yt')
+  ]);
 
   const seenIds = new Set<string>();
   const combined: StreamCandidate[] = [];
-  for (const item of [...piped, ...apiFallback]) {
+  for (const item of [...piped, ...ytFallback]) {
     if (!seenIds.has(item.videoId)) {
       seenIds.add(item.videoId);
       combined.push(item);
@@ -324,7 +370,7 @@ export async function resolveFullTrackStream(
     (a, b) => scoreCandidate(b, title, artist, expectedDuration) - scoreCandidate(a, title, artist, expectedDuration)
   );
 
-  const candidateIds = ranked.slice(0, 6).map((c) => c.videoId);
+  const candidateIds = ranked.slice(0, 8).map((c) => c.videoId);
   const best = ranked[0];
 
   return {
@@ -348,17 +394,45 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
   if (!query || query.trim().length === 0) return [];
 
   try {
+    const lowerQuery = query.toLowerCase();
+    const queryTokens = normalizeText(query)
+      .split(' ')
+      .filter((tok) => tok.length >= 2);
+
     const itunesPromise = (async (): Promise<ITunesItem[]> => {
       try {
-        const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=28`;
+        const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=40`;
         const res = await fetch(url, { signal: AbortSignal.timeout(5500) });
         if (!res.ok) return [];
         const data = await res.json();
         if (!Array.isArray(data.results)) return [];
-        return data.results.filter((item: ITunesItem) => {
+        const valid = data.results.filter((item: ITunesItem) => {
           const secs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
           return secs >= 60 && !isNonOriginalTitle(item.trackName || '', query);
         });
+
+        // Sort canonical studio originals ahead of live/acoustic variants unless user asked for them
+        const wantsLive = lowerQuery.includes('live');
+        const wantsAcoustic = lowerQuery.includes('acoustic');
+        const sorted = [...valid].sort((a, b) => {
+          const aLower = (a.trackName || '').toLowerCase();
+          const bLower = (b.trackName || '').toLowerCase();
+          const aPenalty = (!wantsLive && aLower.includes('live') ? 2 : 0) + (!wantsAcoustic && aLower.includes('acoustic') ? 1 : 0);
+          const bPenalty = (!wantsLive && bLower.includes('live') ? 2 : 0) + (!wantsAcoustic && bLower.includes('acoustic') ? 1 : 0);
+          return aPenalty - bPenalty;
+        });
+
+        const seenCanon = new Set<string>();
+        const deduped: ITunesItem[] = [];
+        for (const item of sorted) {
+          const baseTitle = normalizeText(stripTitleModifiers(item.trackName || ''));
+          const baseArtist = normalizeText((item.artistName || '').split(/[,&]|ft\.?|feat\.?/i)[0] || '');
+          const canonKey = `${baseTitle}::${baseArtist}`;
+          if (!baseTitle || seenCanon.has(canonKey)) continue;
+          seenCanon.add(canonKey);
+          deduped.push(item);
+        }
+        return deduped;
       } catch {
         return [];
       }
@@ -369,6 +443,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
     const [itunesItems, streamCandidates] = await Promise.all([itunesPromise, streamsPromise]);
 
     const usedStreamIds = new Set<string>();
+    const coveredTitles = new Set<string>();
 
     const itunesTracks: Track[] = itunesItems.map((item) => {
       const coverUrl = item.artworkUrl100
@@ -377,6 +452,8 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
 
       const expectedSecs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
       const masterMatch = findMasterAudio(item.trackName || '', item.artistName || '');
+      const baseTitle = normalizeText(stripTitleModifiers(item.trackName || ''));
+      if (baseTitle) coveredTitles.add(baseTitle);
 
       if (masterMatch) {
         return {
@@ -404,10 +481,10 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       // Cross-match with pre-fetched full official streams so many cards already have candidate IDs ready
       const scoredStreams = streamCandidates
         .map((c) => ({ c, score: scoreCandidate(c, item.trackName, item.artistName, expectedSecs) }))
-        .filter((x) => x.score >= 55)
+        .filter((x) => x.score >= 60)
         .sort((a, b) => b.score - a.score);
 
-      const candidateIds = scoredStreams.slice(0, 5).map((x) => x.c.videoId);
+      const candidateIds = scoredStreams.slice(0, 6).map((x) => x.c.videoId);
       if (candidateIds[0]) usedStreamIds.add(candidateIds[0]);
 
       return {
@@ -432,8 +509,16 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
     });
 
     const extraStreamTracks: Track[] = streamCandidates
-      .filter((c) => !usedStreamIds.has(c.videoId) && c.duration >= 60)
-      .slice(0, 12)
+      .filter((c) => {
+        if (usedStreamIds.has(c.videoId) || c.duration < 60) return false;
+        const baseCandTitle = normalizeText(stripTitleModifiers(c.title));
+        if (!baseCandTitle || coveredTitles.has(baseCandTitle)) return false;
+        const haystack = `${normalizeText(c.title)} ${normalizeText(c.author)}`;
+        if (queryTokens.length > 0 && !queryTokens.some((tok) => haystack.includes(tok))) return false;
+        coveredTitles.add(baseCandTitle);
+        return true;
+      })
+      .slice(0, 8)
       .map((c) => {
         const masterMatch = findMasterAudio(c.title, c.author);
         return {
@@ -442,8 +527,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           artist: c.author || query,
           album: 'Official Full-Length Release',
           duration: masterMatch ? masterMatch.duration : c.duration,
-          coverUrl:
-            c.thumbnail || `https://i.ytimg.com/vi/${c.videoId}/hqdefault.jpg`,
+          coverUrl: safeYtThumbnail(c.thumbnail, c.videoId),
           audioUrl: masterMatch ? masterMatch.audioUrl : undefined,
           youtubeId: masterMatch ? undefined : c.videoId,
           candidateVideoIds: masterMatch ? undefined : [c.videoId],
@@ -459,7 +543,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
         };
       });
 
-    // Prioritize bundled studio masters first, then iTunes catalog + full streams
+    // Prioritize bundled studio masters first, then canonical iTunes catalog + verified streams
     const mastersFirst = itunesTracks.filter((t) => t.streamSource === 'studio-master');
     const restItunes = itunesTracks.filter((t) => t.streamSource !== 'studio-master');
     return [...mastersFirst, ...restItunes, ...extraStreamTracks];

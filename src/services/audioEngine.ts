@@ -71,6 +71,7 @@ export class AudioEngine {
   private ytReady = false;
   private ytApiPromise: Promise<void> | null = null;
   private ytPollInterval: number | null = null;
+  private ytWatchdogTimer: number | null = null;
   private candidateIds: string[] = [];
   private candidateIndex = 0;
   private playGeneration = 0;
@@ -96,6 +97,24 @@ export class AudioEngine {
 
   public mountYouTubeHost(el: HTMLElement | null) {
     this.ytHostElement = el;
+  }
+
+  public preloadYouTubeApi() {
+    this.loadYouTubeApi().catch(() => {});
+  }
+
+  public getPlayGeneration(): number {
+    return this.playGeneration;
+  }
+
+  public appendCandidateIds(extraIds: string[], expectedGen?: number) {
+    if (expectedGen !== undefined && expectedGen !== this.playGeneration) return;
+    if (this.activeBackend !== 'youtube') return;
+    for (const id of extraIds) {
+      if (id && !this.candidateIds.includes(id)) {
+        this.candidateIds.push(id);
+      }
+    }
   }
 
   public getActiveBackend(): AudioBackendType {
@@ -212,7 +231,68 @@ export class AudioEngine {
     return this.ytApiPromise;
   }
 
+  private clearYouTubeWatchdog() {
+    if (this.ytWatchdogTimer !== null) {
+      clearTimeout(this.ytWatchdogTimer);
+      this.ytWatchdogTimer = null;
+    }
+  }
+
+  private armYouTubeWatchdog(gen: number) {
+    this.clearYouTubeWatchdog();
+    this.ytWatchdogTimer = window.setTimeout(() => {
+      if (gen !== this.playGeneration || this.activeBackend !== 'youtube' || !this.isPlaying) {
+        return;
+      }
+      let pos = this.currentTime;
+      try {
+        if (this.ytPlayer && this.ytReady) {
+          pos = this.ytPlayer.getCurrentTime();
+        }
+      } catch {
+        // Ignore
+      }
+      if (typeof pos === 'number' && pos >= 0.3) return;
+      this.advanceToNextCandidate(gen);
+    }, 6500);
+  }
+
+  private advanceToNextCandidate(gen: number): boolean {
+    if (gen !== this.playGeneration || this.activeBackend !== 'youtube') return false;
+    this.candidateIndex += 1;
+    if (this.candidateIndex < this.candidateIds.length && this.ytPlayer && this.ytReady) {
+      const nextId = this.candidateIds[this.candidateIndex];
+      try {
+        this.ytPlayer.loadVideoById(nextId);
+        this.ytPlayer.playVideo();
+        this.armYouTubeWatchdog(gen);
+        return true;
+      } catch {
+        // Fall through to error stop
+      }
+    }
+    this.clearYouTubeWatchdog();
+    this.isPlaying = false;
+    this.stopYouTubePoll();
+    this.notifyState();
+    this.notifyError('Selected stream candidate unavailable for embedding. Try another search result.');
+    return false;
+  }
+
+  private async waitForVisibleYouTubeHost(): Promise<void> {
+    if (!this.ytHostElement) return;
+    const deadline = performance.now() + 320;
+    while (performance.now() < deadline) {
+      const rect = this.ytHostElement.getBoundingClientRect();
+      if (rect.width >= 150 && rect.height >= 150) {
+        return;
+      }
+      await new Promise<void>((res) => requestAnimationFrame(() => res()));
+    }
+  }
+
   private stopYouTubeBackend() {
+    this.clearYouTubeWatchdog();
     this.stopYouTubePoll();
     if (this.ytPlayer && this.ytReady) {
       try {
@@ -244,6 +324,9 @@ export class AudioEngine {
         if (typeof pos === 'number' && isFinite(pos) && pos >= 0) {
           this.currentTime = pos;
           this.notifyTime();
+          if (pos >= 0.3) {
+            this.clearYouTubeWatchdog();
+          }
         }
         const realDur = this.ytPlayer.getDuration();
         if (typeof realDur === 'number' && isFinite(realDur) && realDur >= 30) {
@@ -275,6 +358,7 @@ export class AudioEngine {
 
     const gen = ++this.playGeneration;
     this.stopHtml5Backend();
+    this.clearYouTubeWatchdog();
     this.stopYouTubePoll();
 
     this.activeBackend = 'youtube';
@@ -288,7 +372,7 @@ export class AudioEngine {
     this.notifyState();
 
     try {
-      await this.loadYouTubeApi();
+      await Promise.all([this.loadYouTubeApi(), this.waitForVisibleYouTubeHost()]);
     } catch {
       if (gen === this.playGeneration) {
         this.isPlaying = false;
@@ -308,6 +392,7 @@ export class AudioEngine {
         this.ytPlayer.loadVideoById(firstVideoId);
         this.ytPlayer.playVideo();
         this.startYouTubePoll();
+        this.armYouTubeWatchdog(gen);
         return;
       } catch {
         // Rebuild player below if previous iframe was detached
@@ -350,16 +435,21 @@ export class AudioEngine {
           event.target.setVolume(Math.round(this.volume * 100));
           event.target.playVideo();
           this.startYouTubePoll();
+          this.armYouTubeWatchdog(gen);
         },
         onStateChange: (event) => {
-          if (this.activeBackend !== 'youtube') return;
+          if (this.activeBackend !== 'youtube' || gen !== this.playGeneration) return;
           const state = event.data;
-          // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
+          // 1 = PLAYING, 2 = PAUSED, 0 = ENDED, 5 = CUED
           if (state === 1) {
             this.isPlaying = true;
             this.notifyState();
             this.startYouTubePoll();
             try {
+              const cur = event.target.getCurrentTime();
+              if (typeof cur === 'number' && cur >= 0.3) {
+                this.clearYouTubeWatchdog();
+              }
               const realDur = event.target.getDuration();
               if (realDur && isFinite(realDur) && realDur >= 30) {
                 const rounded = Math.round(realDur);
@@ -371,11 +461,21 @@ export class AudioEngine {
             } catch {
               // Ignore
             }
+          } else if (state === 5) {
+            if (this.isPlaying) {
+              try {
+                event.target.playVideo();
+              } catch {
+                // Ignore
+              }
+            }
           } else if (state === 2) {
+            this.clearYouTubeWatchdog();
             this.isPlaying = false;
             this.stopYouTubePoll();
             this.notifyState();
           } else if (state === 0) {
+            this.clearYouTubeWatchdog();
             this.isPlaying = false;
             this.stopYouTubePoll();
             this.currentTime = this.duration;
@@ -385,21 +485,8 @@ export class AudioEngine {
           }
         },
         onError: () => {
-          if (this.activeBackend !== 'youtube') return;
-          this.candidateIndex += 1;
-          if (this.candidateIndex < this.candidateIds.length && this.ytPlayer) {
-            const nextId = this.candidateIds[this.candidateIndex];
-            try {
-              this.ytPlayer.loadVideoById(nextId);
-              return;
-            } catch {
-              // Fall through
-            }
-          }
-          this.isPlaying = false;
-          this.stopYouTubePoll();
-          this.notifyState();
-          this.notifyError('Selected stream candidate unavailable for embedding. Try another search result.');
+          if (this.activeBackend !== 'youtube' || gen !== this.playGeneration) return;
+          this.advanceToNextCandidate(gen);
         }
       }
     });
@@ -457,6 +544,7 @@ export class AudioEngine {
 
   public pause() {
     this.isPlaying = false;
+    this.clearYouTubeWatchdog();
     this.stopYouTubePoll();
     if (this.activeBackend === 'html5' && this.audioElement) {
       this.audioElement.pause();

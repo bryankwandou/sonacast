@@ -45,6 +45,7 @@ export default async function handler(req, res) {
   }
 
   const q = typeof req.query?.q === 'string' ? req.query.q.trim() : '';
+  const mode = typeof req.query?.mode === 'string' ? req.query.mode.trim() : '';
   if (!q) {
     res.status(400).json({ error: 'Missing query parameter q', items: [] });
     return;
@@ -52,33 +53,35 @@ export default async function handler(req, res) {
 
   const queryLower = q.toLowerCase();
 
-  try {
-    // Primary: query Piped Music API first for full official song catalog
-    const pipedUrl = `https://api.piped.private.coffee/search?q=${encodeURIComponent(q)}&filter=music_songs`;
-    const pipedRes = await fetch(pipedUrl, { signal: AbortSignal.timeout(5500) });
-    if (pipedRes.ok) {
-      const pipedData = await pipedRes.json();
-      const rawItems = Array.isArray(pipedData?.items) ? pipedData.items : [];
-      const cleaned = rawItems
-        .map((item) => {
-          const id = (item.url || '').split('v=')[1]?.split('&')[0] || '';
-          return {
-            videoId: id,
-            title: item.title || '',
-            author: item.uploaderName || '',
-            duration: Number(item.duration) || 0,
-            thumbnail: item.thumbnail || ''
-          };
-        })
-        .filter((x) => x.videoId && x.duration >= 60 && !isNonOriginalTitle(x.title, queryLower));
+  if (mode !== 'yt') {
+    try {
+      // Primary: query Piped Music API first for full official song catalog
+      const pipedUrl = `https://api.piped.private.coffee/search?q=${encodeURIComponent(q)}&filter=music_songs`;
+      const pipedRes = await fetch(pipedUrl, { signal: AbortSignal.timeout(5500) });
+      if (pipedRes.ok) {
+        const pipedData = await pipedRes.json();
+        const rawItems = Array.isArray(pipedData?.items) ? pipedData.items : [];
+        const cleaned = rawItems
+          .map((item) => {
+            const id = (item.url || '').split('v=')[1]?.split('&')[0] || '';
+            return {
+              videoId: id,
+              title: item.title || '',
+              author: item.uploaderName || '',
+              duration: Number(item.duration) || 0,
+              thumbnail: id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : ''
+            };
+          })
+          .filter((x) => x.videoId && x.duration >= 60 && !isNonOriginalTitle(x.title, queryLower));
 
-      if (cleaned.length > 0) {
-        res.status(200).json({ source: 'piped', items: cleaned });
-        return;
+        if (cleaned.length >= 4) {
+          res.status(200).json({ source: 'piped', items: cleaned });
+          return;
+        }
       }
+    } catch {
+      // Fall through to YouTube HTML initial data parser
     }
-  } catch {
-    // Fall through to YouTube HTML initial data parser
   }
 
   try {

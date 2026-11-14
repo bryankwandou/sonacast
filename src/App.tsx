@@ -74,6 +74,7 @@ export default function App() {
 
   useEffect(() => {
     sharedAudioEngine.mountYouTubeHost(ytHostRef.current);
+    sharedAudioEngine.preloadYouTubeApi();
   }, []);
 
   useEffect(() => {
@@ -235,6 +236,15 @@ export default function App() {
       setResolvingTrackId(null);
       setIsYouTubeActive(true);
       sharedAudioEngine.playYouTubeTrack(existingIds, track.duration, track.bpm);
+      if (existingIds.length < 4) {
+        const activeGen = sharedAudioEngine.getPlayGeneration();
+        resolveFullTrackStream(track.title, track.artist, track.duration)
+          .then((resolved) => {
+            if (!resolved || selectionSeq !== selectionCounterRef.current) return;
+            sharedAudioEngine.appendCandidateIds(resolved.candidateIds, activeGen);
+          })
+          .catch(() => {});
+      }
       return;
     }
 
