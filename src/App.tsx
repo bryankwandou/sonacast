@@ -944,6 +944,18 @@ export default function App() {
     setCurrentTab('search');
   };
 
+  const handleEnterApp = (targetTab: TabType = 'discover', searchQuery?: string) => {
+    if (searchQuery && searchQuery.trim()) {
+      navigateToSearch(searchQuery.trim());
+      return;
+    }
+    if (targetTab === 'landing') {
+      setCurrentTab('discover');
+      return;
+    }
+    handleTabChange(targetTab);
+  };
+
   const handleTopSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const rawValue =
@@ -984,7 +996,13 @@ export default function App() {
   ];
 
   return (
-    <div className="flex flex-col h-screen w-full bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden font-sans transition-colors">
+    <div
+      className={
+        currentTab === 'landing'
+          ? 'min-h-screen w-full bg-[var(--bg-app)] text-[var(--text-primary)] font-sans transition-colors'
+          : 'flex flex-col h-screen w-full bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden font-sans transition-colors'
+      }
+    >
       {/* Persistent Official Full-Length Stream Container */}
       <div
         id="sonacast-yt-host"
@@ -1003,376 +1021,375 @@ export default function App() {
         }}
       />
 
-      {/* Global Top Bar (Responsive for Mobile + Desktop) */}
-      <header className="bg-[var(--bg-sidebar)] border-b border-[var(--border-subtle)] px-3 sm:px-6 py-2 flex items-center justify-between gap-2 text-xs z-40 shrink-0 transition-colors">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <button
-            type="button"
-            onClick={() => setIsMobileNavOpen(true)}
-            data-testid="mobile-menu-open"
-            aria-label={t.menuButton}
-            className="md:hidden w-10 h-10 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] flex items-center justify-center shrink-0 cursor-pointer"
-          >
-            <Menu size={18} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabChange('landing')}
-            className="md:hidden flex items-center gap-2 shrink-0 cursor-pointer"
-          >
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[var(--accent-emerald)] to-[var(--accent-cyan)] p-0.5 flex items-center justify-center">
-              <div className="w-full h-full bg-[var(--bg-sidebar)] rounded-[6px] flex items-center justify-center">
-                <Activity size={15} className="text-[var(--accent-text)]" />
-              </div>
-            </div>
-            <span className="text-sm font-black tracking-tight text-[var(--text-primary)]">
-              {t.appName}
-            </span>
-          </button>
-
-          <div className="hidden md:flex items-center gap-2 min-w-0">
-            <span className="w-2 h-2 rounded-full bg-[var(--accent-emerald)] shrink-0" />
-            <span className="font-semibold text-[var(--text-primary)] truncate">
-              {currentTrack.title}
-            </span>
-            <span className="text-[var(--text-dim)] hidden lg:inline">&middot;</span>
-            <span className="text-[var(--text-secondary)] truncate hidden lg:inline">
-              {currentTrack.artist}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          {sleepMinutesRemaining !== null && (
-            <span className="text-[11px] text-[var(--accent-text)] font-mono hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--accent-soft)]">
-              {sleepMinutesRemaining}m
-            </span>
-          )}
-
-          <ThemeLanguageControls variant="topbar" />
-
-          <button
-            type="button"
-            onClick={() => setIsMobileQueueOpen(true)}
-            aria-label={t.queue}
-            className="min-[1380px]:hidden w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center shrink-0 cursor-pointer"
-          >
-            <ListMusic size={15} />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleHardRefresh}
-            className="hidden sm:flex min-h-[36px] px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] items-center gap-1 transition-colors cursor-pointer"
-            title={t.reloadLabel}
-          >
-            <RefreshCw size={12} />
-            <span className="hidden lg:inline">{t.reloadLabel}</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Top Application Workspace */}
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* Left Navigation Sidebar + Mobile Drawer */}
-        <Sidebar
-          currentTab={currentTab}
-          onTabChange={handleTabChange}
+      {currentTab === 'landing' ? (
+        <LandingView
+          tracks={TRACK_CATALOG}
+          currentTrack={currentTrack}
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          resolvingTrackId={resolvingTrackId}
+          onSelectTrack={handleSelectTrack}
+          onTogglePlay={handleTogglePlay}
+          onSeek={handleSeek}
+          onNext={() => handleNext(false)}
+          onEnterApp={handleEnterApp}
           onOpenWallet={() => setIsWalletModalOpen(true)}
-          walletBalanceSol={walletBalanceSol}
-          isMobileOpen={isMobileNavOpen}
-          onCloseMobile={() => setIsMobileNavOpen(false)}
+          onOpenPitchDeck={() => setIsPitchModalOpen(true)}
+          likedTrackIds={likedTrackIds}
+          onToggleLike={handleToggleLike}
         />
-
-        {/* Center Main Stage */}
-        <main className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden p-4 sm:p-6 space-y-5 min-w-0">
-          {/* Persistent Top Search Bar + Quick Artist Directory / Stage Toggle */}
-          <form
-            onSubmit={handleTopSearchSubmit}
-            className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2.5 rounded-2xl transition-colors"
-            style={{ boxShadow: 'var(--card-shadow)' }}
-          >
-            <div className="relative flex-1 min-w-[180px]">
-              <Search
-                size={15}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
-              />
-              <input
-                type="text"
-                value={topSearchInput}
-                onChange={(e) => setTopSearchInput(e.target.value)}
-                placeholder={t.searchPlaceholder}
-                aria-label={t.searchPlaceholder}
-                className="w-full pl-9 pr-3 min-h-[40px] py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] transition-colors"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+      ) : (
+        <>
+          {/* Global Top Bar (Responsive for Mobile + Desktop Web Player) */}
+          <header className="bg-[var(--bg-sidebar)] border-b border-[var(--border-subtle)] px-3 sm:px-6 py-2 flex items-center justify-between gap-2 text-xs z-40 shrink-0 transition-colors">
+            <div className="flex items-center gap-2.5 min-w-0">
               <button
-                type="submit"
-                className="flex-1 sm:flex-none min-h-[40px] px-4 py-2 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] font-bold text-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                type="button"
+                onClick={() => setIsMobileNavOpen(true)}
+                data-testid="mobile-menu-open"
+                aria-label={t.menuButton}
+                className="md:hidden w-10 h-10 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] flex items-center justify-center shrink-0 cursor-pointer"
               >
-                <Search size={14} />
-                <span>{t.searchAction}</span>
+                <Menu size={18} />
               </button>
 
               <button
                 type="button"
-                onClick={() => handleTabChange('search')}
-                className="min-h-[40px] px-3 py-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--accent-text)] font-semibold text-xs shrink-0 cursor-pointer transition-colors"
+                onClick={() => handleTabChange('landing')}
+                className="md:hidden flex items-center gap-2 shrink-0 cursor-pointer"
               >
-                {ARTISTS_DIRECTORY.length} Artists
+                <div className="w-8 h-8 rounded-lg border border-[var(--border-medium)] bg-[var(--bg-surface)] flex items-center justify-center">
+                  <Activity size={15} className="text-[var(--text-primary)]" />
+                </div>
+                <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">
+                  {t.appName}
+                </span>
               </button>
 
-              {currentTab !== 'visualizer' && (
-                <button
-                  type="button"
-                  onClick={() => setIsStageOpen((prev) => !prev)}
-                  className={`min-h-[40px] px-3 py-2 rounded-xl border text-xs font-semibold shrink-0 cursor-pointer transition-colors ${
-                    isStageOpen
-                      ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
-                      : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                  }`}
-                >
-                  {t.playerStageToggle}
-                </button>
-              )}
+              <div className="hidden md:flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-[var(--accent-emerald)] shrink-0" />
+                <span className="font-semibold text-[var(--text-primary)] truncate">
+                  {currentTrack.title}
+                </span>
+                <span className="text-[var(--text-dim)] hidden lg:inline">&middot;</span>
+                <span className="text-[var(--text-secondary)] truncate hidden lg:inline">
+                  {currentTrack.artist}
+                </span>
+              </div>
             </div>
-          </form>
 
-          {/* Complete Mobile Horizontal Quick Navigation Strip */}
-          <nav
-            aria-label="Mobile Quick Navigation"
-            className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 -mt-1 shrink-0"
-          >
-            {mobileNavChips.map((chip) => {
-              const active = currentTab === chip.id;
-              return (
-                <button
-                  key={chip.id}
-                  type="button"
-                  onClick={() => handleTabChange(chip.id)}
-                  className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 border transition-colors cursor-pointer ${
-                    active
-                      ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
-                      : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
-                  }`}
-                >
-                  {chip.icon}
-                  <span>{chip.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+              {sleepMinutesRemaining !== null && (
+                <span className="text-[11px] text-[var(--accent-text)] font-mono hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--accent-soft)]">
+                  {sleepMinutesRemaining}m
+                </span>
+              )}
 
-          {/* Top Stage Player Area */}
-          {isStageVisible && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[260px] sm:min-h-[300px] xl:min-h-[400px]">
-              <div
-                className={`transition-all duration-300 ${
-                  isLyricsOpen ? 'lg:col-span-7' : 'lg:col-span-12'
-                }`}
+              <ThemeLanguageControls variant="topbar" />
+
+              <button
+                type="button"
+                onClick={() => setIsMobileQueueOpen(true)}
+                aria-label={t.queue}
+                className="min-[1380px]:hidden w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center shrink-0 cursor-pointer"
               >
-                {playerMode === 'cover' && (
-                  <VinylCover
-                    coverUrl={currentTrack.coverUrl}
-                    title={currentTrack.title}
-                    artist={currentTrack.artist}
-                    album={currentTrack.album}
-                    genre={currentTrack.genre}
+                <ListMusic size={15} />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleHardRefresh}
+                className="hidden sm:flex min-h-[36px] px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] items-center gap-1 transition-colors cursor-pointer"
+                title={t.reloadLabel}
+              >
+                <RefreshCw size={12} />
+                <span className="hidden lg:inline">{t.reloadLabel}</span>
+              </button>
+            </div>
+          </header>
+
+          {/* Top Application Workspace */}
+          <div className="flex flex-1 overflow-hidden min-h-0">
+            {/* Left Navigation Sidebar + Mobile Drawer */}
+            <Sidebar
+              currentTab={currentTab}
+              onTabChange={handleTabChange}
+              onOpenWallet={() => setIsWalletModalOpen(true)}
+              walletBalanceSol={walletBalanceSol}
+              isMobileOpen={isMobileNavOpen}
+              onCloseMobile={() => setIsMobileNavOpen(false)}
+            />
+
+            {/* Center Main Stage */}
+            <main className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden p-4 sm:p-6 space-y-5 min-w-0">
+              {/* Persistent Top Search Bar + Quick Artist Directory / Stage Toggle */}
+              <form
+                onSubmit={handleTopSearchSubmit}
+                className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2 rounded-xl transition-colors"
+                style={{ boxShadow: 'var(--card-shadow)' }}
+              >
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search
+                    size={15}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
+                  />
+                  <input
+                    type="text"
+                    value={topSearchInput}
+                    onChange={(e) => setTopSearchInput(e.target.value)}
+                    placeholder={t.searchPlaceholder}
+                    aria-label={t.searchPlaceholder}
+                    className="w-full pl-9 pr-3 min-h-[38px] py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-strong)] transition-colors"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="submit"
+                    className="flex-1 sm:flex-none min-h-[38px] px-4 py-1.5 rounded-lg bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] hover:opacity-90 font-semibold text-xs transition-opacity flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                  >
+                    <Search size={14} />
+                    <span>{t.searchAction}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange('search')}
+                    className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium text-xs shrink-0 cursor-pointer transition-colors"
+                  >
+                    {ARTISTS_DIRECTORY.length} Artists
+                  </button>
+
+                  {currentTab !== 'visualizer' && (
+                    <button
+                      type="button"
+                      onClick={() => setIsStageOpen((prev) => !prev)}
+                      className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-medium shrink-0 cursor-pointer transition-colors ${
+                        isStageOpen
+                          ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
+                          : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      {t.playerStageToggle}
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              {/* Complete Mobile Horizontal Quick Navigation Strip */}
+              <nav
+                aria-label="Mobile Quick Navigation"
+                className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 -mt-1 shrink-0"
+              >
+                {mobileNavChips.map((chip) => {
+                  const active = currentTab === chip.id;
+                  return (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => handleTabChange(chip.id)}
+                      className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 border transition-colors cursor-pointer ${
+                        active
+                          ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
+                          : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
+                      }`}
+                    >
+                      {chip.icon}
+                      <span>{chip.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+
+              {/* Top Stage Player Area */}
+              {isStageVisible && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[260px] sm:min-h-[300px] xl:min-h-[400px]">
+                  <div
+                    className={`transition-all duration-300 ${
+                      isLyricsOpen ? 'lg:col-span-7' : 'lg:col-span-12'
+                    }`}
+                  >
+                    {playerMode === 'cover' && (
+                      <VinylCover
+                        coverUrl={currentTrack.coverUrl}
+                        title={currentTrack.title}
+                        artist={currentTrack.artist}
+                        album={currentTrack.album}
+                        genre={currentTrack.genre}
+                        isPlaying={isPlaying}
+                      />
+                    )}
+
+                    {playerMode === 'video' && (
+                      <VideoPlayer
+                        videoUrl={currentTrack.videoUrl}
+                        coverUrl={currentTrack.coverUrl}
+                        title={currentTrack.title}
+                        artist={currentTrack.artist}
+                        isPlaying={isPlaying}
+                        isOfficialStreamActive={isYouTubeActive}
+                        officialSlotRef={videoSlotRef}
+                      />
+                    )}
+
+                    {playerMode === 'orbwave' && (
+                      <OrbwaveCanvas
+                        coverUrl={currentTrack.coverUrl}
+                        title={currentTrack.title}
+                        artist={currentTrack.artist}
+                        lyrics={currentTrack.lyrics}
+                        currentTime={currentTime}
+                      />
+                    )}
+                  </div>
+
+                  {isLyricsOpen && (
+                    <div className="lg:col-span-5 h-[300px] sm:h-[340px] xl:h-[400px]">
+                      <LiveLyrics
+                        lyrics={currentTrack.lyrics}
+                        currentTime={currentTime}
+                        onSeek={handleSeek}
+                        title={currentTrack.title}
+                        artist={currentTrack.artist}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Sub-Views by Tab */}
+              <div className="flex-1 pb-6 min-w-0">
+                {currentTab === 'discover' && (
+                  <DiscoverView
+                    tracks={TRACK_CATALOG}
+                    currentTrack={currentTrack}
                     isPlaying={isPlaying}
+                    resolvingTrackId={resolvingTrackId}
+                    onSelectTrack={handleSelectTrack}
+                    onTogglePlay={handleTogglePlay}
+                    onUploadTrack={handleUploadTrack}
+                    onUpdateLyrics={(_trackId, lyrics) => handleUpdateTrackLyrics(lyrics)}
+                    onNavigateSearch={navigateToSearch}
+                    likedTracks={recState.likedTracks}
+                    recentTracks={recState.recentTracks}
+                    playlists={recState.playlists}
+                    likedTrackIds={likedTrackIds}
+                    onToggleLike={handleToggleLike}
+                    onAddToQueue={handleAddToQueue}
+                    onStartRadio={handleStartRadio}
+                    onPlayTrackList={handlePlayTrackList}
+                    onCreatePlaylist={handleCreatePlaylist}
+                    onAddTrackToPlaylist={handleAddTrackToPlaylist}
+                    onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
+                    onDeletePlaylist={handleDeletePlaylist}
+                    activeMood={activeMood}
+                    onSelectMood={handleSelectMood}
                   />
                 )}
 
-                {playerMode === 'video' && (
-                  <VideoPlayer
-                    videoUrl={currentTrack.videoUrl}
-                    coverUrl={currentTrack.coverUrl}
-                    title={currentTrack.title}
-                    artist={currentTrack.artist}
+                {currentTab === 'search' && (
+                  <SearchView
+                    curatedTracks={TRACK_CATALOG}
+                    currentTrack={currentTrack}
                     isPlaying={isPlaying}
-                    isOfficialStreamActive={isYouTubeActive}
-                    officialSlotRef={videoSlotRef}
+                    resolvingTrackId={resolvingTrackId}
+                    externalQuery={externalSearchQuery}
+                    externalTrigger={externalSearchTrigger}
+                    onSelectTrack={handleSelectTrack}
+                    onTogglePlay={handleTogglePlay}
+                    onUpdateLyrics={handleUpdateTrackLyrics}
+                    likedTrackIds={likedTrackIds}
+                    onToggleLike={handleToggleLike}
+                    onAddToQueue={handleAddToQueue}
+                    onStartRadio={handleStartRadio}
                   />
                 )}
 
-                {playerMode === 'orbwave' && (
-                  <OrbwaveCanvas
-                    coverUrl={currentTrack.coverUrl}
-                    title={currentTrack.title}
-                    artist={currentTrack.artist}
-                    lyrics={currentTrack.lyrics}
+                {currentTab === 'radio' && (
+                  <RadioView
+                    stations={RADIO_STATIONS}
+                    onSelectStation={handleSelectRadio}
+                    activeStationId={RADIO_STATIONS.find((s) => s.currentTrack.id === currentTrack.id)?.id}
+                  />
+                )}
+
+                {currentTab === 'podcasts' && (
+                  <PodcastsView
+                    podcasts={PODCAST_CATALOG}
+                    onSelectPodcast={handleSelectPodcast}
+                    activeEpisodeId={currentTrack.id}
+                  />
+                )}
+
+                {currentTab === 'visualizer' && (
+                  <VisualizerStudioView
+                    currentTrack={currentTrack}
                     currentTime={currentTime}
+                  />
+                )}
+
+                {currentTab === 'proofOfStream' && (
+                  <ProofOfStreamView
+                    currentTrackTitle={currentTrack.title}
+                    currentArtist={currentTrack.artist}
+                    isPlaying={isPlaying}
                   />
                 )}
               </div>
+            </main>
 
-              {isLyricsOpen && (
-                <div className="lg:col-span-5 h-[300px] sm:h-[340px] xl:h-[400px]">
-                  <LiveLyrics
-                    lyrics={currentTrack.lyrics}
-                    currentTime={currentTime}
-                    onSeek={handleSeek}
-                    title={currentTrack.title}
-                    artist={currentTrack.artist}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Sub-Views by Tab */}
-          <div className="flex-1 pb-6 min-w-0">
-            {currentTab === 'landing' && (
-              <LandingView
-                tracks={TRACK_CATALOG}
-                currentTrack={currentTrack}
-                isPlaying={isPlaying}
-                resolvingTrackId={resolvingTrackId}
-                onSelectTrack={handleSelectTrack}
-                onTogglePlay={handleTogglePlay}
-                onNavigateTab={handleTabChange}
-                onOpenStage={() => setIsStageOpen((prev) => !prev)}
-                activeMood={activeMood}
-                onSelectMood={handleSelectMood}
-                likedTracks={recState.likedTracks}
-                recentTracks={recState.recentTracks}
-                likedTrackIds={likedTrackIds}
-                onToggleLike={handleToggleLike}
-                onAddToQueue={handleAddToQueue}
-                onStartRadio={handleStartRadio}
-                onSearchArtist={navigateToSearch}
-              />
-            )}
-
-            {currentTab === 'discover' && (
-              <DiscoverView
-                tracks={TRACK_CATALOG}
-                currentTrack={currentTrack}
-                isPlaying={isPlaying}
-                resolvingTrackId={resolvingTrackId}
-                onSelectTrack={handleSelectTrack}
-                onTogglePlay={handleTogglePlay}
-                onUploadTrack={handleUploadTrack}
-                onUpdateLyrics={(_trackId, lyrics) => handleUpdateTrackLyrics(lyrics)}
-                onNavigateSearch={navigateToSearch}
-                likedTracks={recState.likedTracks}
-                recentTracks={recState.recentTracks}
-                playlists={recState.playlists}
-                likedTrackIds={likedTrackIds}
-                onToggleLike={handleToggleLike}
-                onAddToQueue={handleAddToQueue}
-                onStartRadio={handleStartRadio}
-                onPlayTrackList={handlePlayTrackList}
-                onCreatePlaylist={handleCreatePlaylist}
-                onAddTrackToPlaylist={handleAddTrackToPlaylist}
-                onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
-                onDeletePlaylist={handleDeletePlaylist}
-              />
-            )}
-
-            {currentTab === 'search' && (
-              <SearchView
-                curatedTracks={TRACK_CATALOG}
-                currentTrack={currentTrack}
-                isPlaying={isPlaying}
-                resolvingTrackId={resolvingTrackId}
-                externalQuery={externalSearchQuery}
-                externalTrigger={externalSearchTrigger}
-                onSelectTrack={handleSelectTrack}
-                onTogglePlay={handleTogglePlay}
-                onUpdateLyrics={handleUpdateTrackLyrics}
-                likedTrackIds={likedTrackIds}
-                onToggleLike={handleToggleLike}
-                onAddToQueue={handleAddToQueue}
-                onStartRadio={handleStartRadio}
-              />
-            )}
-
-            {currentTab === 'radio' && (
-              <RadioView
-                stations={RADIO_STATIONS}
-                onSelectStation={handleSelectRadio}
-                activeStationId={RADIO_STATIONS.find((s) => s.currentTrack.id === currentTrack.id)?.id}
-              />
-            )}
-
-            {currentTab === 'podcasts' && (
-              <PodcastsView
-                podcasts={PODCAST_CATALOG}
-                onSelectPodcast={handleSelectPodcast}
-                activeEpisodeId={currentTrack.id}
-              />
-            )}
-
-            {currentTab === 'visualizer' && (
-              <VisualizerStudioView
-                currentTrack={currentTrack}
-                currentTime={currentTime}
-              />
-            )}
-
-            {currentTab === 'proofOfStream' && (
-              <ProofOfStreamView
-                currentTrackTitle={currentTrack.title}
-                currentArtist={currentTrack.artist}
-                isPlaying={isPlaying}
-              />
-            )}
+            {/* Right Sidebar Queue, Official Stream Slot & Tipping */}
+            <RightSidebar
+              queue={queue}
+              manualQueue={manualQueue}
+              currentTrack={currentTrack}
+              onSelectTrack={handleSelectTrack}
+              onRemoveFromManualQueue={handleRemoveFromManualQueue}
+              onRefreshRadioMix={handleRefreshRadioMix}
+              likedTrackIds={likedTrackIds}
+              onToggleLike={handleToggleLike}
+              onSeek={handleSeek}
+              currentTime={currentTime}
+              radioStations={RADIO_STATIONS}
+              onSelectRadio={handleSelectRadio}
+              onOpenTipModal={() => setIsWalletModalOpen(true)}
+              ytMonitorRef={ytMonitorRef}
+              showYtMonitor={isYouTubeActive && (!isStageVisible || playerMode !== 'video')}
+              isMobileOpen={isMobileQueueOpen}
+              onCloseMobile={() => setIsMobileQueueOpen(false)}
+            />
           </div>
-        </main>
 
-        {/* Right Sidebar Queue, Official Stream Slot & Tipping */}
-        <RightSidebar
-          queue={queue}
-          manualQueue={manualQueue}
-          currentTrack={currentTrack}
-          onSelectTrack={handleSelectTrack}
-          onRemoveFromManualQueue={handleRemoveFromManualQueue}
-          onRefreshRadioMix={handleRefreshRadioMix}
-          likedTrackIds={likedTrackIds}
-          onToggleLike={handleToggleLike}
-          onSeek={handleSeek}
-          currentTime={currentTime}
-          radioStations={RADIO_STATIONS}
-          onSelectRadio={handleSelectRadio}
-          onOpenTipModal={() => setIsWalletModalOpen(true)}
-          ytMonitorRef={ytMonitorRef}
-          showYtMonitor={isYouTubeActive && (!isStageVisible || playerMode !== 'video')}
-          isMobileOpen={isMobileQueueOpen}
-          onCloseMobile={() => setIsMobileQueueOpen(false)}
-        />
-      </div>
-
-      {/* Persistent Bottom Audio Player Bar */}
-      <BottomPlayerBar
-        currentTrack={currentTrack}
-        isPlaying={isPlaying}
-        isResolvingStream={Boolean(resolvingTrackId)}
-        streamError={streamError}
-        onTogglePlay={handleTogglePlay}
-        onNext={() => handleNext(false)}
-        onPrev={handlePrev}
-        currentTime={currentTime}
-        duration={currentTrack.duration}
-        onSeek={handleSeek}
-        volume={volume}
-        onVolumeChange={handleVolumeChange}
-        playerMode={playerMode}
-        onPlayerModeChange={handlePlayerModeChange}
-        isLyricsOpen={isLyricsOpen}
-        onToggleLyrics={handleToggleLyrics}
-        onOpenMobileQueue={() => setIsMobileQueueOpen(true)}
-        shuffle={recState.shuffle}
-        onToggleShuffle={handleToggleShuffle}
-        repeatMode={recState.repeatMode}
-        onCycleRepeat={handleCycleRepeat}
-        isLiked={likedTrackIds.has(currentTrack.id)}
-        onToggleLike={() => handleToggleLike(currentTrack)}
-        onStartRadio={() => handleStartRadio(currentTrack)}
-        onOpenExpandedPlayer={() => setIsExpandedPlayerOpen(true)}
-      />
+          {/* Persistent Bottom Audio Player Bar */}
+          <BottomPlayerBar
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            isResolvingStream={Boolean(resolvingTrackId)}
+            streamError={streamError}
+            onTogglePlay={handleTogglePlay}
+            onNext={() => handleNext(false)}
+            onPrev={handlePrev}
+            currentTime={currentTime}
+            duration={currentTrack.duration}
+            onSeek={handleSeek}
+            volume={volume}
+            onVolumeChange={handleVolumeChange}
+            playerMode={playerMode}
+            onPlayerModeChange={handlePlayerModeChange}
+            isLyricsOpen={isLyricsOpen}
+            onToggleLyrics={handleToggleLyrics}
+            onOpenMobileQueue={() => setIsMobileQueueOpen(true)}
+            shuffle={recState.shuffle}
+            onToggleShuffle={handleToggleShuffle}
+            repeatMode={recState.repeatMode}
+            onCycleRepeat={handleCycleRepeat}
+            isLiked={likedTrackIds.has(currentTrack.id)}
+            onToggleLike={() => handleToggleLike(currentTrack)}
+            onStartRadio={() => handleStartRadio(currentTrack)}
+            onOpenExpandedPlayer={() => setIsExpandedPlayerOpen(true)}
+          />
+        </>
+      )}
 
       {/* Full Expanded Now Playing Sheet (Resso / Spotify Style) */}
       <ExpandedPlayerModal

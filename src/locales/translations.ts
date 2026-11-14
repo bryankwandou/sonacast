@@ -95,6 +95,16 @@ export interface TranslationKeys {
   openFullPlayer: string;
   shuffleLabel: string;
   repeatLabel: string;
+  enterPlayerCta: string;
+  editorialEyebrow: string;
+  editorialHeroLead: string;
+  editorialHeroHighlight: string;
+  editorialDeck: string;
+  previewTrackLabel: string;
+  tryInPlayer: string;
+  footerExplore: string;
+  footerProtocol: string;
+  footerTagline: string;
 }
 
 export interface LanguageOption {
@@ -225,7 +235,17 @@ const EN_BASE: TranslationKeys = {
   radioAutoMix: 'Autoplay Radio',
   openFullPlayer: 'Full Player',
   shuffleLabel: 'Shuffle',
-  repeatLabel: 'Repeat'
+  repeatLabel: 'Repeat',
+  enterPlayerCta: 'Open Web Player',
+  editorialEyebrow: 'FULL-LENGTH AUDIO · LIVE LYRICS · PURE RADIO',
+  editorialHeroLead: 'Full songs, heard in',
+  editorialHeroHighlight: 'living detail.',
+  editorialDeck: 'Multi-source global search, synchronized line-by-line lyrics, deterministic track radio, and zero-cutoff playback in one quiet instrument.',
+  previewTrackLabel: 'Interactive Preview',
+  tryInPlayer: 'Launch Web Player',
+  footerExplore: 'Web Player',
+  footerProtocol: 'Creator & Project',
+  footerTagline: 'Crafted for uninterrupted full-length music listening.'
 };
 
 const loc = (overrides: Partial<TranslationKeys>): TranslationKeys => ({
@@ -328,7 +348,17 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     radioAutoMix: 'Autoplay Radio',
     openFullPlayer: 'Layar Penuh',
     shuffleLabel: 'Acak',
-    repeatLabel: 'Ulangi'
+    repeatLabel: 'Ulangi',
+    enterPlayerCta: 'Masuk ke Web Player',
+    editorialEyebrow: 'AUDIO PENUH · LIRIK SINKRON · RADIO MURNI',
+    editorialHeroLead: 'Musik utuh dalam',
+    editorialHeroHighlight: 'detail yang hidup.',
+    editorialDeck: 'Pencarian katalog global lintas bahasa, lirik baris demi baris, radio lagu deterministik tanpa AI, dan pemutaran penuh dari awal hingga akhir.',
+    previewTrackLabel: 'Pratinjau Interaktif',
+    tryInPlayer: 'Buka di Web Player',
+    footerExplore: 'Web Player',
+    footerProtocol: 'Kreator & Ekosistem',
+    footerTagline: 'Dirancang bersih untuk pengalaman mendengarkan lagu seutuhnya.'
   }),
   ms: loc({
     navLanding: 'Halaman Utama',
@@ -378,6 +408,9 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     viewFullLibrary: 'Tingali Koleksi Lengkep'
   }),
   ja: loc({
+    enterPlayerCta: 'プレーヤーを開く',
+    editorialHeroLead: '音楽を本来の',
+    editorialHeroHighlight: 'フル尺と生きた歌詞で。',
     tagline: 'ブラウザ完結型フル尺ストリーミング・同期歌詞・リアルタイムOrbwaveスペクトラム',
     brandSubtitle: 'フル尺オーディオエンジン',
     navLanding: 'ホーム & 概要',

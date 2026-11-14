@@ -3,58 +3,62 @@
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg-app: #06080E;
-  --bg-sidebar: #080B12;
-  --bg-surface: #0D111A;
-  --bg-elevated: #121826;
-  --bg-hover: #182032;
-  --border-subtle: #1B2232;
-  --border-medium: #263147;
-  --text-primary: #F3F6FA;
-  --text-secondary: #9CA3AF;
-  --text-dim: #6B7280;
+  --bg-app: #08090D;
+  --bg-sidebar: #0B0D12;
+  --bg-surface: #11131A;
+  --bg-elevated: #171A23;
+  --bg-hover: #1E222E;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-medium: rgba(255, 255, 255, 0.16);
+  --text-primary: #F5F5F0;
+  --text-secondary: #A1A6B3;
+  --text-dim: #6C7280;
   --accent-emerald: #10B981;
   --accent-emerald-hover: #34D399;
   --accent-text: #34D399;
   --accent-soft: rgba(16, 185, 129, 0.14);
-  --accent-border: rgba(16, 185, 129, 0.34);
-  --bg-tint: rgba(255, 255, 255, 0.035);
+  --accent-border: rgba(16, 185, 129, 0.32);
+  --bg-tint: rgba(255, 255, 255, 0.04);
   --bg-tint-hover: rgba(255, 255, 255, 0.075);
   --accent-fg: #03150D;
   --accent-cyan: #22D3EE;
-  --hero-gradient: linear-gradient(135deg, #0B111E 0%, #101829 52%, #09101B 100%);
-  --card-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
-  --backdrop-bar: rgba(8, 11, 18, 0.94);
-  --scrollbar-thumb: #1E2638;
-  --scrollbar-hover: #2E3A54;
+  --ink-solid: #F5F5F0;
+  --ink-solid-fg: #08090D;
+  --hero-gradient: radial-gradient(circle at 80% 10%, rgba(16, 185, 129, 0.12), transparent 55%), #08090D;
+  --card-shadow: 0 18px 42px rgba(0, 0, 0, 0.45);
+  --backdrop-bar: rgba(8, 9, 13, 0.9);
+  --scrollbar-thumb: #242834;
+  --scrollbar-hover: #343A4B;
 }
 
 [data-theme="light"] {
   color-scheme: light;
-  --bg-app: #F3F6FA;
+  --bg-app: #F7F6F2;
   --bg-sidebar: #FFFFFF;
   --bg-surface: #FFFFFF;
-  --bg-elevated: #F1F5F9;
-  --bg-hover: #E2E8F0;
-  --border-subtle: #E2E8F0;
-  --border-medium: #CBD5E1;
-  --text-primary: #0F172A;
-  --text-secondary: #475569;
-  --text-dim: #64748B;
+  --bg-elevated: #EFEDE7;
+  --bg-hover: #E5E2D9;
+  --border-subtle: rgba(17, 18, 22, 0.09);
+  --border-medium: rgba(17, 18, 22, 0.18);
+  --text-primary: #111216;
+  --text-secondary: #52555E;
+  --text-dim: #777A84;
   --accent-emerald: #059669;
   --accent-emerald-hover: #047857;
   --accent-text: #047857;
   --accent-soft: rgba(5, 150, 105, 0.10);
   --accent-border: rgba(5, 150, 105, 0.28);
-  --bg-tint: rgba(15, 23, 42, 0.035);
-  --bg-tint-hover: rgba(15, 23, 42, 0.07);
+  --bg-tint: rgba(17, 18, 22, 0.04);
+  --bg-tint-hover: rgba(17, 18, 22, 0.075);
   --accent-fg: #FFFFFF;
   --accent-cyan: #0891B2;
-  --hero-gradient: linear-gradient(135deg, #FFFFFF 0%, #EFF6F3 58%, #F8FAFC 100%);
-  --card-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-  --backdrop-bar: rgba(255, 255, 255, 0.94);
-  --scrollbar-thumb: #CBD5E1;
-  --scrollbar-hover: #94A3B8;
+  --ink-solid: #111216;
+  --ink-solid-fg: #FFFFFF;
+  --hero-gradient: radial-gradient(circle at 80% 10%, rgba(5, 150, 105, 0.08), transparent 55%), #F7F6F2;
+  --card-shadow: 0 14px 32px rgba(17, 18, 22, 0.07);
+  --backdrop-bar: rgba(247, 246, 242, 0.92);
+  --scrollbar-thumb: #D1CEC4;
+  --scrollbar-hover: #9C998E;
 }
 
 @layer base {
@@ -82,6 +86,11 @@
   pre,
   .font-mono {
     font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .font-editorial {
+    font-family: "Instrument Serif", Georgia, "Times New Roman", serif;
+    letter-spacing: -0.025em;
   }
 }
 

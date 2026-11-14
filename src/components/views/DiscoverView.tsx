@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
-import type { LyricLine, Track, UserPlaylist } from '../../types';
+import type { LyricLine, MoodPreset, Track, UserPlaylist } from '../../types';
 import { ARTISTS_DIRECTORY } from '../../data/artists800';
 import { fetchSyncedLyrics, searchTracksOnline } from '../../services/musicService';
+import { MOOD_PRESETS } from '../../services/recommendationEngine';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { usePopularCharts } from '../../hooks/usePopularCharts';
 import { TrackCard } from '../common/TrackCard';
@@ -16,7 +17,6 @@ import {
   Pause,
   Play,
   Plus,
-  Search,
   Shuffle,
   Trash2,
   TrendingUp,
@@ -46,6 +46,8 @@ interface DiscoverViewProps {
   onAddTrackToPlaylist?: (playlistId: string, track: Track) => void;
   onRemoveTrackFromPlaylist?: (playlistId: string, trackId: string) => void;
   onDeletePlaylist?: (playlistId: string) => void;
+  activeMood?: MoodPreset;
+  onSelectMood?: (mood: MoodPreset) => void;
 }
 
 const FEATURED_ARTISTS = [
@@ -76,13 +78,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onCreatePlaylist,
   onAddTrackToPlaylist,
   onRemoveTrackFromPlaylist,
-  onDeletePlaylist
+  onDeletePlaylist,
+  activeMood = 'all',
+  onSelectMood
 }) => {
   const { t } = useAppPreferences();
   const { popularCharts, isLoadingCharts } = usePopularCharts();
   const [libraryTab, setLibraryTab] = useState<LibrarySubTab>('browse');
   const [selectedArtist, setSelectedArtist] = useState<string>('All');
-  const [inlineQuery, setInlineQuery] = useState('');
   const [inlineResults, setInlineResults] = useState<Track[]>([]);
   const [isSearchingInline, setIsSearchingInline] = useState(false);
   const [chartRegion, setChartRegion] = useState<'global' | 'indonesia'>('global');
@@ -113,21 +116,6 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           onUpdateLyrics(track.id, synced);
         }
       });
-    }
-  };
-
-  const handleInlineSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = inlineQuery.trim();
-    if (!q) return;
-    setIsSearchingInline(true);
-    try {
-      const results = await searchTracksOnline(q);
-      setInlineResults(results);
-    } catch {
-      setInlineResults([]);
-    } finally {
-      setIsSearchingInline(false);
     }
   };
 
@@ -311,42 +299,41 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </div>
           </div>
 
-          {/* Quick Inline Catalog Search + Artist Chips */}
-          <div className="space-y-3">
-            <form onSubmit={handleInlineSearch} className="flex flex-col sm:flex-row gap-2">
-              <div className="relative flex-1">
-                <Search
-                  size={15}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
-                />
-                <input
-                  type="text"
-                  value={inlineQuery}
-                  onChange={(e) => setInlineQuery(e.target.value)}
-                  placeholder={t.searchPlaceholder}
-                  className="w-full h-10 pl-10 pr-4 rounded-xl bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-emerald)]"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={isSearchingInline}
-                className="h-10 px-5 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-xs font-bold flex items-center justify-center gap-2 shrink-0 cursor-pointer disabled:opacity-60"
-              >
-                {isSearchingInline ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                <span>{t.searchAction}</span>
-              </button>
-              {onNavigateSearch && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateSearch(inlineQuery.trim() || 'Queen')}
-                  className="h-10 px-4 rounded-xl bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  <Globe size={14} className="text-[var(--accent-text)]" />
-                  <span>Full Search</span>
-                </button>
-              )}
-            </form>
+          {onSelectMood && (
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+              {MOOD_PRESETS.map((preset) => {
+                const moodLabels: Record<MoodPreset, string> = {
+                  all: t.moodAll,
+                  focus: t.moodFocus,
+                  chill: t.moodChill,
+                  upbeat: t.moodUpbeat,
+                  workout: t.moodWorkout,
+                  indonesian: t.moodIndonesian,
+                  classic: t.moodClassic,
+                  acoustic: t.moodAcoustic
+                };
+                const isSelected = activeMood === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    data-testid={`mood-pill-${preset.id}`}
+                    onClick={() => onSelectMood(preset.id)}
+                    className={`min-h-[34px] px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer border transition-colors ${
+                      isSelected
+                        ? 'bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] border-transparent'
+                        : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-medium)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    {moodLabels[preset.id]}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
+          {/* Artist Quick Filter Chips */}
+          <div className="space-y-3">
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
               <button
                 type="button"
@@ -354,7 +341,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   setSelectedArtist('All');
                   setInlineResults([]);
                 }}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer transition-colors ${
+                className={`min-h-[34px] px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer transition-colors ${
                   selectedArtist === 'All' && inlineResults.length === 0
                     ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
                     : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -368,7 +355,6 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   type="button"
                   onClick={async () => {
                     setSelectedArtist(artist);
-                    setInlineQuery(artist);
                     setIsSearchingInline(true);
                     try {
                       const res = await searchTracksOnline(artist);
@@ -377,15 +363,30 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                       setIsSearchingInline(false);
                     }
                   }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer transition-colors ${
+                  className={`min-h-[34px] px-3 py-1.5 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors ${
                     selectedArtist === artist
                       ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
                       : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  {artist}
+                  {isSearchingInline && selectedArtist === artist && (
+                    <Loader2 size={12} className="animate-spin" />
+                  )}
+                  <span>{artist}</span>
                 </button>
               ))}
+              {onNavigateSearch && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onNavigateSearch(selectedArtist !== 'All' ? selectedArtist : 'Queen')
+                  }
+                  className="min-h-[34px] px-3 py-1.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors"
+                >
+                  <Globe size={13} className="text-[var(--accent-text)]" />
+                  <span>Full Search</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -399,7 +400,6 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   type="button"
                   onClick={() => {
                     setInlineResults([]);
-                    setInlineQuery('');
                     setSelectedArtist('All');
                   }}
                   className="text-xs text-[var(--text-dim)] hover:text-[var(--text-primary)] cursor-pointer"

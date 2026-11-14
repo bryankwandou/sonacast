@@ -66,17 +66,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onClick={() => handleSelectNav('landing')}
             className="flex items-center gap-3 text-left cursor-pointer group"
           >
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[var(--accent-emerald)] to-[var(--accent-cyan)] p-0.5 flex items-center justify-center shrink-0">
-              <div className="w-full h-full bg-[var(--bg-sidebar)] rounded-[10px] flex items-center justify-center">
-                <Activity size={18} className="text-[var(--accent-text)]" />
-              </div>
+            <div className="w-9 h-9 rounded-xl border border-[var(--border-medium)] bg-[var(--bg-surface)] flex items-center justify-center shrink-0 transition-colors group-hover:border-[var(--text-primary)]">
+              <Activity size={18} className="text-[var(--text-primary)]" />
             </div>
             <div className="min-w-0">
-              <div className="text-lg font-black tracking-tight text-[var(--text-primary)] flex items-center gap-1.5">
+              <div className="text-lg font-bold tracking-tight text-[var(--text-primary)]">
                 <span>{t.appName}</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]">
-                  PRO
-                </span>
               </div>
               <p className="text-[11px] text-[var(--text-dim)] truncate max-w-[140px]">
                 {t.brandSubtitle}
