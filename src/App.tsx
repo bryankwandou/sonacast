@@ -1513,8 +1513,8 @@ export default function App() {
             </div>
           </header>
 
-          {/* Top Application Workspace */}
-          <div className="flex flex-1 overflow-hidden min-h-0">
+          {/* Top Application Workspace (reserves space above fixed BottomPlayerBar) */}
+          <div className="flex flex-1 overflow-hidden min-h-0 pb-20 sm:pb-24">
             {/* Left Navigation Sidebar + Mobile Drawer */}
             <Sidebar
               currentTab={currentTab}
