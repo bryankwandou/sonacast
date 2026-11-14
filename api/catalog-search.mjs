@@ -1,49 +1,29 @@
-const BLOCKED_WORDS = [
-  'karaoke',
-  '8d audio',
-  '8d',
-  'nightcore',
-  'slowed',
-  'reverb',
-  'sped up',
-  'tribute',
-  'ringtone',
-  '30 sec',
-  'snippet',
-  'backing track',
-  'instrumental',
-  'parody',
-  'teaser',
-  'piano version',
-  'acoustic version',
-  'medley',
-  'orchestral',
-  'music box',
-  'lullaby',
-  '8-bit',
-  '10 hours',
-  '1 hour',
-  'extended mix',
-  'loop'
-];
+const BLOCKED_MODIFIER_REGEX =
+  /\b(karaoke|8d\s+audio|nightcore|slowed(?:\s*\+\s*|\s+)reverb|sped\s+up|ringtone|parody|backing\s+track|music\s+box|lullaby|8-bit|10\s+hours?|1\s+hour|extended\s+mix)\b/i;
+const PAREN_COVER_OR_REMIX_REGEX =
+  /(?:[([]\s*(?:cover|remix|karaoke|instrumental|tribute|slowed|reverb|sped\s*up|nightcore|8d|loop)\b|\b(?:acoustic|piano|guitar|vocal|drum)\s+cover\b|\bcover\s+(?:by|version)\b|\btribute\s+to\b)/i;
 
 function normalizeText(input) {
   return String(input || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/['’]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 }
 
 function isNonOriginalTitle(title, queryLower) {
   const lower = String(title || '').toLowerCase();
-  for (const w of BLOCKED_WORDS) {
-    if (lower.includes(w) && !queryLower.includes(w)) {
+  if (BLOCKED_MODIFIER_REGEX.test(lower)) {
+    const matched = lower.match(BLOCKED_MODIFIER_REGEX)?.[1] || '';
+    if (matched && !queryLower.includes(matched.toLowerCase())) {
       return true;
     }
   }
-  if ((lower.includes('remix') && !queryLower.includes('remix')) || (lower.includes('cover') && !queryLower.includes('cover'))) {
-    return true;
+  if (PAREN_COVER_OR_REMIX_REGEX.test(lower)) {
+    if (!queryLower.includes('cover') && !queryLower.includes('remix') && !queryLower.includes('instrumental') && !queryLower.includes('loop')) {
+      return true;
+    }
   }
   return false;
 }
@@ -198,13 +178,18 @@ export default async function handler(req, res) {
   const normQuery = normalizeText(q);
 
   try {
-    const [artistSearchRes, trackSearchRes] = await Promise.all([
+    const [artistSearchRes, trackSearchRes, strictSearchRes] = await Promise.all([
       fetch(`https://api.deezer.com/search/artist?q=${encodeURIComponent(q)}&limit=8`, {
         signal: AbortSignal.timeout(3500)
       })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
       fetch(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&order=RANKING&limit=40`, {
+        signal: AbortSignal.timeout(3500)
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=25`, {
         signal: AbortSignal.timeout(3500)
       })
         .then((r) => (r.ok ? r.json() : null))
@@ -216,7 +201,7 @@ export default async function handler(req, res) {
       .map((a) => {
         const normName = normalizeText(a.name);
         let matchScore = 0;
-        if (normName === normQuery) matchScore = 100_000_000;
+        if (normName && normQuery && normName === normQuery) matchScore = 100_000_000;
         else if (normName && normQuery && (normName.startsWith(normQuery) || normQuery.startsWith(normName))) matchScore = 1_000_000;
         else if (normName && normQuery && normName.includes(normQuery)) matchScore = 100_000;
         return {
@@ -227,7 +212,7 @@ export default async function handler(req, res) {
           totalScore: matchScore + (Number(a.nb_fan) || 0)
         };
       })
-      .filter((a) => a.totalScore >= 100_000 && a.fans >= 500)
+      .filter((a) => a.totalScore >= 100_000 && a.fans >= 20)
       .sort((a, b) => b.totalScore - a.totalScore);
 
     let topArtist = artistCandidates[0] || null;
@@ -242,10 +227,23 @@ export default async function handler(req, res) {
       }
     }
 
+    const searchPool = [
+      ...(Array.isArray(trackSearchRes?.data) ? trackSearchRes.data : []),
+      ...(Array.isArray(strictSearchRes?.data) ? strictSearchRes.data : [])
+    ];
+    const seenTrackIds = new Set();
+    const dedupedSearchTracks = [];
+    for (const item of searchPool) {
+      if (item?.id && !seenTrackIds.has(item.id)) {
+        seenTrackIds.add(item.id);
+        dedupedSearchTracks.push(item);
+      }
+    }
+
     const combined = [
       ...artistTopTracks.map((t) => mapDeezerTrack(t, true)),
-      ...(Array.isArray(trackSearchRes?.data) ? trackSearchRes.data.map((t) => mapDeezerTrack(t, false)) : [])
-    ].filter((t) => t.title && t.artist && t.duration >= 60 && t.duration <= 1800 && !isNonOriginalTitle(t.title, queryLower));
+      ...dedupedSearchTracks.map((t) => mapDeezerTrack(t, false))
+    ].filter((t) => t.title && t.artist && t.duration >= 40 && t.duration <= 2400 && !isNonOriginalTitle(t.title, queryLower));
 
     res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
     res.status(200).json({

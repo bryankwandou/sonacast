@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type {
   Track,
   PodcastEpisode,
   RadioStation,
   PlayerMode,
   TabType,
-  LyricLine
+  LyricLine,
+  EqPreset,
+  MoodPreset,
+  RepeatMode
 } from './types';
 import { TRACK_CATALOG, PODCAST_CATALOG, RADIO_STATIONS } from './data/catalog';
 import { ARTISTS_DIRECTORY } from './data/artists800';
@@ -14,14 +17,26 @@ import { solanaService } from './services/solanaService';
 import {
   fetchSyncedLyrics,
   findMasterAudio,
-  resolveFullTrackStream
+  resolveFullTrackStream,
+  searchTracksOnline
 } from './services/musicService';
+import {
+  buildSmartQueueFromPool,
+  getMoodSeedQueries,
+  getRelatedArtistsFromDirectory,
+  loadRecommendationState,
+  pickNextTrackPure,
+  recordTrackSignal,
+  saveRecommendationState,
+  type RecommendationState
+} from './services/recommendationEngine';
 import { useAppPreferences } from './contexts/AppPreferencesContext';
 
 import { Sidebar } from './components/layout/Sidebar';
 import { RightSidebar } from './components/layout/RightSidebar';
 import { BottomPlayerBar } from './components/layout/BottomPlayerBar';
 import { ThemeLanguageControls } from './components/layout/ThemeLanguageControls';
+import { ExpandedPlayerModal } from './components/player/ExpandedPlayerModal';
 
 import { VinylCover } from './components/player/VinylCover';
 import { VideoPlayer } from './components/player/VideoPlayer';
@@ -42,7 +57,6 @@ import {
   Activity,
   Award,
   Compass,
-  Globe,
   Home,
   ListMusic,
   Menu,
@@ -77,14 +91,75 @@ export default function App() {
   const [externalSearchQuery, setExternalSearchQuery] = useState('');
   const [externalSearchTrigger, setExternalSearchTrigger] = useState(0);
 
+  const [recState, setRecState] = useState<RecommendationState>(() => loadRecommendationState());
+  const [manualQueue, setManualQueue] = useState<Track[]>([]);
+  const [playHistory, setPlayHistory] = useState<Track[]>([]);
+  const [activeMood, setActiveMood] = useState<MoodPreset>('all');
+  const [isExpandedPlayerOpen, setIsExpandedPlayerOpen] = useState(false);
+  const [sleepEndAtMs, setSleepEndAtMs] = useState<number | null>(null);
+  const [sleepMinutesRemaining, setSleepMinutesRemaining] = useState<number | null>(null);
+
+  const likedTrackIds = useMemo(
+    () => new Set(recState.likedTracks.map((tr) => tr.id)),
+    [recState.likedTracks]
+  );
+
   // Stream resolution & official backend state
   const [isYouTubeActive, setIsYouTubeActive] = useState(false);
   const [resolvingTrackId, setResolvingTrackId] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
 
-  const handleNextRef = useRef<() => void>(() => {});
+  const handleNextRef = useRef<(fromEnded?: boolean) => void>(() => {});
   const selectionCounterRef = useRef(0);
   const loadedTrackIdRef = useRef<string | null>(null);
+  const isRefillingRadioRef = useRef(false);
+  const preResolvedIdsRef = useRef<Set<string>>(new Set());
+
+  const currentTrackRef = useRef(currentTrack);
+  const currentTimeRef = useRef(currentTime);
+  const queueRef = useRef(queue);
+  const manualQueueRef = useRef(manualQueue);
+  const recStateRef = useRef(recState);
+  const activeMoodRef = useRef(activeMood);
+  const playHistoryRef = useRef(playHistory);
+
+  useEffect(() => {
+    currentTrackRef.current = currentTrack;
+    currentTimeRef.current = currentTime;
+    queueRef.current = queue;
+    manualQueueRef.current = manualQueue;
+    recStateRef.current = recState;
+    activeMoodRef.current = activeMood;
+    playHistoryRef.current = playHistory;
+  }, [currentTrack, currentTime, queue, manualQueue, recState, activeMood, playHistory]);
+
+  // Apply persisted Audio DSP (Equalizer, Speed, Crossfade)
+  useEffect(() => {
+    sharedAudioEngine.setEqPreset(recState.eqPreset);
+    sharedAudioEngine.setPlaybackRate(recState.playbackRate);
+    sharedAudioEngine.setCrossfadeSeconds(recState.crossfadeSeconds);
+  }, [recState.eqPreset, recState.playbackRate, recState.crossfadeSeconds]);
+
+  // Sleep timer countdown & automatic pause
+  useEffect(() => {
+    if (!sleepEndAtMs) return;
+    const tick = () => {
+      const remMs = sleepEndAtMs - Date.now();
+      if (remMs <= 0) {
+        sharedAudioEngine.pause();
+        setSleepEndAtMs(null);
+        setSleepMinutesRemaining(null);
+      } else {
+        setSleepMinutesRemaining(Math.max(1, Math.ceil(remMs / 60000)));
+      }
+    };
+    const initTimer = window.setTimeout(tick, 0);
+    const timer = window.setInterval(tick, 15000);
+    return () => {
+      window.clearTimeout(initTimer);
+      window.clearInterval(timer);
+    };
+  }, [sleepEndAtMs]);
 
   // Persistent YouTube host and layout target slots
   const ytHostRef = useRef<HTMLDivElement | null>(null);
@@ -100,7 +175,7 @@ export default function App() {
     const unsubTime = sharedAudioEngine.subscribeTimeUpdate((t) => setCurrentTime(t));
     const unsubState = sharedAudioEngine.subscribeStateChange((p) => setIsPlaying(p));
     const unsubEnd = sharedAudioEngine.subscribeTrackEnded(() => {
-      handleNextRef.current();
+      handleNextRef.current(true);
     });
     const unsubDur = sharedAudioEngine.subscribeDurationChange((realDur) => {
       setCurrentTrack((prev) => ({ ...prev, duration: realDur }));
@@ -194,32 +269,105 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const refillRadioQueueIfNeeded = useCallback(async (seedTrack: Track, force = false) => {
+    if (isRefillingRadioRef.current) return;
+    const currentQ = queueRef.current;
+    const idx = currentQ.findIndex((item) => item.id === seedTrack.id);
+    const remaining = idx >= 0 ? currentQ.length - 1 - idx : 0;
+    if (!force && remaining > 2) return;
+
+    isRefillingRadioRef.current = true;
+    try {
+      const queries =
+        activeMoodRef.current !== 'all'
+          ? getMoodSeedQueries(activeMoodRef.current)
+          : getRelatedArtistsFromDirectory(seedTrack.artist, seedTrack.genre, 3).map((a) => a.name);
+
+      const batches = await Promise.allSettled(queries.slice(0, 3).map((q) => searchTracksOnline(q)));
+      const pooled: Track[] = [];
+      for (const b of batches) {
+        if (b.status === 'fulfilled' && Array.isArray(b.value)) {
+          pooled.push(...b.value);
+        }
+      }
+      if (pooled.length === 0) return;
+
+      setQueue((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const freshCandidates = pooled.filter((c) => c && c.id && !existingIds.has(c.id));
+        if (freshCandidates.length === 0) return prev;
+        const rankedFresh = buildSmartQueueFromPool(
+          seedTrack,
+          freshCandidates,
+          recStateRef.current.recentTracks,
+          recStateRef.current,
+          activeMoodRef.current,
+          15
+        );
+        return [...prev, ...rankedFresh].slice(-60);
+      });
+    } catch {
+      // Quiet background radio refill
+    } finally {
+      isRefillingRadioRef.current = false;
+    }
+  }, []);
+
   const handleUpdateTrackLyrics = (lyrics: LyricLine[]) => {
     setCurrentTrack((prev) => ({ ...prev, lyrics }));
   };
 
-  const handleSelectTrack = useCallback(async (track: Track) => {
-    const selectionSeq = ++selectionCounterRef.current;
-    loadedTrackIdRef.current = track.id;
+  const handleSelectTrack = useCallback(
+    async (
+      track: Track,
+      options?: { skipHistoryPush?: boolean; fromEnded?: boolean }
+    ) => {
+      const selectionSeq = ++selectionCounterRef.current;
+      loadedTrackIdRef.current = track.id;
 
-    setStreamError(null);
-    setCurrentTrack(track);
-    setCurrentTime(0);
-
-    setQueue((prevQueue) => {
-      if (!prevQueue.some((t) => t.id === track.id)) {
-        return [track, ...prevQueue];
-      }
-      return prevQueue;
-    });
-
-    if (track.lyrics.length <= 4) {
-      fetchSyncedLyrics(track.title, track.artist, track.duration).then((synced) => {
-        if (synced && synced.length > 0) {
-          setCurrentTrack((prev) => (prev.id === track.id ? { ...prev, lyrics: synced } : prev));
+      const prevTrack = currentTrackRef.current;
+      const elapsedSeconds = currentTimeRef.current;
+      if (prevTrack && prevTrack.id !== track.id) {
+        if (!options?.skipHistoryPush) {
+          setPlayHistory((prev) => [...prev.slice(-29), prevTrack]);
         }
+        setRecState((prev) => {
+          let nextState = prev;
+          if (
+            options?.fromEnded ||
+            elapsedSeconds >= 25 ||
+            (prevTrack.duration > 0 && elapsedSeconds / prevTrack.duration >= 0.65)
+          ) {
+            nextState = recordTrackSignal(nextState, prevTrack, 'complete');
+          } else if (elapsedSeconds >= 2 && elapsedSeconds < 18) {
+            nextState = recordTrackSignal(nextState, prevTrack, 'earlySkip');
+          }
+          return recordTrackSignal(nextState, track, 'play');
+        });
+      } else {
+        setRecState((prev) => recordTrackSignal(prev, track, 'play'));
+      }
+
+      setStreamError(null);
+      setCurrentTrack(track);
+      setCurrentTime(0);
+
+      setQueue((prevQueue) => {
+        if (!prevQueue.some((t) => t.id === track.id)) {
+          return [track, ...prevQueue];
+        }
+        return prevQueue;
       });
-    }
+
+      refillRadioQueueIfNeeded(track, false);
+
+      if (track.lyrics.length <= 4) {
+        fetchSyncedLyrics(track.title, track.artist, track.duration).then((synced) => {
+          if (synced && synced.length > 0) {
+            setCurrentTrack((prev) => (prev.id === track.id ? { ...prev, lyrics: synced } : prev));
+          }
+        });
+      }
 
     // 1. Direct Studio Master MP3 or local user file
     if (track.audioUrl) {
@@ -303,7 +451,7 @@ export default function App() {
       setStreamError('Unable to resolve full-length stream. Try another release.');
       sharedAudioEngine.pause();
     }
-  }, []);
+  }, [refillRadioQueueIfNeeded]);
 
   const handleSelectRadio = (station: RadioStation) => {
     handleSelectTrack(station.currentTrack);
@@ -381,21 +529,375 @@ export default function App() {
     }
   };
 
-  const handleNext = useCallback(() => {
-    const currentIndex = queue.findIndex((t) => t.id === currentTrack.id);
-    const nextIndex = (currentIndex + 1) % queue.length;
-    handleSelectTrack(queue[nextIndex]);
-  }, [queue, currentTrack.id, handleSelectTrack]);
+  const handleNext = useCallback(
+    (fromEnded = false) => {
+      if (fromEnded && recStateRef.current.repeatMode === 'one') {
+        sharedAudioEngine.seek(0);
+        setCurrentTime(0);
+        sharedAudioEngine.resume();
+        return;
+      }
+
+      if (fromEnded && recStateRef.current.repeatMode === 'off') {
+        const curIdx = queueRef.current.findIndex((t) => t.id === currentTrackRef.current.id);
+        if (curIdx === queueRef.current.length - 1 && manualQueueRef.current.length === 0) {
+          // Record completion feedback then stop cleanly at end of queue when Repeat is Off
+          setRecState((prev) => recordTrackSignal(prev, currentTrackRef.current, 'complete'));
+          return;
+        }
+      }
+
+      const decision = pickNextTrackPure({
+        currentTrack: currentTrackRef.current,
+        queue: queueRef.current,
+        manualQueue: manualQueueRef.current,
+        recentTracks: recStateRef.current.recentTracks,
+        state: recStateRef.current,
+        mood: activeMoodRef.current
+      });
+
+      if (decision.shouldRestartCurrent) {
+        sharedAudioEngine.seek(0);
+        setCurrentTime(0);
+        sharedAudioEngine.resume();
+        return;
+      }
+
+      if (decision.consumedManual) {
+        setManualQueue((prev) => prev.slice(1));
+      }
+
+      handleSelectTrack(decision.nextTrack, { fromEnded });
+    },
+    [handleSelectTrack]
+  );
 
   const handlePrev = useCallback(() => {
-    const currentIndex = queue.findIndex((t) => t.id === currentTrack.id);
-    const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
-    handleSelectTrack(queue[prevIndex]);
-  }, [queue, currentTrack.id, handleSelectTrack]);
+    if (sharedAudioEngine.getCurrentTime() > 3) {
+      sharedAudioEngine.seek(0);
+      setCurrentTime(0);
+      return;
+    }
+
+    const history = playHistoryRef.current;
+    if (history.length > 0) {
+      const target = history[history.length - 1];
+      setPlayHistory((prev) => prev.slice(0, -1));
+      handleSelectTrack(target, { skipHistoryPush: true });
+      return;
+    }
+
+    const currentIndex = queueRef.current.findIndex((t) => t.id === currentTrackRef.current.id);
+    const prevIndex = (currentIndex - 1 + queueRef.current.length) % queueRef.current.length;
+    handleSelectTrack(queueRef.current[prevIndex], { skipHistoryPush: true });
+  }, [handleSelectTrack]);
 
   useEffect(() => {
     handleNextRef.current = handleNext;
   }, [handleNext]);
+
+  const handleToggleLike = useCallback((track: Track) => {
+    setRecState((prev) => recordTrackSignal(prev, track, 'toggleLike'));
+  }, []);
+
+  const handleAddToQueue = useCallback((track: Track) => {
+    setManualQueue((prev) => (prev.some((x) => x.id === track.id) ? prev : [...prev, track]));
+  }, []);
+
+  const handleRemoveFromManualQueue = useCallback((index: number) => {
+    setManualQueue((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleStartRadio = useCallback(
+    (seedTrack: Track) => {
+      const smartNext = buildSmartQueueFromPool(
+        seedTrack,
+        [...queueRef.current, ...TRACK_CATALOG],
+        recStateRef.current.recentTracks,
+        recStateRef.current,
+        activeMoodRef.current,
+        24
+      );
+      setQueue([seedTrack, ...smartNext]);
+      if (seedTrack.id !== currentTrackRef.current.id) {
+        handleSelectTrack(seedTrack);
+      } else {
+        refillRadioQueueIfNeeded(seedTrack, true);
+      }
+    },
+    [handleSelectTrack, refillRadioQueueIfNeeded]
+  );
+
+  const handleRefreshRadioMix = useCallback(() => {
+    const seed = currentTrackRef.current;
+    const smartNext = buildSmartQueueFromPool(
+      seed,
+      [...queueRef.current, ...TRACK_CATALOG],
+      recStateRef.current.recentTracks,
+      recStateRef.current,
+      activeMoodRef.current,
+      24
+    );
+    setQueue([seed, ...smartNext]);
+    refillRadioQueueIfNeeded(seed, true);
+  }, [refillRadioQueueIfNeeded]);
+
+  const handleSelectMood = useCallback(
+    async (mood: MoodPreset) => {
+      setActiveMood(mood);
+      const queries = getMoodSeedQueries(mood);
+      try {
+        const fetched = await searchTracksOnline(queries[0]);
+        if (fetched.length > 0) {
+          const seed = fetched[0];
+          const smartNext = buildSmartQueueFromPool(
+            seed,
+            [...fetched.slice(1), ...TRACK_CATALOG],
+            recStateRef.current.recentTracks,
+            recStateRef.current,
+            mood,
+            24
+          );
+          setQueue([seed, ...smartNext]);
+          handleSelectTrack(seed);
+          return;
+        }
+      } catch {
+        // Fallback to rebuilding existing queue under selected mood
+      }
+      const smartLocal = buildSmartQueueFromPool(
+        currentTrackRef.current,
+        [...queueRef.current, ...TRACK_CATALOG],
+        recStateRef.current.recentTracks,
+        recStateRef.current,
+        mood,
+        24
+      );
+      setQueue([currentTrackRef.current, ...smartLocal]);
+    },
+    [handleSelectTrack]
+  );
+
+  const handlePlayTrackList = useCallback(
+    (tracksList: Track[], shouldShuffle = false) => {
+      if (tracksList.length === 0) return;
+      setRecState((prev) => {
+        const next = { ...prev, shuffle: shouldShuffle };
+        saveRecommendationState(next);
+        return next;
+      });
+      setQueue(tracksList);
+      const firstTrack =
+        shouldShuffle && tracksList.length > 1
+          ? tracksList[Math.floor(Math.random() * tracksList.length)]
+          : tracksList[0];
+      handleSelectTrack(firstTrack);
+    },
+    [handleSelectTrack]
+  );
+
+  const handleToggleShuffle = useCallback(() => {
+    setRecState((prev) => {
+      const next = { ...prev, shuffle: !prev.shuffle };
+      saveRecommendationState(next);
+      return next;
+    });
+  }, []);
+
+  const handleCycleRepeat = useCallback(() => {
+    setRecState((prev) => {
+      const order: RepeatMode[] = ['all', 'one', 'off'];
+      const nextMode = order[(order.indexOf(prev.repeatMode) + 1) % order.length];
+      const next = { ...prev, repeatMode: nextMode };
+      saveRecommendationState(next);
+      return next;
+    });
+  }, []);
+
+  const handleSelectEqPreset = useCallback((eqPreset: EqPreset) => {
+    setRecState((prev) => {
+      const next = { ...prev, eqPreset };
+      saveRecommendationState(next);
+      return next;
+    });
+  }, []);
+
+  const handleSelectPlaybackRate = useCallback((playbackRate: number) => {
+    setRecState((prev) => {
+      const next = { ...prev, playbackRate };
+      saveRecommendationState(next);
+      return next;
+    });
+  }, []);
+
+  const handleSelectCrossfade = useCallback((crossfadeSeconds: number) => {
+    setRecState((prev) => {
+      const next = { ...prev, crossfadeSeconds };
+      saveRecommendationState(next);
+      return next;
+    });
+  }, []);
+
+  const handleSetSleepTimer = useCallback((minutes: number | null) => {
+    if (minutes === null) {
+      setSleepEndAtMs(null);
+      setSleepMinutesRemaining(null);
+    } else {
+      setSleepEndAtMs(Date.now() + minutes * 60000);
+      setSleepMinutesRemaining(minutes);
+    }
+  }, []);
+
+  const handleCreatePlaylist = useCallback((name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setRecState((prev) => {
+      const next: RecommendationState = {
+        ...prev,
+        playlists: [
+          {
+            id: `pl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: trimmed,
+            tracks: [],
+            createdAt: Date.now()
+          },
+          ...prev.playlists
+        ]
+      };
+      saveRecommendationState(next);
+      return next;
+    });
+  }, []);
+
+  const handleAddTrackToPlaylist = useCallback((playlistId: string, track: Track) => {
+    setRecState((prev) => {
+      const next: RecommendationState = {
+        ...prev,
+        playlists: prev.playlists.map((pl) =>
+          pl.id === playlistId && !pl.tracks.some((x) => x.id === track.id)
+            ? { ...pl, tracks: [...pl.tracks, track] }
+            : pl
+        )
+      };
+      saveRecommendationState(next);
+      return next;
+    });
+  }, []);
+
+  const handleRemoveTrackFromPlaylist = useCallback((playlistId: string, trackId: string) => {
+    setRecState((prev) => {
+      const next: RecommendationState = {
+        ...prev,
+        playlists: prev.playlists.map((pl) =>
+          pl.id === playlistId
+            ? { ...pl, tracks: pl.tracks.filter((x) => x.id !== trackId) }
+            : pl
+        )
+      };
+      saveRecommendationState(next);
+      return next;
+    });
+  }, []);
+
+  const handleDeletePlaylist = useCallback((playlistId: string) => {
+    setRecState((prev) => {
+      const next: RecommendationState = {
+        ...prev,
+        playlists: prev.playlists.filter((pl) => pl.id !== playlistId)
+      };
+      saveRecommendationState(next);
+      return next;
+    });
+  }, []);
+
+  // Background pre-resolve next upcoming track into module cache
+  useEffect(() => {
+    if (!isPlaying || currentTrack.duration <= 0) return;
+    if (currentTime < 15 || currentTime / currentTrack.duration < 0.45) return;
+
+    const preview = pickNextTrackPure({
+      currentTrack,
+      queue,
+      manualQueue,
+      recentTracks: recState.recentTracks,
+      state: recState,
+      mood: activeMood
+    }).nextTrack;
+
+    if (
+      preview &&
+      preview.id !== currentTrack.id &&
+      !preview.audioUrl &&
+      !preResolvedIdsRef.current.has(preview.id)
+    ) {
+      preResolvedIdsRef.current.add(preview.id);
+      resolveFullTrackStream(preview.title, preview.artist, preview.duration).catch(() => {});
+    }
+  }, [isPlaying, currentTime, currentTrack, queue, manualQueue, recState, activeMood]);
+
+  // OS Lockscreen / Media Keys integration
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    try {
+      ms.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        album: currentTrack.album || 'Sonacast',
+        artwork: currentTrack.coverUrl
+          ? [{ src: currentTrack.coverUrl, sizes: '512x512', type: 'image/jpeg' }]
+          : []
+      });
+      ms.setActionHandler('play', () => sharedAudioEngine.resume());
+      ms.setActionHandler('pause', () => sharedAudioEngine.pause());
+      ms.setActionHandler('nexttrack', () => handleNextRef.current(false));
+      ms.setActionHandler('previoustrack', () => handlePrev());
+      ms.setActionHandler('seekto', (details) => {
+        if (typeof details.seekTime === 'number') {
+          sharedAudioEngine.seek(details.seekTime);
+        }
+      });
+    } catch {
+      // Safe fallback on unsupported browsers
+    }
+  }, [currentTrack, handlePrev]);
+
+  // Global keyboard shortcuts (Space play/pause, Arrows seek/skip, M mute, L like)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (sharedAudioEngine.getIsPlaying()) sharedAudioEngine.pause();
+        else sharedAudioEngine.resume();
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        if (e.shiftKey) handleNextRef.current(false);
+        else sharedAudioEngine.seek(sharedAudioEngine.getCurrentTime() + 10);
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        if (e.shiftKey) handlePrev();
+        else sharedAudioEngine.seek(Math.max(0, sharedAudioEngine.getCurrentTime() - 10));
+      } else if (e.key === 'm' || e.key === 'M') {
+        const nextVol = sharedAudioEngine.getVolume() > 0 ? 0 : 0.85;
+        setVolume(nextVol);
+        sharedAudioEngine.setVolume(nextVol);
+      } else if (e.key === 'l' || e.key === 'L') {
+        handleToggleLike(currentTrackRef.current);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handlePrev, handleToggleLike]);
 
   const handleSeek = (secs: number) => {
     sharedAudioEngine.seek(secs);
@@ -530,22 +1032,23 @@ export default function App() {
           </button>
 
           <div className="hidden md:flex items-center gap-2 min-w-0">
-            <span className="w-2 h-2 rounded-full bg-[var(--accent-emerald)] animate-pulse shrink-0" />
-            <span className="font-bold text-[var(--text-primary)] tracking-wide shrink-0">
-              {t.topTickerTitle}
+            <span className="w-2 h-2 rounded-full bg-[var(--accent-emerald)] shrink-0" />
+            <span className="font-semibold text-[var(--text-primary)] truncate">
+              {currentTrack.title}
             </span>
             <span className="text-[var(--text-dim)] hidden lg:inline">&middot;</span>
             <span className="text-[var(--text-secondary)] truncate hidden lg:inline">
-              Queen, Michael Jackson, The Weeknd, Eminem &amp; {ARTISTS_DIRECTORY.length} Artists
+              {currentTrack.artist}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          <span className="text-[11px] text-[var(--accent-text)] font-mono hidden min-[1380px]:flex items-center gap-1 mr-1">
-            <Globe size={11} />
-            100% Full-Length &amp; LRCLIB
-          </span>
+          {sleepMinutesRemaining !== null && (
+            <span className="text-[11px] text-[var(--accent-text)] font-mono hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--accent-soft)]">
+              {sleepMinutesRemaining}m
+            </span>
+          )}
 
           <ThemeLanguageControls variant="topbar" />
 
@@ -730,8 +1233,16 @@ export default function App() {
                 onSelectTrack={handleSelectTrack}
                 onTogglePlay={handleTogglePlay}
                 onNavigateTab={handleTabChange}
-                onOpenPitchDeck={() => setIsPitchModalOpen(true)}
                 onOpenStage={() => setIsStageOpen((prev) => !prev)}
+                activeMood={activeMood}
+                onSelectMood={handleSelectMood}
+                likedTracks={recState.likedTracks}
+                recentTracks={recState.recentTracks}
+                likedTrackIds={likedTrackIds}
+                onToggleLike={handleToggleLike}
+                onAddToQueue={handleAddToQueue}
+                onStartRadio={handleStartRadio}
+                onSearchArtist={navigateToSearch}
               />
             )}
 
@@ -744,8 +1255,20 @@ export default function App() {
                 onSelectTrack={handleSelectTrack}
                 onTogglePlay={handleTogglePlay}
                 onUploadTrack={handleUploadTrack}
-                onUpdateLyrics={handleUpdateTrackLyrics}
+                onUpdateLyrics={(_trackId, lyrics) => handleUpdateTrackLyrics(lyrics)}
                 onNavigateSearch={navigateToSearch}
+                likedTracks={recState.likedTracks}
+                recentTracks={recState.recentTracks}
+                playlists={recState.playlists}
+                likedTrackIds={likedTrackIds}
+                onToggleLike={handleToggleLike}
+                onAddToQueue={handleAddToQueue}
+                onStartRadio={handleStartRadio}
+                onPlayTrackList={handlePlayTrackList}
+                onCreatePlaylist={handleCreatePlaylist}
+                onAddTrackToPlaylist={handleAddTrackToPlaylist}
+                onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
+                onDeletePlaylist={handleDeletePlaylist}
               />
             )}
 
@@ -760,6 +1283,10 @@ export default function App() {
                 onSelectTrack={handleSelectTrack}
                 onTogglePlay={handleTogglePlay}
                 onUpdateLyrics={handleUpdateTrackLyrics}
+                likedTrackIds={likedTrackIds}
+                onToggleLike={handleToggleLike}
+                onAddToQueue={handleAddToQueue}
+                onStartRadio={handleStartRadio}
               />
             )}
 
@@ -799,8 +1326,15 @@ export default function App() {
         {/* Right Sidebar Queue, Official Stream Slot & Tipping */}
         <RightSidebar
           queue={queue}
+          manualQueue={manualQueue}
           currentTrack={currentTrack}
           onSelectTrack={handleSelectTrack}
+          onRemoveFromManualQueue={handleRemoveFromManualQueue}
+          onRefreshRadioMix={handleRefreshRadioMix}
+          likedTrackIds={likedTrackIds}
+          onToggleLike={handleToggleLike}
+          onSeek={handleSeek}
+          currentTime={currentTime}
           radioStations={RADIO_STATIONS}
           onSelectRadio={handleSelectRadio}
           onOpenTipModal={() => setIsWalletModalOpen(true)}
@@ -818,7 +1352,7 @@ export default function App() {
         isResolvingStream={Boolean(resolvingTrackId)}
         streamError={streamError}
         onTogglePlay={handleTogglePlay}
-        onNext={handleNext}
+        onNext={() => handleNext(false)}
         onPrev={handlePrev}
         currentTime={currentTime}
         duration={currentTrack.duration}
@@ -830,6 +1364,45 @@ export default function App() {
         isLyricsOpen={isLyricsOpen}
         onToggleLyrics={handleToggleLyrics}
         onOpenMobileQueue={() => setIsMobileQueueOpen(true)}
+        shuffle={recState.shuffle}
+        onToggleShuffle={handleToggleShuffle}
+        repeatMode={recState.repeatMode}
+        onCycleRepeat={handleCycleRepeat}
+        isLiked={likedTrackIds.has(currentTrack.id)}
+        onToggleLike={() => handleToggleLike(currentTrack)}
+        onStartRadio={() => handleStartRadio(currentTrack)}
+        onOpenExpandedPlayer={() => setIsExpandedPlayerOpen(true)}
+      />
+
+      {/* Full Expanded Now Playing Sheet (Resso / Spotify Style) */}
+      <ExpandedPlayerModal
+        isOpen={isExpandedPlayerOpen}
+        onClose={() => setIsExpandedPlayerOpen(false)}
+        track={currentTrack}
+        isPlaying={isPlaying}
+        currentTime={currentTime}
+        duration={currentTrack.duration}
+        isLiked={likedTrackIds.has(currentTrack.id)}
+        shuffle={recState.shuffle}
+        repeatMode={recState.repeatMode}
+        eqPreset={recState.eqPreset}
+        playbackRate={recState.playbackRate}
+        crossfadeSeconds={recState.crossfadeSeconds}
+        sleepTimerMinutesRemaining={sleepMinutesRemaining}
+        playlists={recState.playlists}
+        onTogglePlay={handleTogglePlay}
+        onNext={() => handleNext(false)}
+        onPrev={handlePrev}
+        onSeek={handleSeek}
+        onToggleLike={handleToggleLike}
+        onToggleShuffle={handleToggleShuffle}
+        onCycleRepeat={handleCycleRepeat}
+        onSelectEqPreset={handleSelectEqPreset}
+        onSelectPlaybackRate={handleSelectPlaybackRate}
+        onSelectCrossfade={handleSelectCrossfade}
+        onSetSleepTimer={handleSetSleepTimer}
+        onStartRadio={handleStartRadio}
+        onAddToPlaylist={handleAddTrackToPlaylist}
       />
 
       {/* Solana Devnet Wallet Modal */}

@@ -1,38 +1,20 @@
-const BLOCKED_WORDS = [
-  'karaoke',
-  '8d audio',
-  '8d',
-  'nightcore',
-  'slowed',
-  'reverb',
-  'sped up',
-  'tribute',
-  'ringtone',
-  '30 sec',
-  'snippet',
-  'backing track',
-  'instrumental',
-  'parody',
-  'teaser',
-  'piano version',
-  'acoustic version',
-  'medley',
-  'orchestral',
-  '10 hours',
-  '1 hour',
-  'extended mix',
-  'loop'
-];
+const BLOCKED_MODIFIER_REGEX =
+  /\b(karaoke|8d\s+audio|nightcore|slowed(?:\s*\+\s*|\s+)reverb|sped\s+up|ringtone|parody|backing\s+track|music\s+box|lullaby|8-bit|10\s+hours?|1\s+hour|extended\s+mix|snippet|30\s+sec)\b/i;
+const PAREN_COVER_OR_REMIX_REGEX =
+  /(?:[([]\s*(?:cover|remix|karaoke|instrumental|tribute|slowed|reverb|sped\s*up|nightcore|8d|loop)\b|\b(?:acoustic|piano|guitar|vocal|drum)\s+cover\b|\bcover\s+(?:by|version)\b|\btribute\s+to\b)/i;
 
 function isNonOriginalTitle(title, queryLower) {
   const lower = (title || '').toLowerCase();
-  for (const w of BLOCKED_WORDS) {
-    if (lower.includes(w) && !queryLower.includes(w)) {
+  if (BLOCKED_MODIFIER_REGEX.test(lower)) {
+    const matched = lower.match(BLOCKED_MODIFIER_REGEX)?.[1] || '';
+    if (matched && !queryLower.includes(matched.toLowerCase())) {
       return true;
     }
   }
-  if ((lower.includes('remix') && !queryLower.includes('remix')) || (lower.includes('cover') && !queryLower.includes('cover'))) {
-    return true;
+  if (PAREN_COVER_OR_REMIX_REGEX.test(lower)) {
+    if (!queryLower.includes('cover') && !queryLower.includes('remix') && !queryLower.includes('instrumental') && !queryLower.includes('loop')) {
+      return true;
+    }
   }
   return false;
 }
@@ -55,7 +37,7 @@ async function queryPipedMusicSongs(q, queryLower) {
           thumbnail: id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : ''
         };
       })
-      .filter((x) => x.videoId && x.duration >= 60 && x.duration <= 1800 && !isNonOriginalTitle(x.title, queryLower));
+      .filter((x) => x.videoId && x.duration >= 40 && x.duration <= 2400 && !isNonOriginalTitle(x.title, queryLower));
   } catch {
     return [];
   }
@@ -148,7 +130,7 @@ export default async function handler(req, res) {
         const author = vr.ownerText?.runs?.map((r) => r.text).join('') || '';
         const durationText = vr.lengthText?.simpleText || '';
         const duration = parseLengthSeconds(durationText);
-        if (duration > 0 && (duration < 60 || duration > 1800)) continue;
+        if (duration > 0 && (duration < 40 || duration > 2400)) continue;
         if (isNonOriginalTitle(title, queryLower)) continue;
 
         items.push({

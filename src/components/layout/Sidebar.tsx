@@ -121,9 +121,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Bottom Controls: Theme, Languages (24) & Wallet */}
+      {/* Bottom Controls: Theme/Language (mobile drawer only) & Wallet */}
       <div className="space-y-3 pt-4 mt-4 border-t border-[var(--border-subtle)]">
-        <ThemeLanguageControls variant="sidebar" />
+        {isDrawer && <ThemeLanguageControls variant="sidebar" />}
 
         <button
           type="button"

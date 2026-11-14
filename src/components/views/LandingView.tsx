@@ -1,22 +1,23 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Activity,
-  ArrowRight,
+  ChevronRight,
   Disc3,
-  FileAudio,
-  Headphones,
+  Heart,
   Loader2,
-  Mic2,
   Pause,
   Play,
   Radio,
-  Search,
   Sparkles,
-  TrendingUp,
+  TrendingUp
 } from 'lucide-react';
-import type { TabType, Track } from '../../types';
+import type { MoodPreset, TabType, Track } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { usePopularCharts } from '../../hooks/usePopularCharts';
+import {
+  extractPrimaryArtist,
+  MOOD_PRESETS,
+  resolveGenreFamily
+} from '../../services/recommendationEngine';
 import { TrackCard } from '../common/TrackCard';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 
@@ -28,9 +29,33 @@ interface LandingViewProps {
   onSelectTrack: (track: Track) => void;
   onTogglePlay: () => void;
   onNavigateTab: (tab: TabType) => void;
-  onOpenPitchDeck: () => void;
-  onOpenStage: () => void;
+  onOpenPitchDeck?: () => void;
+  onOpenStage?: () => void;
+  activeMood?: MoodPreset;
+  onSelectMood?: (mood: MoodPreset) => void;
+  likedTracks?: Track[];
+  recentTracks?: Track[];
+  likedTrackIds?: Set<string>;
+  onToggleLike?: (track: Track) => void;
+  onAddToQueue?: (track: Track) => void;
+  onStartRadio?: (track: Track) => void;
+  onSearchArtist?: (artistName: string) => void;
 }
+
+const FEATURED_ARTISTS: { name: string; genre: string; accent: string }[] = [
+  { name: 'The Weeknd', genre: 'Pop / Synth', accent: '#10B981' },
+  { name: 'Taylor Swift', genre: 'Pop', accent: '#3B82F6' },
+  { name: 'Tulus', genre: 'Pop Indonesia', accent: '#059669' },
+  { name: 'Queen', genre: 'Classic Rock', accent: '#F59E0B' },
+  { name: 'YOASOBI', genre: 'J-Pop', accent: '#EC4899' },
+  { name: 'Eminem', genre: 'Hip-Hop', accent: '#6366F1' },
+  { name: 'NOAH', genre: 'Indonesian Rock', accent: '#14B8A6' },
+  { name: 'NewJeans', genre: 'K-Pop', accent: '#A855F7' },
+  { name: 'Billie Eilish', genre: 'Alt Pop', accent: '#06B6D4' },
+  { name: 'Sheila On 7', genre: 'Indo Pop', accent: '#22C55E' },
+  { name: 'Coldplay', genre: 'Rock / Alt', accent: '#0EA5E9' },
+  { name: 'Bruno Mars', genre: 'Pop / Funk', accent: '#F97316' }
+];
 
 export const LandingView: React.FC<LandingViewProps> = ({
   tracks,
@@ -40,277 +65,416 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onSelectTrack,
   onTogglePlay,
   onNavigateTab,
-  onOpenPitchDeck,
   onOpenStage,
+  activeMood = 'all',
+  onSelectMood,
+  likedTracks = [],
+  recentTracks = [],
+  likedTrackIds,
+  onToggleLike,
+  onAddToQueue,
+  onStartRadio,
+  onSearchArtist
 }) => {
   const { t } = useAppPreferences();
   const { popularCharts, isLoadingCharts } = usePopularCharts();
   const [chartRegion, setChartRegion] = useState<'global' | 'indonesia'>('global');
 
-  const featuredTrack = tracks[0] || currentTrack;
-  const isFeaturedPlaying = currentTrack.id === featuredTrack.id && isPlaying;
-  const isResolvingFeatured = resolvingTrackId === featuredTrack.id;
+  const activeCharts = useMemo(() => {
+    const raw = chartRegion === 'global' ? popularCharts.global : popularCharts.indonesia;
+    const deduped: Track[] = [];
+    const seenKeys = new Set<string>();
+    for (const item of raw) {
+      if (!item || !item.id) continue;
+      const titleKey = (item.title || '')
+        .toLowerCase()
+        .replace(/\(.*?\)|\[.*?\]/g, '')
+        .replace(/[^a-z0-9\p{L}\p{N}]+/gu, '')
+        .trim();
+      const artistKey = extractPrimaryArtist(item.artist);
+      const dedupeKey = titleKey && artistKey ? `${titleKey}::${artistKey}` : item.id;
+      if (seenKeys.has(dedupeKey)) continue;
+      seenKeys.add(dedupeKey);
+      deduped.push(item);
+    }
+    return deduped;
+  }, [chartRegion, popularCharts.global, popularCharts.indonesia]);
+  const spotlightTrack = currentTrack || tracks[0];
+  const isSpotlightPlaying = spotlightTrack?.id === currentTrack.id && isPlaying;
 
-  const activeChartTracks =
-    chartRegion === 'global'
-      ? popularCharts.global.slice(0, 5)
-      : popularCharts.indonesia.slice(0, 5);
+  // Quick Picks merges recent history, liked favorites, live chart hits, and studio masters,
+  // deduplicated by normalized title + artist and prioritized by activeMood.
+  const quickPicks = useMemo(() => {
+    const merged: Track[] = [
+      ...recentTracks.slice(0, 3),
+      ...likedTracks.slice(0, 3),
+      ...(chartRegion === 'indonesia' ? popularCharts.indonesia : popularCharts.global).slice(0, 14),
+      ...tracks
+    ];
+    const unique: Track[] = [];
+    const seenIds = new Set<string>();
+    const seenTrackKeys = new Set<string>();
+    for (const item of merged) {
+      if (!item || !item.id || seenIds.has(item.id)) continue;
+      const titleKey = (item.title || '')
+        .toLowerCase()
+        .replace(/\(.*?\)|\[.*?\]/g, '')
+        .replace(/[^a-z0-9\p{L}\p{N}]+/gu, '')
+        .trim();
+      const artistKey = extractPrimaryArtist(item.artist);
+      const semanticKey = titleKey && artistKey ? `${titleKey}::${artistKey}` : item.id;
+      if (seenTrackKeys.has(semanticKey)) continue;
+      seenIds.add(item.id);
+      seenTrackKeys.add(semanticKey);
+      unique.push(item);
+    }
 
-  const pillars: Array<{
-    title: string;
-    desc: string;
-    icon: React.ReactNode;
-    tab: TabType;
-  }> = [
-    {
-      title: t.pillar1Title,
-      desc: t.pillar1Desc,
-      icon: <Disc3 size={18} className="text-[var(--accent-text)]" />,
-      tab: 'discover',
-    },
-    {
-      title: t.pillar2Title,
-      desc: t.pillar2Desc,
-      icon: <Search size={18} className="text-[var(--accent-cyan)]" />,
-      tab: 'search',
-    },
-    {
-      title: t.pillar3Title,
-      desc: t.pillar3Desc,
-      icon: <Activity size={18} className="text-[var(--accent-text)]" />,
-      tab: 'visualizer',
-    },
-    {
-      title: t.pillar4Title,
-      desc: t.pillar4Desc,
-      icon: <Radio size={18} className="text-[var(--accent-cyan)]" />,
-      tab: 'radio',
-    },
-  ];
+    if (activeMood === 'all') {
+      return unique.slice(0, 8);
+    }
+
+    const matchesMood = (tr: Track): boolean => {
+      const fam = resolveGenreFamily(tr.genre, tr.artist);
+      const bpm = tr.bpm || 110;
+      if (activeMood === 'focus') return fam === 'electronic' || fam === 'classical' || fam === 'jazz' || fam === 'acoustic' || bpm <= 108;
+      if (activeMood === 'chill') return fam === 'rnb' || fam === 'acoustic' || fam === 'jazz' || fam === 'indonesian' || bpm <= 106;
+      if (activeMood === 'upbeat') return fam === 'pop' || fam === 'kpop' || fam === 'jpop' || fam === 'electronic' || fam === 'latin' || bpm >= 110;
+      if (activeMood === 'workout') return fam === 'hiphop' || fam === 'electronic' || fam === 'rock' || bpm >= 118;
+      if (activeMood === 'indonesian') return fam === 'indonesian';
+      if (activeMood === 'classic') return fam === 'rock' || fam === 'jazz' || fam === 'classical';
+      if (activeMood === 'acoustic') return fam === 'acoustic' || fam === 'jazz' || fam === 'classical' || bpm <= 114;
+      return true;
+    };
+
+    const moodFirst = unique.filter(matchesMood);
+    const rest = unique.filter((x) => !matchesMood(x));
+    return [...moodFirst, ...rest].slice(0, 8);
+  }, [recentTracks, likedTracks, popularCharts.global, popularCharts.indonesia, chartRegion, tracks, activeMood]);
+
+  const personalShelf = useMemo(() => {
+    const combined = [...recentTracks, ...likedTracks];
+    const unique: Track[] = [];
+    const seen = new Set<string>();
+    for (const item of combined) {
+      if (!item || !item.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      unique.push(item);
+      if (unique.length >= 5) break;
+    }
+    return unique;
+  }, [recentTracks, likedTracks]);
+
+  const moodLabels: Record<MoodPreset, string> = {
+    all: t.moodAll,
+    focus: t.moodFocus,
+    chill: t.moodChill,
+    upbeat: t.moodUpbeat,
+    workout: t.moodWorkout,
+    indonesian: t.moodIndonesian,
+    classic: t.moodClassic,
+    acoustic: t.moodAcoustic
+  };
 
   return (
-    <div className="space-y-7 sm:space-y-9 pb-8">
-      {/* Clean Executive Hero Showcase */}
-      <section
-        className="rounded-3xl border border-[var(--border-subtle)] p-5 sm:p-7 lg:p-9 transition-colors"
-        style={{ background: 'var(--hero-gradient)', boxShadow: 'var(--card-shadow)' }}
-      >
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
-          {/* Left Copy & Controls */}
-          <div className="lg:col-span-7 space-y-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-text)] text-xs font-semibold">
-              <Sparkles size={13} className="shrink-0" />
-              <span>{t.heroBadge}</span>
-            </div>
+    <div className="space-y-8 pb-10 transition-colors">
+      {/* 1. Editorial Header + Mood / Vibe Bar */}
+      <section className="space-y-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--text-primary)] leading-tight">
+            {t.heroHeadline}
+          </h1>
+          <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 max-w-2xl">
+            {t.heroSubheadline}
+          </p>
+        </div>
 
-            <h1 className="text-2xl sm:text-3xl lg:text-[40px] font-bold tracking-tight leading-[1.15] text-[var(--text-primary)]">
-              {t.heroHeadline}
-            </h1>
-
-            <p className="text-sm sm:text-base text-[var(--text-secondary)] leading-relaxed max-w-2xl">
-              {t.heroSubheadline}
-            </p>
-
-            {/* Primary CTA Buttons */}
-            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+        {/* Mood & Vibe Radio Filter Chips */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1" role="tablist" aria-label="Mood Mixes">
+          {MOOD_PRESETS.map((mood) => {
+            const isActive = activeMood === mood.id;
+            return (
               <button
+                key={mood.id}
                 type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => onSelectMood?.(mood.id)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)] shadow-sm'
+                    : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:bg-[var(--bg-tint-hover)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {moodLabels[mood.id]}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 2. Above-the-Fold Quick Picks (Spotify / YTM Compact Horizontal Tiles) */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm sm:text-base font-extrabold tracking-tight text-[var(--text-primary)] flex items-center gap-2">
+            <Sparkles size={15} className="text-[var(--accent-text)]" />
+            <span>{t.quickPicks}</span>
+          </h2>
+          {onStartRadio && spotlightTrack && (
+            <button
+              type="button"
+              onClick={() => onStartRadio(spotlightTrack)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-text)] hover:underline cursor-pointer"
+            >
+              <Radio size={13} />
+              <span>{t.startRadio}</span>
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+          {quickPicks.map((item) => {
+            const isActive = item.id === currentTrack.id;
+            const isResolving = resolvingTrackId === item.id;
+            const isLiked = likedTrackIds?.has(item.id) || false;
+            return (
+              <div
+                key={`quick-${item.id}`}
+                role="button"
+                tabIndex={0}
                 onClick={() => {
-                  if (currentTrack.id === featuredTrack.id) {
+                  if (isActive && !isResolving) {
                     onTogglePlay();
                   } else {
-                    onSelectTrack(featuredTrack);
+                    onSelectTrack(item);
                   }
                 }}
-                className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] font-bold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors shadow-lg cursor-pointer"
-                style={{ boxShadow: '0 8px 24px var(--accent-soft)' }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (isActive && !isResolving) onTogglePlay();
+                    else onSelectTrack(item);
+                  }
+                }}
+                className={`group h-16 rounded-xl flex items-center gap-3 pr-2.5 overflow-hidden transition-all cursor-pointer select-none ${
+                  isActive
+                    ? 'bg-[var(--accent-soft)] ring-1 ring-[var(--accent-emerald)]'
+                    : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)]'
+                }`}
               >
-                {isResolvingFeatured ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : isFeaturedPlaying ? (
-                  <Pause size={15} fill="currentColor" />
+                <div className="relative w-16 h-16 shrink-0 bg-[var(--bg-elevated)]">
+                  <img
+                    src={item.coverUrl}
+                    alt={item.title}
+                    onError={(e) => applyCoverFallback(e, item.title, item.artist)}
+                    className="w-full h-full object-cover"
+                  />
+                  <div
+                    className={`absolute inset-0 bg-black/45 flex items-center justify-center transition-opacity ${
+                      isActive || isResolving ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    }`}
+                  >
+                    {isResolving ? (
+                      <Loader2 size={16} className="animate-spin text-white" />
+                    ) : isActive && isPlaying ? (
+                      <Pause size={16} className="text-white fill-white" />
+                    ) : (
+                      <Play size={16} className="text-white fill-white ml-0.5" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={`text-xs font-bold truncate ${
+                      isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
+                    }`}
+                  >
+                    {item.title}
+                  </div>
+                  <div className="text-[11px] text-[var(--text-secondary)] truncate">
+                    {item.artist}
+                  </div>
+                </div>
+
+                {onToggleLike && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleLike(item);
+                    }}
+                    aria-label={t.likedSongs}
+                    className={`p-1.5 rounded-full transition-colors cursor-pointer shrink-0 ${
+                      isLiked
+                        ? 'text-[var(--accent-text)] opacity-100'
+                        : 'text-[var(--text-dim)] opacity-0 group-hover:opacity-100 hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    <Heart size={13} className={isLiked ? 'fill-current' : ''} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 3. Borderless Artwork-Backed Active Spotlight Strip */}
+      {spotlightTrack && (
+        <section className="relative overflow-hidden rounded-2xl bg-[var(--bg-tint)] p-5 sm:p-6">
+          {/* Ambient Blurred Artwork Wash */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 opacity-20 blur-3xl scale-110"
+            style={{
+              backgroundImage: `url("${spotlightTrack.coverUrl || DEFAULT_COVER_DATA_URI}")`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center'
+            }}
+          />
+
+          <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden shadow-xl bg-[var(--bg-elevated)] shrink-0">
+                <img
+                  src={spotlightTrack.coverUrl || DEFAULT_COVER_DATA_URI}
+                  alt={spotlightTrack.title}
+                  onError={(e) =>
+                    applyCoverFallback(e, spotlightTrack.title, spotlightTrack.artist)
+                  }
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <div className="text-[11px] font-mono uppercase tracking-wider text-[var(--accent-text)] font-semibold">
+                  {t.nowPlaying}
+                </div>
+                <h2 className="text-lg sm:text-2xl font-extrabold text-[var(--text-primary)] truncate mt-0.5">
+                  {spotlightTrack.title}
+                </h2>
+                <p className="text-xs sm:text-sm text-[var(--text-secondary)] truncate">
+                  {spotlightTrack.artist} &middot; {spotlightTrack.genre} &middot; {spotlightTrack.bpm} BPM
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={onTogglePlay}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-xs sm:text-sm font-bold shadow-md transition-transform active:scale-95 cursor-pointer"
+              >
+                {isSpotlightPlaying ? (
+                  <Pause size={16} className="fill-current" />
                 ) : (
-                  <Play size={15} fill="currentColor" className="ml-0.5" />
+                  <Play size={16} className="fill-current" />
                 )}
                 <span>{t.heroPrimaryCta}</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => onNavigateTab('discover')}
-                className="min-h-[44px] px-4 py-2.5 rounded-2xl bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-semibold text-xs sm:text-sm inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <span>{t.viewFullLibrary}</span>
-                <ArrowRight size={14} />
-              </button>
-
-              <button
-                type="button"
-                onClick={onOpenPitchDeck}
-                className="min-h-[44px] px-4 py-2.5 rounded-2xl bg-transparent hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-semibold text-xs sm:text-sm inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <span>{t.heroPitchCta}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Right Featured Master Player Card */}
-          <div className="lg:col-span-5">
-            <div
-              className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-4 sm:p-5 space-y-4"
-              style={{ boxShadow: 'var(--card-shadow)' }}
-            >
-              <div className="flex items-center justify-between text-xs font-mono">
-                <span className="inline-flex items-center gap-1.5 text-[var(--accent-text)] font-bold">
-                  <span className="w-2 h-2 rounded-full bg-[var(--accent-emerald)] animate-pulse" />
-                  {t.nowPlaying.toUpperCase()}
-                </span>
+              {onOpenStage && (
                 <button
                   type="button"
                   onClick={onOpenStage}
-                  className="px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full bg-[var(--bg-surface)]/80 hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer"
                 >
-                  {t.playerStageToggle}
+                  <span>{t.playerStageToggle}</span>
                 </button>
-              </div>
+              )}
 
-              <div className="flex items-center gap-4">
-                <img
-                  src={currentTrack.coverUrl || DEFAULT_COVER_DATA_URI}
-                  alt={currentTrack.title}
-                  onError={(e) => applyCoverFallback(e, currentTrack.title, currentTrack.artist)}
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border border-[var(--border-subtle)] shrink-0"
-                />
-                <div className="min-w-0 flex-1 space-y-1">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--accent-soft)] text-[var(--accent-text)] text-[10px] font-mono font-bold">
-                    <Disc3 size={10} />
-                    {currentTrack.streamSource === 'studio-master' || currentTrack.audioUrl
-                      ? 'STUDIO MASTER'
-                      : 'FULL TRACK'}
-                  </span>
-                  <h2 className="text-base sm:text-lg font-bold text-[var(--text-primary)] truncate">
-                    {currentTrack.title}
-                  </h2>
-                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] truncate">
-                    {currentTrack.artist}
-                  </p>
-                  <p className="text-[11px] font-mono text-[var(--text-dim)] truncate">
-                    {currentTrack.album}
-                  </p>
-                </div>
-              </div>
-
-              {/* Clean Metric Strip */}
-              <div className="grid grid-cols-3 gap-2 pt-3 border-t border-[var(--border-subtle)] text-center">
-                <div className="p-2 rounded-xl bg-[var(--bg-elevated)]">
-                  <p className="text-xs sm:text-sm font-bold text-[var(--text-primary)]">85M+</p>
-                  <p className="text-[10px] text-[var(--text-dim)]">Full Tracks</p>
-                </div>
-                <div className="p-2 rounded-xl bg-[var(--bg-elevated)]">
-                  <p className="text-xs sm:text-sm font-bold text-[var(--accent-text)]">800+</p>
-                  <p className="text-[10px] text-[var(--text-dim)]">Top Artists</p>
-                </div>
-                <div className="p-2 rounded-xl bg-[var(--bg-elevated)]">
-                  <p className="text-xs sm:text-sm font-bold text-[var(--text-primary)]">24</p>
-                  <p className="text-[10px] text-[var(--text-dim)]">Languages</p>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => onNavigateTab('discover')}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full bg-[var(--bg-surface)]/80 hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer"
+              >
+                <span>{t.navDiscover}</span>
+              </button>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* Core Platform Pillars */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">
-            {t.landingHighlightsTitle}
-          </h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-          {pillars.map((item) => (
+      {/* 4. Recently Played & Liked Shelf (shown when user has history/likes) */}
+      {personalShelf.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
+              {t.recentlyPlayed}
+            </h2>
             <button
-              key={item.tab}
               type="button"
-              onClick={() => onNavigateTab(item.tab)}
-              className="group text-left p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent-border)] transition-all cursor-pointer flex flex-col justify-between gap-3"
-              style={{ boxShadow: 'var(--card-shadow)' }}
+              onClick={() => onNavigateTab('discover')}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-text)] hover:underline cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center">
-                {item.icon}
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-text)] transition-colors">
-                  {item.title}
-                </h3>
-                <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                  {item.desc}
-                </p>
-              </div>
+              <span>{t.viewFullLibrary}</span>
+              <ChevronRight size={14} />
             </button>
-          ))}
-        </div>
-      </section>
+          </div>
 
-      {/* Live Top Charts Preview */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+            {personalShelf.map((track) => (
+              <TrackCard
+                key={`recent-${track.id}`}
+                track={track}
+                isSelected={currentTrack.id === track.id}
+                isResolving={resolvingTrackId === track.id}
+                onSelect={onSelectTrack}
+                isLiked={likedTrackIds?.has(track.id)}
+                onToggleLike={onToggleLike}
+                onAddToQueue={onAddToQueue}
+                onStartRadio={onStartRadio}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 5. Popular Charts Section (Global & Indonesia) */}
       <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <TrendingUp size={18} className="text-[var(--accent-text)] shrink-0" />
-            <h2 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">
+            <TrendingUp size={17} className="text-[var(--accent-text)]" />
+            <h2 className="text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
               {t.chartsHeading}
             </h2>
           </div>
 
-          <div className="flex items-center flex-wrap gap-2">
-            <div className="inline-flex rounded-xl p-1 bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
-              <button
-                type="button"
-                onClick={() => setChartRegion('global')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                  chartRegion === 'global'
-                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                {t.chartsGlobal}
-              </button>
-              <button
-                type="button"
-                onClick={() => setChartRegion('indonesia')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                  chartRegion === 'indonesia'
-                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                {t.chartsIndonesia}
-              </button>
-            </div>
-
+          <div className="flex items-center gap-1 p-1 rounded-full bg-[var(--bg-tint)]">
             <button
               type="button"
-              onClick={() => onNavigateTab('discover')}
-              className="text-xs font-semibold text-[var(--accent-text)] hover:underline inline-flex items-center gap-1 px-2 py-1.5 cursor-pointer"
+              onClick={() => setChartRegion('global')}
+              className={`px-3.5 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+                chartRegion === 'global'
+                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
             >
-              <span>{t.viewFullLibrary}</span>
-              <ArrowRight size={13} />
+              {t.chartsGlobal}
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartRegion('indonesia')}
+              className={`px-3.5 py-1 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+                chartRegion === 'indonesia'
+                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {t.chartsIndonesia}
             </button>
           </div>
         </div>
 
-        {isLoadingCharts ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <div
-                key={n}
-                className="h-56 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] animate-pulse"
-              />
+        {isLoadingCharts && activeCharts.length === 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+            {Array.from({ length: 10 }).map((_, idx) => (
+              <div key={idx} className="aspect-[4/5] rounded-xl bg-[var(--bg-tint)] animate-pulse" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-            {activeChartTracks.map((track, idx) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+            {activeCharts.slice(0, 10).map((track, idx) => (
               <TrackCard
                 key={`${chartRegion}-${track.id}`}
                 track={track}
@@ -318,92 +482,96 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 isSelected={currentTrack.id === track.id}
                 isResolving={resolvingTrackId === track.id}
                 onSelect={onSelectTrack}
+                isLiked={likedTrackIds?.has(track.id)}
+                onToggleLike={onToggleLike}
+                onAddToQueue={onAddToQueue}
+                onStartRadio={onStartRadio}
               />
             ))}
           </div>
         )}
       </section>
 
-      {/* Curated Studio Masters */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
+      {/* 6. Popular Artists Quick Medallions */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
+            {t.popularArtists}
+          </h2>
+          <button
+            type="button"
+            onClick={() => onNavigateTab('search')}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-text)] hover:underline cursor-pointer"
+          >
+            <span>{t.navSearch}</span>
+            <ChevronRight size={14} />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2">
+          {FEATURED_ARTISTS.map((artist) => (
+            <button
+              key={artist.name}
+              type="button"
+              onClick={() => {
+                if (onSearchArtist) onSearchArtist(artist.name);
+                else onNavigateTab('search');
+              }}
+              className="group flex flex-col items-center gap-2 shrink-0 w-24 text-center cursor-pointer"
+            >
+              <div
+                className="w-20 h-20 rounded-full flex items-center justify-center text-white text-xl font-extrabold shadow-md group-hover:scale-105 transition-transform"
+                style={{
+                  background: `radial-gradient(circle at 30% 30%, ${artist.accent}, #0F172A)`
+                }}
+              >
+                {artist.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="w-full min-w-0">
+                <div className="text-xs font-bold text-[var(--text-primary)] truncate group-hover:text-[var(--accent-text)]">
+                  {artist.name}
+                </div>
+                <div className="text-[10px] text-[var(--text-dim)] truncate">{artist.genre}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* 7. Featured Studio Masters */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Disc3 size={18} className="text-[var(--accent-text)] shrink-0" />
-            <h2 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">
+            <Disc3 size={17} className="text-[var(--accent-text)]" />
+            <h2 className="text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
               {t.featuredMastersHeading}
             </h2>
           </div>
           <button
             type="button"
             onClick={() => onNavigateTab('discover')}
-            className="text-xs font-semibold text-[var(--accent-text)] hover:underline inline-flex items-center gap-1 cursor-pointer"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-text)] hover:underline cursor-pointer"
           >
             <span>{t.viewFullLibrary}</span>
-            <ArrowRight size={13} />
+            <ChevronRight size={14} />
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          {tracks.slice(0, 5).map((track) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+          {tracks.map((track) => (
             <TrackCard
               key={track.id}
               track={track}
               isSelected={currentTrack.id === track.id}
               isResolving={resolvingTrackId === track.id}
               onSelect={onSelectTrack}
+              isLiked={likedTrackIds?.has(track.id)}
+              onToggleLike={onToggleLike}
+              onAddToQueue={onAddToQueue}
+              onStartRadio={onStartRadio}
             />
           ))}
         </div>
-      </section>
-
-      {/* Complete Destination Quick Shortcuts */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2">
-        <button
-          type="button"
-          onClick={() => onNavigateTab('radio')}
-          className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent-border)] flex items-center gap-3 text-left transition-colors cursor-pointer"
-        >
-          <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)] flex items-center justify-center shrink-0">
-            <Radio size={18} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-[var(--text-primary)] truncate">{t.navRadio}</p>
-            <p className="text-xs text-[var(--text-secondary)] truncate">{t.liveRadio}</p>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onNavigateTab('podcasts')}
-          className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent-border)] flex items-center gap-3 text-left transition-colors cursor-pointer"
-        >
-          <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)] flex items-center justify-center shrink-0">
-            <Mic2 size={18} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-[var(--text-primary)] truncate">{t.navPodcasts}</p>
-            <p className="text-xs text-[var(--text-secondary)] truncate">{t.activePodcasts}</p>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onNavigateTab('proofOfStream')}
-          className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent-border)] flex items-center gap-3 text-left transition-colors cursor-pointer"
-        >
-          <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)] flex items-center justify-center shrink-0">
-            <Headphones size={18} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-[var(--text-primary)] truncate">
-              {t.navProofOfStream}
-            </p>
-            <p className="text-xs text-[var(--text-secondary)] truncate">
-              <FileAudio size={11} className="inline mr-1" />
-              {t.claimRewards}
-            </p>
-          </div>
-        </button>
       </section>
     </div>
   );

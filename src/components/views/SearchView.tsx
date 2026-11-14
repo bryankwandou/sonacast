@@ -16,6 +16,10 @@ interface SearchViewProps {
   onSelectTrack: (track: Track) => void;
   onTogglePlay: () => void;
   onUpdateLyrics?: (lyrics: LyricLine[]) => void;
+  likedTrackIds?: Set<string>;
+  onToggleLike?: (track: Track) => void;
+  onAddToQueue?: (track: Track) => void;
+  onStartRadio?: (track: Track) => void;
 }
 
 const INITIAL_ARTIST_CHIP_LIMIT = 42;
@@ -28,7 +32,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
   externalTrigger = 0,
   onSelectTrack,
   onTogglePlay,
-  onUpdateLyrics
+  onUpdateLyrics,
+  likedTrackIds,
+  onToggleLike,
+  onAddToQueue,
+  onStartRadio
 }) => {
   const { t } = useAppPreferences();
   const [searchQuery, setSearchQuery] = useState(
@@ -310,12 +318,12 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </div>
 
         {isLoading ? (
-          <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center justify-center gap-3">
+          <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-tint)] flex items-center justify-center gap-3">
             <Loader2 size={18} className="animate-spin text-[var(--accent-text)]" />
-            <span>Searching 85M+ track index for full-length studio releases...</span>
+            <span>Searching global catalog across multi-region mirrors...</span>
           </div>
         ) : results.length === 0 ? (
-          <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+          <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-tint)]">
             <p>No tracks found for &ldquo;{searchQuery}&rdquo;. Try another query or pick any artist above.</p>
           </div>
         ) : (
@@ -333,6 +341,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     handlePlayTrackWithLyrics(chosen);
                   }
                 }}
+                isLiked={likedTrackIds?.has(track.id)}
+                onToggleLike={onToggleLike}
+                onAddToQueue={onAddToQueue}
+                onStartRadio={onStartRadio}
               />
             ))}
           </div>

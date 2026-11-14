@@ -16,10 +16,22 @@ export interface Track {
   youtubeId?: string; // primary official full-length YouTube stream ID
   candidateVideoIds?: string[]; // failover official embed-safe stream IDs
   streamSource?: 'studio-master' | 'official-stream' | 'local-upload' | 'synth';
+  sourceTag?: string;
   genre: string;
   lyrics: LyricLine[];
   artistSolanaAddress: string;
   bpm: number;
+}
+
+export type RepeatMode = 'off' | 'all' | 'one';
+export type EqPreset = 'flat' | 'bass' | 'vocal' | 'club' | 'acoustic';
+export type MoodPreset = 'all' | 'focus' | 'chill' | 'upbeat' | 'workout' | 'classic' | 'indonesian' | 'acoustic';
+
+export interface UserPlaylist {
+  id: string;
+  name: string;
+  tracks: Track[];
+  createdAt: number;
 }
 
 export interface PodcastEpisode {

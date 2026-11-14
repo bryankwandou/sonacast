@@ -103,42 +103,17 @@ const MASTER_TRACK_ENTRIES: MasterTrackEntry[] = [
   { title: 'Mode Pesawat', artist: 'Dandy Barakati', audioUrl: './audio/mode-pesawat.mp3', duration: 276 }
 ];
 
-const NON_ORIGINAL_KEYWORDS = [
-  'karaoke',
-  '8d audio',
-  '8d',
-  'nightcore',
-  'slowed',
-  'reverb',
-  'sped up',
-  'tribute',
-  'ringtone',
-  '30 sec',
-  'snippet',
-  'backing track',
-  'instrumental',
-  'parody',
-  'teaser',
-  'remix',
-  'cover',
-  'piano version',
-  'acoustic version',
-  'medley',
-  'orchestral',
-  'music box',
-  'lullaby',
-  '8-bit',
-  '10 hours',
-  '1 hour',
-  'extended mix',
-  'loop'
-];
+const BLOCKED_MODIFIER_REGEX =
+  /\b(karaoke|8d\s+audio|nightcore|slowed(?:\s*\+\s*|\s+)reverb|sped\s+up|ringtone|parody|backing\s+track|music\s+box|lullaby|8-bit|10\s+hours?|1\s+hour|extended\s+mix|snippet|30\s+sec)\b/i;
+const PAREN_COVER_OR_REMIX_REGEX =
+  /(?:[([]\s*(?:cover|remix|karaoke|instrumental|tribute|slowed|reverb|sped\s*up|nightcore|8d|loop)\b|\b(?:acoustic|piano|guitar|vocal|drum)\s+cover\b|\bcover\s+(?:by|version)\b|\btribute\s+to\b)/i;
 
 function normalizeText(input: string): string {
   return (input || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/['’]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 }
 
@@ -162,10 +137,20 @@ function stripTitleModifiers(title: string): string {
 export function isNonOriginalTitle(title: string, query: string): boolean {
   const lowerTitle = (title || '').toLowerCase();
   const lowerQuery = (query || '').toLowerCase();
-  for (const kw of NON_ORIGINAL_KEYWORDS) {
-    if (lowerTitle.includes(kw) && !lowerQuery.includes(kw)) {
+  if (BLOCKED_MODIFIER_REGEX.test(lowerTitle)) {
+    const matched = lowerTitle.match(BLOCKED_MODIFIER_REGEX)?.[1] || '';
+    if (matched && !lowerQuery.includes(matched.toLowerCase())) {
       return true;
     }
+  }
+  if (
+    PAREN_COVER_OR_REMIX_REGEX.test(lowerTitle) &&
+    !lowerQuery.includes('cover') &&
+    !lowerQuery.includes('remix') &&
+    !lowerQuery.includes('instrumental') &&
+    !lowerQuery.includes('loop')
+  ) {
+    return true;
   }
   return false;
 }
@@ -222,10 +207,16 @@ function safeYtThumbnail(rawThumb: string | undefined, videoId: string): string 
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
-async function searchPipedMusic(query: string): Promise<StreamCandidate[]> {
+const PIPED_MIRRORS = [
+  'https://api.piped.private.coffee',
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.adminforge.de'
+];
+
+async function searchSinglePipedMirror(baseUrl: string, query: string): Promise<StreamCandidate[]> {
   try {
-    const url = `https://api.piped.private.coffee/search?q=${encodeURIComponent(query)}&filter=music_songs`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(4800) });
+    const url = `${baseUrl}/search?q=${encodeURIComponent(query)}&filter=music_songs`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(4200) });
     if (!res.ok) return [];
     const data = await res.json();
     const rawItems = Array.isArray(data?.items) ? data.items : [];
@@ -243,8 +234,77 @@ async function searchPipedMusic(query: string): Promise<StreamCandidate[]> {
       })
       .filter(
         (x: StreamCandidate) =>
-          Boolean(x.videoId) && x.duration >= 60 && !isNonOriginalTitle(x.title, query)
+          Boolean(x.videoId) && x.duration >= 40 && x.duration <= 2400 && !isNonOriginalTitle(x.title, query)
       );
+  } catch {
+    return [];
+  }
+}
+
+async function searchPipedMusic(query: string): Promise<StreamCandidate[]> {
+  const primary = await searchSinglePipedMirror(PIPED_MIRRORS[0], query);
+  if (primary.length >= 3) return primary;
+
+  for (const mirror of PIPED_MIRRORS.slice(1)) {
+    const alt = await searchSinglePipedMirror(mirror, query);
+    if (alt.length > 0) return alt;
+  }
+  return primary;
+}
+
+interface AudiusTrackItem {
+  id?: string;
+  title?: string;
+  duration?: number;
+  genre?: string;
+  user?: { name?: string };
+  artwork?: { '480x480'?: string; '1000x1000'?: string; '150x150'?: string };
+}
+
+async function searchAudiusTracks(query: string): Promise<Track[]> {
+  try {
+    const url = `https://discoveryprovider.audius.co/v1/tracks/search?query=${encodeURIComponent(query)}&app_name=Sonacast`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(3200) });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const list: AudiusTrackItem[] = Array.isArray(json?.data) ? json.data : [];
+
+    return list
+      .filter(
+        (item) =>
+          item?.id &&
+          item?.title &&
+          Number(item.duration || 0) >= 40 &&
+          Number(item.duration || 0) <= 2400 &&
+          !isNonOriginalTitle(item.title, query)
+      )
+      .slice(0, 12)
+      .map((item) => {
+        const artistName = item.user?.name || 'Independent Artist';
+        const cover =
+          item.artwork?.['480x480'] ||
+          item.artwork?.['1000x1000'] ||
+          item.artwork?.['150x150'] ||
+          '';
+        return {
+          id: `audius-${item.id}`,
+          title: item.title || 'Untitled Release',
+          artist: artistName,
+          album: 'Audius Open Catalog',
+          duration: Number(item.duration) || 210,
+          coverUrl: cover,
+          audioUrl: `https://discoveryprovider.audius.co/v1/tracks/${encodeURIComponent(String(item.id))}/stream?app_name=Sonacast`,
+          streamSource: 'studio-master',
+          sourceTag: 'Audius',
+          genre: item.genre || 'Electronic',
+          bpm: 118,
+          artistSolanaAddress: generateDeterministicSolanaAddress(artistName),
+          lyrics: [
+            { time: 0, text: `Streaming open-catalog full release: "${item.title}"` },
+            { time: 8, text: `Artist: ${artistName}` }
+          ]
+        };
+      });
   } catch {
     return [];
   }
@@ -455,10 +515,15 @@ interface UnifiedCandidate {
 const DEFAULT_FALLBACK_COVER =
   'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop';
 
-function detectSearchCountry(normQuery: string): 'ID' | 'US' {
+function detectSearchCountry(normQuery: string, rawQuery = ''): 'ID' | 'US' | 'JP' | 'KR' {
+  if (/[\uac00-\ud7af]/.test(rawQuery)) return 'KR';
+  if (/[\u3040-\u30ff\u4e00-\u9faf]/.test(rawQuery)) return 'JP';
   const exactIndexed = INDEXED_ARTIST_BY_NORM.get(normQuery);
   if (exactIndexed) {
-    return exactIndexed.genre === 'Indonesian' ? 'ID' : 'US';
+    if (exactIndexed.genre === 'Indonesian') return 'ID';
+    if (exactIndexed.genre === 'K-Pop') return 'KR';
+    if (exactIndexed.genre === 'J-Pop') return 'JP';
+    return 'US';
   }
   for (const indArtist of INDONESIAN_ARTIST_NORMS) {
     if (normQuery === indArtist) return 'ID';
@@ -545,7 +610,7 @@ async function fetchCatalogApiSearch(query: string): Promise<CatalogSearchRespon
 async function fetchItunesPopularByArtist(
   artistQuery: string,
   normArtistQuery: string,
-  country: 'US' | 'ID'
+  country: 'US' | 'ID' | 'JP' | 'KR'
 ): Promise<{ matchedArtistName: string; items: ITunesItem[] }> {
   try {
     const wordCount = normArtistQuery.split(' ').filter(Boolean).length;
@@ -554,7 +619,7 @@ async function fetchItunesPopularByArtist(
     }
 
     const artUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(artistQuery)}&entity=musicArtist&attribute=artistTerm&country=${country}&limit=6`;
-    const artRes = await fetch(artUrl, { signal: AbortSignal.timeout(1500) });
+    const artRes = await fetch(artUrl, { signal: AbortSignal.timeout(1700) });
     if (!artRes.ok) return { matchedArtistName: '', items: [] };
     const artData = await artRes.json();
     const artists: Array<{ artistId?: number; artistName?: string }> = Array.isArray(artData?.results)
@@ -571,7 +636,7 @@ async function fetchItunesPopularByArtist(
     if (!exact?.artistId) return { matchedArtistName: '', items: [] };
 
     const lookupUrl = `https://itunes.apple.com/lookup?id=${exact.artistId}&entity=song&sort=popular&country=${country}&limit=35`;
-    const lookupRes = await fetch(lookupUrl, { signal: AbortSignal.timeout(1700) });
+    const lookupRes = await fetch(lookupUrl, { signal: AbortSignal.timeout(1900) });
     if (!lookupRes.ok) return { matchedArtistName: exact.artistName || '', items: [] };
     const lookupData = await lookupRes.json();
     const rawTracks: Array<ITunesItem & { wrapperType?: string }> = Array.isArray(lookupData?.results)
@@ -581,7 +646,7 @@ async function fetchItunesPopularByArtist(
     const validTracks = rawTracks.filter((item) => {
       if (item.wrapperType !== 'track' || !item.trackName) return false;
       const secs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
-      return secs >= 60 && secs <= 1800 && !isNonOriginalTitle(item.trackName, artistQuery);
+      return secs >= 40 && secs <= 2400 && !isNonOriginalTitle(item.trackName, artistQuery);
     });
 
     return { matchedArtistName: exact.artistName || '', items: validTracks };
@@ -590,16 +655,16 @@ async function fetchItunesPopularByArtist(
   }
 }
 
-async function fetchItunesSongSearch(query: string, country: 'US' | 'ID'): Promise<ITunesItem[]> {
+async function fetchItunesSongSearch(query: string, country: 'US' | 'ID' | 'JP' | 'KR'): Promise<ITunesItem[]> {
   try {
     const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&country=${country}&limit=40`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(2600) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(2800) });
     if (!res.ok) return [];
     const data = await res.json();
     if (!Array.isArray(data?.results)) return [];
     return data.results.filter((item: ITunesItem) => {
       const secs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
-      return secs >= 60 && secs <= 1800 && !isNonOriginalTitle(item.trackName || '', query);
+      return secs >= 40 && secs <= 2400 && !isNonOriginalTitle(item.trackName || '', query);
     });
   } catch {
     return [];
@@ -760,7 +825,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
     const lowerQuery = trimmed.toLowerCase();
     const normQuery = normalizeText(trimmed);
     const queryTokens = normQuery.split(' ').filter((tok) => tok.length >= 2);
-    const country = detectSearchCountry(normQuery);
+    const country = detectSearchCountry(normQuery, trimmed);
 
     const parsedIndexed = extractIndexedArtistAndSong(normQuery);
     const itunesArtistTerm = parsedIndexed.indexedArtistName || trimmed;
@@ -768,15 +833,19 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
 
     const fastStreamsPromise = Promise.race([
       searchPipedMusic(trimmed),
-      new Promise<StreamCandidate[]>((resolve) => setTimeout(() => resolve([]), 1900))
+      new Promise<StreamCandidate[]>((resolve) => setTimeout(() => resolve([]), 2400))
     ]);
 
-    const [catalogResp, itunesPopResp, itunesSearchItems, rawStreamCandidates] = await Promise.all([
-      fetchCatalogApiSearch(trimmed),
-      fetchItunesPopularByArtist(itunesArtistTerm, itunesArtistNorm, country),
-      fetchItunesSongSearch(trimmed, country),
-      fastStreamsPromise
-    ]);
+    const secondaryCountry: 'US' | 'ID' = country === 'ID' ? 'US' : 'ID';
+    const [catalogResp, itunesPopResp, itunesSearchItems, rawStreamCandidates, altItunesItems, audiusTracks] =
+      await Promise.all([
+        fetchCatalogApiSearch(trimmed),
+        fetchItunesPopularByArtist(itunesArtistTerm, itunesArtistNorm, country),
+        fetchItunesSongSearch(trimmed, country),
+        fastStreamsPromise,
+        fetchItunesSongSearch(trimmed, secondaryCountry),
+        searchAudiusTracks(trimmed)
+      ]);
 
     let targetArtistNorm = parsedIndexed.indexedArtistNorm;
     let cleanTargetSong = parsedIndexed.songNorm;
@@ -932,7 +1001,24 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       );
     });
 
-    const ranked = Array.from(bucket.values())
+    altItunesItems.forEach((item, idx) => {
+      const secs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
+      const cover = item.artworkUrl100 ? item.artworkUrl100.replace('100x100bb', '600x600bb') : '';
+      upsert(
+        {
+          id: String(item.trackId),
+          title: item.trackName,
+          artist: item.artistName,
+          album: item.collectionName || 'Single',
+          genre: item.primaryGenreName || 'Pop',
+          duration: secs,
+          coverUrl: cover
+        },
+        { itunesSearchIdx: idx + 15 }
+      );
+    });
+
+    const scoredAll = Array.from(bucket.values())
       .map((cand) => ({
         cand,
         score: scoreUnifiedCandidate(
@@ -945,12 +1031,16 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           cleanTargetSong
         )
       }))
-      .filter((entry) => entry.score > -200 && !(isPureArtistQuery && entry.score < -40))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 36);
+      .filter((entry) => entry.score > -200);
+
+    const strictRanked = scoredAll
+      .filter((entry) => !(isPureArtistQuery && entry.score < -40))
+      .sort((a, b) => b.score - a.score);
+
+    const ranked = (strictRanked.length >= 2 ? strictRanked : scoredAll.sort((a, b) => b.score - a.score)).slice(0, 36);
 
     const streamCandidates =
-      ranked.length > 0 || rawStreamCandidates.length > 0
+      ranked.length >= 6 || rawStreamCandidates.length > 0
         ? rawStreamCandidates
         : await searchFullStreams(trimmed);
 
@@ -963,9 +1053,22 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       return buildTrackFromUnified(cand, streamCandidates, usedStreamIds);
     });
 
-    if (tracks.length < 4 && streamCandidates.length > 0) {
+    if (tracks.length < 10 && audiusTracks.length > 0) {
+      for (const aTrack of audiusTracks) {
+        const baseAudiusTitle = normalizeText(stripTitleModifiers(aTrack.title));
+        const key = `${baseAudiusTitle}::${normalizeText(aTrack.artist)}`;
+        if (!baseAudiusTitle || coveredTitles.has(baseAudiusTitle) || bucket.has(key)) continue;
+        const haystack = `${baseAudiusTitle} ${normalizeText(aTrack.artist)}`;
+        if (queryTokens.length > 0 && !queryTokens.some((tok) => haystack.includes(tok))) continue;
+        coveredTitles.add(baseAudiusTitle);
+        tracks.push(aTrack);
+        if (tracks.length >= 20) break;
+      }
+    }
+
+    if (tracks.length < 8 && streamCandidates.length > 0) {
       for (const c of streamCandidates) {
-        if (usedStreamIds.has(c.videoId) || c.duration < 60) continue;
+        if (usedStreamIds.has(c.videoId) || c.duration < 40) continue;
         const baseCandTitle = normalizeText(stripTitleModifiers(c.title));
         if (!baseCandTitle || coveredTitles.has(baseCandTitle)) continue;
         const haystack = `${normalizeText(c.title)} ${normalizeText(c.author)}`;

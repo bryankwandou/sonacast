@@ -5,6 +5,8 @@
  * 2. Official Full-Length streaming via documented YouTube IFrame Player API with multi-candidate error failover
  */
 
+import type { EqPreset } from '../types';
+
 export interface SpectrumData {
   frequencies: Uint8Array<ArrayBuffer>;
   waveformData: Uint8Array<ArrayBuffer>;
@@ -16,12 +18,21 @@ export interface SpectrumData {
 
 export type AudioBackendType = 'none' | 'html5' | 'youtube';
 
+const EQ_GAIN_PRESETS: Record<EqPreset, [number, number, number]> = {
+  flat: [0, 0, 0],
+  bass: [6.5, -1, 1.5],
+  vocal: [-2, 5.5, 2.5],
+  club: [5, 1.5, 4.5],
+  acoustic: [2, 2.5, 3]
+};
+
 interface YTPlayerInstance {
   playVideo: () => void;
   pauseVideo: () => void;
   seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
   loadVideoById: (videoId: string) => void;
   setVolume: (volume: number) => void;
+  setPlaybackRate?: (rate: number) => void;
   getCurrentTime: () => number;
   getDuration: () => number;
   destroy: () => void;
@@ -62,8 +73,15 @@ export class AudioEngine {
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private gainNode: GainNode | null = null;
+  private lowFilter: BiquadFilterNode | null = null;
+  private midFilter: BiquadFilterNode | null = null;
+  private highFilter: BiquadFilterNode | null = null;
   private audioElement: HTMLAudioElement | null = null;
   private mediaSourceNode: MediaElementAudioSourceNode | null = null;
+
+  private eqPreset: EqPreset = 'flat';
+  private playbackRate = 1;
+  private crossfadeSeconds = 2;
 
   private activeBackend: AudioBackendType = 'none';
   private ytHostElement: HTMLElement | null = null;
@@ -135,10 +153,27 @@ export class AudioEngine {
       this.analyser.maxDecibels = -10;
 
       this.gainNode = this.ctx.createGain();
-      this.gainNode.gain.value = this.volume;
+      this.gainNode.gain.value = 1;
 
+      this.lowFilter = this.ctx.createBiquadFilter();
+      this.lowFilter.type = 'lowshelf';
+      this.lowFilter.frequency.value = 110;
+
+      this.midFilter = this.ctx.createBiquadFilter();
+      this.midFilter.type = 'peaking';
+      this.midFilter.frequency.value = 1100;
+      this.midFilter.Q.value = 0.85;
+
+      this.highFilter = this.ctx.createBiquadFilter();
+      this.highFilter.type = 'highshelf';
+      this.highFilter.frequency.value = 4600;
+
+      this.lowFilter.connect(this.midFilter);
+      this.midFilter.connect(this.highFilter);
+      this.highFilter.connect(this.analyser);
       this.analyser.connect(this.gainNode);
       this.gainNode.connect(this.ctx.destination);
+      this.applyEqFilters();
 
       this.freqArray = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
       this.waveArray = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
@@ -148,10 +183,11 @@ export class AudioEngine {
       this.audioElement.preload = 'auto';
       this.audioElement.loop = false;
       this.audioElement.volume = this.volume;
+      this.audioElement.playbackRate = this.playbackRate;
 
       try {
         this.mediaSourceNode = this.ctx.createMediaElementSource(this.audioElement);
-        this.mediaSourceNode.connect(this.analyser);
+        this.mediaSourceNode.connect(this.lowFilter);
       } catch {
         // Safe fallback if browser blocks media source attachment
       }
@@ -390,6 +426,7 @@ export class AudioEngine {
       try {
         this.ytPlayer.setVolume(Math.round(this.volume * 100));
         this.ytPlayer.loadVideoById(firstVideoId);
+        this.ytPlayer.setPlaybackRate?.(this.playbackRate);
         this.ytPlayer.playVideo();
         this.startYouTubePoll();
         this.armYouTubeWatchdog(gen);
@@ -433,6 +470,11 @@ export class AudioEngine {
           if (gen !== this.playGeneration || this.activeBackend !== 'youtube') return;
           this.ytReady = true;
           event.target.setVolume(Math.round(this.volume * 100));
+          try {
+            event.target.setPlaybackRate?.(this.playbackRate);
+          } catch {
+            // Ignore unsupported YT rate
+          }
           event.target.playVideo();
           this.startYouTubePoll();
           this.armYouTubeWatchdog(gen);
@@ -507,6 +549,19 @@ export class AudioEngine {
       if (!this.audioElement) return;
       this.audioElement.loop = false;
       this.audioElement.volume = this.volume;
+      this.audioElement.playbackRate = this.playbackRate;
+
+      if (this.gainNode && this.ctx) {
+        const now = this.ctx.currentTime;
+        this.gainNode.gain.cancelScheduledValues(now);
+        if (this.crossfadeSeconds > 0) {
+          const rampSecs = Math.min(4, this.crossfadeSeconds);
+          this.gainNode.gain.setValueAtTime(0.08, now);
+          this.gainNode.gain.linearRampToValueAtTime(1, now + rampSecs);
+        } else {
+          this.gainNode.gain.setValueAtTime(1, now);
+        }
+      }
 
       const resolvedSrc = new URL(audioUrl, window.location.href).href;
       if (this.audioElement.src !== resolvedSrc) {
@@ -623,7 +678,7 @@ export class AudioEngine {
   public setVolume(vol: number) {
     this.volume = Math.max(0, Math.min(1, vol));
     if (this.gainNode && this.ctx) {
-      this.gainNode.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+      this.gainNode.gain.setValueAtTime(1, this.ctx.currentTime);
     }
     if (this.audioElement) {
       this.audioElement.volume = this.volume;
@@ -635,6 +690,50 @@ export class AudioEngine {
         // Ignore
       }
     }
+  }
+
+  private applyEqFilters() {
+    if (!this.ctx || !this.lowFilter || !this.midFilter || !this.highFilter) return;
+    const [lowGain, midGain, highGain] = EQ_GAIN_PRESETS[this.eqPreset] || [0, 0, 0];
+    const now = this.ctx.currentTime;
+    this.lowFilter.gain.setValueAtTime(lowGain, now);
+    this.midFilter.gain.setValueAtTime(midGain, now);
+    this.highFilter.gain.setValueAtTime(highGain, now);
+  }
+
+  public setEqPreset(preset: EqPreset) {
+    this.eqPreset = preset;
+    this.applyEqFilters();
+  }
+
+  public getEqPreset(): EqPreset {
+    return this.eqPreset;
+  }
+
+  public setPlaybackRate(rate: number) {
+    this.playbackRate = Math.max(0.5, Math.min(2, rate));
+    if (this.audioElement) {
+      this.audioElement.playbackRate = this.playbackRate;
+    }
+    if (this.ytPlayer && this.ytReady) {
+      try {
+        this.ytPlayer.setPlaybackRate?.(this.playbackRate);
+      } catch {
+        // Ignore if YT player cannot change speed
+      }
+    }
+  }
+
+  public getPlaybackRate(): number {
+    return this.playbackRate;
+  }
+
+  public setCrossfadeSeconds(seconds: number) {
+    this.crossfadeSeconds = Math.max(0, Math.min(8, seconds));
+  }
+
+  public getCrossfadeSeconds(): number {
+    return this.crossfadeSeconds;
   }
 
   public getVolume(): number {

@@ -64,6 +64,37 @@ export interface TranslationKeys {
   playEpisode: string;
   uploadLocal: string;
   playerStageToggle: string;
+  quickPicks: string;
+  moodAll: string;
+  moodFocus: string;
+  moodChill: string;
+  moodUpbeat: string;
+  moodWorkout: string;
+  moodIndonesian: string;
+  moodClassic: string;
+  moodAcoustic: string;
+  likedSongs: string;
+  recentlyPlayed: string;
+  playlists: string;
+  createPlaylist: string;
+  playNext: string;
+  addToQueue: string;
+  startRadio: string;
+  refreshMix: string;
+  browseCatalog: string;
+  popularArtists: string;
+  upNext: string;
+  artistTip: string;
+  nowPlayingSheet: string;
+  equalizer: string;
+  playbackSpeed: string;
+  sleepTimer: string;
+  crossfade: string;
+  exportLyricCard: string;
+  radioAutoMix: string;
+  openFullPlayer: string;
+  shuffleLabel: string;
+  repeatLabel: string;
 }
 
 export interface LanguageOption {
@@ -104,9 +135,9 @@ const EN_BASE: TranslationKeys = {
   appName: 'Sonacast',
   tagline: 'Full-Length Music Streaming, Live Lyrics & Real-Time Orbwave Audio Engine',
   brandSubtitle: 'Full-Length Audio Engine',
-  navLanding: 'Overview & Landing',
-  navDiscover: 'Music Library',
-  navSearch: 'Search 85M+ Tracks',
+  navLanding: 'Home',
+  navDiscover: 'Your Library',
+  navSearch: 'Search Catalog',
   navRadio: 'Live Radio',
   navPodcasts: 'Podcasts',
   navVisualizer: 'Orbwave Studio',
@@ -127,7 +158,7 @@ const EN_BASE: TranslationKeys = {
   upNextCount: 'tracks',
   volume: 'Volume',
   listeners: 'listeners',
-  searchPlaceholder: 'Search 85M+ songs or 1,100+ popular artists (Queen, Eminem, Taylor Swift, Dewa 19)...',
+  searchPlaceholder: 'Search songs, artists, albums, or lyrics (Queen, Tulus, YOASOBI, Eminem)...',
   searchAction: 'Search',
   audioQuality: '320 kbps Master',
   claimRewards: 'Claim Rewards',
@@ -140,8 +171,8 @@ const EN_BASE: TranslationKeys = {
   reloadLabel: 'Reload',
   topTickerTitle: '85M+ GLOBAL CATALOG ONLINE',
   heroBadge: '85,000,000+ Catalog · 100% Full-Length Start to Finish',
-  heroHeadline: 'Stream Original Full-Length Music, Clean & Uninterrupted.',
-  heroSubheadline: 'Discover global studio masters, live chart hits, synchronized lyrics, 60 FPS Orbwave spectrum analysis, and instant Solana devnet artist tipping across desktop and mobile.',
+  heroHeadline: 'Listen Now',
+  heroSubheadline: 'Your live catalog, mood mixes, and full-length studio playback.',
   heroPrimaryCta: 'Start Listening',
   heroSecondaryCta: 'Music Library',
   heroCatalogCta: 'Search 85M+ Tracks',
@@ -163,7 +194,38 @@ const EN_BASE: TranslationKeys = {
   tuneIn: 'Tune In',
   playEpisode: 'Play Episode',
   uploadLocal: 'Upload Local MP3',
-  playerStageToggle: 'Player Stage'
+  playerStageToggle: 'Player Stage',
+  quickPicks: 'Quick Picks',
+  moodAll: 'All Vibes',
+  moodFocus: 'Deep Focus',
+  moodChill: 'Chill',
+  moodUpbeat: 'Upbeat',
+  moodWorkout: 'Workout',
+  moodIndonesian: 'Indonesian',
+  moodClassic: 'Classics',
+  moodAcoustic: 'Acoustic',
+  likedSongs: 'Liked Songs',
+  recentlyPlayed: 'Recently Played',
+  playlists: 'Playlists',
+  createPlaylist: 'New Playlist',
+  playNext: 'Play Next',
+  addToQueue: 'Add to Queue',
+  startRadio: 'Start Track Radio',
+  refreshMix: 'Refresh Mix',
+  browseCatalog: 'Browse',
+  popularArtists: 'Popular Artists',
+  upNext: 'Up Next',
+  artistTip: 'Artist Tip',
+  nowPlayingSheet: 'Now Playing',
+  equalizer: 'Equalizer',
+  playbackSpeed: 'Speed',
+  sleepTimer: 'Sleep Timer',
+  crossfade: 'Crossfade',
+  exportLyricCard: 'Save Lyric Card',
+  radioAutoMix: 'Autoplay Radio',
+  openFullPlayer: 'Full Player',
+  shuffleLabel: 'Shuffle',
+  repeatLabel: 'Repeat'
 };
 
 const loc = (overrides: Partial<TranslationKeys>): TranslationKeys => ({
@@ -176,9 +238,9 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
   id: loc({
     tagline: 'Streaming Musik Penuh Awal-Akhir, Lirik Langsung & Mesin Spektrum Orbwave',
     brandSubtitle: 'Mesin Audio Penuh',
-    navLanding: 'Beranda & Landing',
-    navDiscover: 'Koleksi Musik',
-    navSearch: 'Cari 85Jt+ Lagu',
+    navLanding: 'Beranda',
+    navDiscover: 'Pustaka Saya',
+    navSearch: 'Cari Katalog',
     navRadio: 'Radio Langsung',
     navPodcasts: 'Podcast',
     navVisualizer: 'Studio Orbwave',
@@ -199,7 +261,7 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     upNextCount: 'lagu',
     volume: 'Volume',
     listeners: 'pendengar',
-    searchPlaceholder: 'Cari 85Jt+ lagu atau 1.100+ artis populer (Queen, Eminem, Dewa 19, Noah)...',
+    searchPlaceholder: 'Cari lagu, artis, album, atau lirik (Tulus, NOAH, Queen, YOASOBI)...',
     searchAction: 'Cari',
     audioQuality: 'Master 320 kbps',
     claimRewards: 'Klaim Imbalan',
@@ -212,8 +274,8 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     reloadLabel: 'Muat Ulang',
     topTickerTitle: '85JT+ KATALOG GLOBAL AKTIF',
     heroBadge: '85.000.000+ Katalog · 100% Lagu Penuh Awal sampai Akhir',
-    heroHeadline: 'Nikmati Musik Penuh Berkualitas Studio, Bersih dan Elegan.',
-    heroSubheadline: 'Jelajahi master studio global, chart populer langsung, lirik tersinkronisasi, spektrum Orbwave 60 FPS, serta apresiasi artis Solana devnet yang responsif di desktop maupun HP.',
+    heroHeadline: 'Dengarkan Sekarang',
+    heroSubheadline: 'Katalog aktif, mix suasana hati, dan pemutaran studio penuh.',
     heroPrimaryCta: 'Mulai Dengarkan',
     heroSecondaryCta: 'Koleksi Musik',
     heroCatalogCta: 'Cari 85Jt+ Lagu',
@@ -235,7 +297,38 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     tuneIn: 'Putar Radio',
     playEpisode: 'Putar Episode',
     uploadLocal: 'Unggah Audio Lokal',
-    playerStageToggle: 'Tampilan Player'
+    playerStageToggle: 'Tampilan Player',
+    quickPicks: 'Pilihan Cepat',
+    moodAll: 'Semua Mood',
+    moodFocus: 'Fokus',
+    moodChill: 'Santai',
+    moodUpbeat: 'Berenergi',
+    moodWorkout: 'Olahraga',
+    moodIndonesian: 'Indonesia',
+    moodClassic: 'Klasik',
+    moodAcoustic: 'Akustik',
+    likedSongs: 'Lagu Disukai',
+    recentlyPlayed: 'Baru Diputar',
+    playlists: 'Playlist',
+    createPlaylist: 'Buat Playlist',
+    playNext: 'Putar Berikutnya',
+    addToQueue: 'Tambah ke Antrean',
+    startRadio: 'Mulai Radio Lagu',
+    refreshMix: 'Perbarui Mix',
+    browseCatalog: 'Jelajahi',
+    popularArtists: 'Artis Populer',
+    upNext: 'Berikutnya',
+    artistTip: 'Tip Artis',
+    nowPlayingSheet: 'Sedang Diputar',
+    equalizer: 'Ekualiser',
+    playbackSpeed: 'Kecepatan',
+    sleepTimer: 'Timer Tidur',
+    crossfade: 'Crossfade',
+    exportLyricCard: 'Simpan Kartu Lirik',
+    radioAutoMix: 'Autoplay Radio',
+    openFullPlayer: 'Layar Penuh',
+    shuffleLabel: 'Acak',
+    repeatLabel: 'Ulangi'
   }),
   ms: loc({
     navLanding: 'Halaman Utama',

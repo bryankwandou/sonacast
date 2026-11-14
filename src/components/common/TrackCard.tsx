@@ -1,14 +1,18 @@
 import React from 'react';
-import { Disc3, Loader2, Play } from 'lucide-react';
 import type { Track } from '../../types';
-import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
+import { Disc3, Heart, ListPlus, Loader2, Play, Radio } from 'lucide-react';
+import { applyCoverFallback } from '../../utils/coverFallback';
 
-export interface TrackCardProps {
+interface TrackCardProps {
   track: Track;
   isSelected: boolean;
-  isResolving: boolean;
+  isResolving?: boolean;
   onSelect: (track: Track) => void;
   rank?: number;
+  isLiked?: boolean;
+  onToggleLike?: (track: Track) => void;
+  onAddToQueue?: (track: Track) => void;
+  onStartRadio?: (track: Track) => void;
 }
 
 export const TrackCard: React.FC<TrackCardProps> = ({
@@ -17,71 +21,145 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   isResolving,
   onSelect,
   rank,
+  isLiked,
+  onToggleLike,
+  onAddToQueue,
+  onStartRadio
 }) => {
-  const isMaster = track.streamSource === 'studio-master' || Boolean(track.audioUrl);
-  const mins = Math.floor(track.duration / 60);
-  const secs = track.duration % 60;
+  const formatDuration = (secs: number) => {
+    const mins = Math.floor(secs / 60);
+    const rem = Math.floor(secs % 60);
+    return `${mins}:${rem < 10 ? '0' : ''}${rem}`;
+  };
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(track)}
-      className={`group relative w-full text-left p-3 rounded-2xl bg-[var(--bg-surface)] border transition-all duration-200 cursor-pointer hover:-translate-y-0.5 ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(track);
+        }
+      }}
+      className={`group text-left p-3 rounded-xl transition-all flex flex-col gap-2.5 w-full cursor-pointer select-none ${
         isSelected
-          ? 'border-[var(--accent-emerald)] shadow-lg'
-          : 'border-[var(--border-subtle)] hover:border-[var(--border-medium)]'
+          ? 'bg-[var(--accent-soft)] ring-1 ring-[var(--accent-emerald)]'
+          : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)]'
       }`}
-      style={isSelected ? { boxShadow: '0 8px 24px var(--accent-soft)' } : undefined}
     >
-      <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-[var(--bg-elevated)]">
+      <div className="relative aspect-square w-full rounded-lg overflow-hidden bg-[var(--bg-elevated)] shadow-sm">
         <img
-          src={track.coverUrl || DEFAULT_COVER_DATA_URI}
+          src={track.coverUrl}
           alt={track.title}
           loading="lazy"
           onError={(e) => applyCoverFallback(e, track.title, track.artist)}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
-        <div
-          className={`absolute inset-0 bg-black/45 transition-opacity flex items-center justify-center ${
-            isResolving ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          }`}
-        >
-          <div className="w-10 h-10 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-            {isResolving ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Play size={16} fill="currentColor" className="ml-0.5" />
+
+        {/* Quick Action Pill Overlay (top-right on hover or liked) */}
+        {(onToggleLike || onAddToQueue || onStartRadio) && (
+          <div
+            className={`absolute top-2 right-2 flex items-center gap-1 transition-opacity ${
+              isLiked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+            }`}
+          >
+            {onToggleLike && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleLike(track);
+                }}
+                aria-label={isLiked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
+                title={isLiked ? 'Liked' : 'Like'}
+                className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer ${
+                  isLiked
+                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                    : 'bg-black/65 text-white hover:bg-black/85'
+                }`}
+              >
+                <Heart size={13} className={isLiked ? 'fill-current' : ''} />
+              </button>
+            )}
+            {onAddToQueue && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToQueue(track);
+                }}
+                aria-label="Add to Queue"
+                title="Add to Queue"
+                className="w-7 h-7 rounded-full bg-black/65 hover:bg-black/85 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer"
+              >
+                <ListPlus size={13} />
+              </button>
+            )}
+            {onStartRadio && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartRadio(track);
+                }}
+                aria-label="Start Track Radio"
+                title="Start Track Radio"
+                className="w-7 h-7 rounded-full bg-black/65 hover:bg-black/85 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer"
+              >
+                <Radio size={13} />
+              </button>
             )}
           </div>
-        </div>
-        {typeof rank === 'number' && (
-          <span className="absolute top-2 left-2 w-6 h-6 rounded-lg bg-black/75 backdrop-blur-md text-white font-mono text-[11px] font-bold flex items-center justify-center border border-white/15">
-            {rank}
-          </span>
         )}
-        <span
-          className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[10px] font-mono font-bold border border-white/15 flex items-center gap-1 ${
-            isMaster ? 'text-emerald-300' : 'text-cyan-300'
+
+        {/* Bottom Play/Resolving Badge */}
+        <div
+          className={`absolute bottom-2 right-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition-all ${
+            isSelected || isResolving
+              ? 'opacity-100 translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+              : 'opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
           }`}
         >
-          {isMaster && <Disc3 size={10} />}
-          {isResolving ? 'LOADING...' : isMaster ? 'STUDIO MASTER' : 'FULL TRACK'}
-        </span>
+          {isResolving ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <Play size={16} className="fill-current ml-0.5" />
+          )}
+        </div>
+
+        {typeof rank === 'number' && (
+          <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/75 text-white text-[10px] font-mono font-bold">
+            #{rank}
+          </div>
+        )}
+
+        {track.streamSource === 'studio-master' && typeof rank !== 'number' && (
+          <div
+            className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/70 text-[var(--accent-emerald-hover)] flex items-center gap-1 text-[9px] font-semibold"
+            title="Full Studio Master"
+          >
+            <Disc3 size={10} />
+            <span>MASTER</span>
+          </div>
+        )}
       </div>
 
-      <h4 className="text-xs font-bold text-[var(--text-primary)] truncate group-hover:text-[var(--accent-text)] transition-colors">
-        {track.title}
-      </h4>
-      <p className="text-[11px] text-[var(--text-secondary)] truncate mt-0.5">{track.artist}</p>
-
-      <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border-subtle)] text-[10px] text-[var(--text-dim)] font-mono">
-        <span className="truncate max-w-[90px]">{track.genre}</span>
-        <span>
-          {mins}:{secs < 10 ? '0' : ''}
-          {secs}
-        </span>
+      <div className="min-w-0 space-y-0.5">
+        <div
+          className={`text-sm font-bold truncate ${
+            isSelected ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
+          }`}
+        >
+          {track.title}
+        </div>
+        <div className="text-xs text-[var(--text-secondary)] truncate">{track.artist}</div>
+        <div className="flex items-center justify-between text-[11px] font-mono text-[var(--text-dim)] pt-0.5">
+          <span className="truncate max-w-[110px]">{track.genre}</span>
+          <span>{formatDuration(track.duration)}</span>
+        </div>
       </div>
-    </button>
+    </div>
   );
 };
-
