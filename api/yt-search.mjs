@@ -9,7 +9,11 @@ const BLOCKED_WORDS = [
   'tribute',
   'ringtone',
   '30 sec',
-  'snippet'
+  'snippet',
+  '10 hours',
+  '1 hour',
+  'extended mix',
+  'loop'
 ];
 
 function isNonOriginalTitle(title, queryLower) {
@@ -123,7 +127,7 @@ export default async function handler(req, res) {
         const author = vr.ownerText?.runs?.map((r) => r.text).join('') || '';
         const durationText = vr.lengthText?.simpleText || '';
         const duration = parseLengthSeconds(durationText);
-        if (duration > 0 && duration < 60) continue;
+        if (duration > 0 && (duration < 60 || duration > 1800)) continue;
         if (isNonOriginalTitle(title, queryLower)) continue;
 
         items.push({

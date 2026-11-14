@@ -119,7 +119,11 @@ const NON_ORIGINAL_KEYWORDS = [
   'parody',
   'teaser',
   'remix',
-  'cover'
+  'cover',
+  '10 hours',
+  '1 hour',
+  'extended mix',
+  'loop'
 ];
 
 function normalizeText(input: string): string {
@@ -305,6 +309,8 @@ function scoreCandidate(
     } else if (primaryArtist.split(' ').every((part) => candAuthor.includes(part) || candTitle.includes(part))) {
       score += 28;
       artistMatched = true;
+    } else {
+      score -= 90;
     }
   }
 
@@ -313,6 +319,7 @@ function scoreCandidate(
     (candAuthorLower.includes('- topic') ||
       candAuthorLower.includes('vevo') ||
       candRawLower.includes('official audio') ||
+      candRawLower.includes('official video') ||
       candRawLower.includes('lyrics'))
   ) {
     score += 12;
@@ -329,7 +336,7 @@ function scoreCandidate(
     else if (diff > 90) score -= 35;
   }
 
-  if (candidate.duration > 0 && candidate.duration < 60) score -= 100;
+  if ((candidate.duration > 0 && candidate.duration < 60) || candidate.duration > 1800) score -= 100;
   return score;
 }
 

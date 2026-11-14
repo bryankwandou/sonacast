@@ -254,7 +254,7 @@ export class AudioEngine {
       }
       if (typeof pos === 'number' && pos >= 0.3) return;
       this.advanceToNextCandidate(gen);
-    }, 6500);
+    }, 10500);
   }
 
   private advanceToNextCandidate(gen: number): boolean {
