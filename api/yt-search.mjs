@@ -10,6 +10,14 @@ const BLOCKED_WORDS = [
   'ringtone',
   '30 sec',
   'snippet',
+  'backing track',
+  'instrumental',
+  'parody',
+  'teaser',
+  'piano version',
+  'acoustic version',
+  'medley',
+  'orchestral',
   '10 hours',
   '1 hour',
   'extended mix',
@@ -27,6 +35,30 @@ function isNonOriginalTitle(title, queryLower) {
     return true;
   }
   return false;
+}
+
+async function queryPipedMusicSongs(q, queryLower) {
+  try {
+    const pipedUrl = `https://api.piped.private.coffee/search?q=${encodeURIComponent(q)}&filter=music_songs`;
+    const pipedRes = await fetch(pipedUrl, { signal: AbortSignal.timeout(5000) });
+    if (!pipedRes.ok) return [];
+    const pipedData = await pipedRes.json();
+    const rawItems = Array.isArray(pipedData?.items) ? pipedData.items : [];
+    return rawItems
+      .map((item) => {
+        const id = (item.url || '').split('v=')[1]?.split('&')[0] || '';
+        return {
+          videoId: id,
+          title: item.title || '',
+          author: item.uploaderName || '',
+          duration: Number(item.duration) || 0,
+          thumbnail: id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : ''
+        };
+      })
+      .filter((x) => x.videoId && x.duration >= 60 && x.duration <= 1800 && !isNonOriginalTitle(x.title, queryLower));
+  } catch {
+    return [];
+  }
 }
 
 function parseLengthSeconds(text) {
@@ -58,33 +90,10 @@ export default async function handler(req, res) {
   const queryLower = q.toLowerCase();
 
   if (mode !== 'yt') {
-    try {
-      // Primary: query Piped Music API first for full official song catalog
-      const pipedUrl = `https://api.piped.private.coffee/search?q=${encodeURIComponent(q)}&filter=music_songs`;
-      const pipedRes = await fetch(pipedUrl, { signal: AbortSignal.timeout(5500) });
-      if (pipedRes.ok) {
-        const pipedData = await pipedRes.json();
-        const rawItems = Array.isArray(pipedData?.items) ? pipedData.items : [];
-        const cleaned = rawItems
-          .map((item) => {
-            const id = (item.url || '').split('v=')[1]?.split('&')[0] || '';
-            return {
-              videoId: id,
-              title: item.title || '',
-              author: item.uploaderName || '',
-              duration: Number(item.duration) || 0,
-              thumbnail: id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : ''
-            };
-          })
-          .filter((x) => x.videoId && x.duration >= 60 && !isNonOriginalTitle(x.title, queryLower));
-
-        if (cleaned.length >= 4) {
-          res.status(200).json({ source: 'piped', items: cleaned });
-          return;
-        }
-      }
-    } catch {
-      // Fall through to YouTube HTML initial data parser
+    const cleaned = await queryPipedMusicSongs(q, queryLower);
+    if (cleaned.length >= 4) {
+      res.status(200).json({ source: 'piped', items: cleaned });
+      return;
     }
   }
 
@@ -95,11 +104,12 @@ export default async function handler(req, res) {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9'
       },
-      signal: AbortSignal.timeout(7000)
+      signal: AbortSignal.timeout(5500)
     });
 
     if (!ytRes.ok) {
-      res.status(502).json({ error: 'Upstream search unavailable', items: [] });
+      const pipedFallback = await queryPipedMusicSongs(q, queryLower);
+      res.status(200).json({ source: 'piped-fallback', items: pipedFallback });
       return;
     }
 
@@ -107,10 +117,21 @@ export default async function handler(req, res) {
     const match = html.match(/var ytInitialData\s*=\s*(\{.+?\});<\/script>/s);
     if (!match) {
       const fallbackIds = [...new Set([...html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)].map((m) => m[1]))].slice(0, 10);
-      res.status(200).json({
-        source: 'yt-ids',
-        items: fallbackIds.map((videoId) => ({ videoId, title: q, author: '', duration: 210, thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` }))
-      });
+      if (fallbackIds.length >= 2) {
+        res.status(200).json({
+          source: 'yt-ids',
+          items: fallbackIds.map((videoId) => ({
+            videoId,
+            title: q,
+            author: '',
+            duration: 210,
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+          }))
+        });
+        return;
+      }
+      const pipedFallback = await queryPipedMusicSongs(q, queryLower);
+      res.status(200).json({ source: 'piped-fallback', items: pipedFallback });
       return;
     }
 
@@ -140,9 +161,18 @@ export default async function handler(req, res) {
       }
     }
 
+    if (items.length < 2) {
+      const pipedFallback = await queryPipedMusicSongs(q, queryLower);
+      if (pipedFallback.length > items.length) {
+        res.status(200).json({ source: 'piped-fallback', items: pipedFallback });
+        return;
+      }
+    }
+
     res.status(200).json({ source: 'yt-html', items: items.slice(0, 20) });
-  } catch (err) {
-    res.status(500).json({ error: err?.message || 'Search failed', items: [] });
+  } catch {
+    const pipedFallback = await queryPipedMusicSongs(q, queryLower);
+    res.status(200).json({ source: 'piped-fallback', items: pipedFallback });
   }
 }
 

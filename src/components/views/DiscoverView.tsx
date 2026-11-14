@@ -1,8 +1,23 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { Track, LyricLine } from '../../types';
 import { ARTISTS_DIRECTORY } from '../../data/artists800';
-import { searchTracksOnline, fetchSyncedLyrics } from '../../services/musicService';
-import { Play, Pause, Sparkles, Search, Upload, Globe, Loader2, Users, Disc3 } from 'lucide-react';
+import {
+  searchTracksOnline,
+  fetchSyncedLyrics,
+  fetchPopularCharts
+} from '../../services/musicService';
+import {
+  Play,
+  Pause,
+  Sparkles,
+  Search,
+  Upload,
+  Globe,
+  Loader2,
+  Users,
+  Disc3,
+  TrendingUp
+} from 'lucide-react';
 
 interface DiscoverViewProps {
   tracks: Track[];
@@ -31,17 +46,86 @@ const FEATURED_ARTISTS = [
   'Post Malone',
   'Coldplay',
   'Ed Sheeran',
-  'Lukas Graham',
+  'Justin Bieber',
+  'BTS',
+  'BLACKPINK',
   'Linkin Park',
+  'Nirvana',
   'Ariana Grande',
   'Drake',
   'Kendrick Lamar',
   'Olivia Rodrigo',
   'Dewa 19',
+  'Noah',
+  'Sheila On 7',
   'Tulus',
   'Hindia',
-  'Dandy Barakati'
+  'Lukas Graham'
 ];
+
+interface TrackCardProps {
+  track: Track;
+  isSelected: boolean;
+  isResolving: boolean;
+  onSelect: (track: Track) => void;
+}
+
+const TrackCard: React.FC<TrackCardProps> = ({ track, isSelected, isResolving, onSelect }) => {
+  const isMaster = track.streamSource === 'studio-master' || Boolean(track.audioUrl);
+
+  return (
+    <div
+      onClick={() => onSelect(track)}
+      className={`group relative p-3 rounded-2xl bg-[#0D111A] border transition-all duration-200 cursor-pointer hover:-translate-y-1 ${
+        isSelected
+          ? 'border-emerald-500/60 shadow-lg shadow-emerald-500/10'
+          : 'border-[#1B2232] hover:border-[#2C3850]'
+      }`}
+    >
+      <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-[#161C2A]">
+        <img
+          src={track.coverUrl}
+          alt={track.title}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+        />
+        <div
+          className={`absolute inset-0 bg-black/45 transition-opacity flex items-center justify-center ${
+            isResolving ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+        >
+          <div className="w-10 h-10 rounded-full bg-emerald-500 text-black flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
+            {isResolving ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Play size={16} fill="currentColor" className="ml-0.5" />
+            )}
+          </div>
+        </div>
+        <span
+          className={`absolute bottom-2 left-2 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[10px] font-mono font-bold border border-white/10 flex items-center gap-1 ${
+            isMaster ? 'text-emerald-400' : 'text-cyan-300'
+          }`}
+        >
+          {isMaster && <Disc3 size={10} />}
+          {isResolving ? 'LOADING...' : isMaster ? 'STUDIO MASTER' : 'FULL TRACK'}
+        </span>
+      </div>
+
+      <h4 className="text-xs font-bold text-white truncate group-hover:text-emerald-300 transition-colors">
+        {track.title}
+      </h4>
+      <p className="text-[11px] text-gray-400 truncate mt-0.5">{track.artist}</p>
+
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#182030] text-[10px] text-gray-400 font-mono">
+        <span className="truncate max-w-[80px]">{track.genre}</span>
+        <span>
+          {Math.floor(track.duration / 60)}:{track.duration % 60 < 10 ? '0' : ''}
+          {track.duration % 60}
+        </span>
+      </div>
+    </div>
+  );
+};
 
 export const DiscoverView: React.FC<DiscoverViewProps> = ({
   tracks,
@@ -59,7 +143,28 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const [onlineResults, setOnlineResults] = useState<Track[]>([]);
   const [isSearchingOnline, setIsSearchingOnline] = useState(false);
   const [selectedArtist, setSelectedArtist] = useState<string>('');
+  const [chartRegion, setChartRegion] = useState<'global' | 'indonesia'>('global');
+  const [popularCharts, setPopularCharts] = useState<{ global: Track[]; indonesia: Track[] }>({
+    global: [],
+    indonesia: []
+  });
+  const [isLoadingCharts, setIsLoadingCharts] = useState(true);
   const searchTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchPopularCharts()
+      .then((res) => {
+        if (!active) return;
+        setPopularCharts(res);
+      })
+      .finally(() => {
+        if (active) setIsLoadingCharts(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const genres = [
     'all',
@@ -74,8 +179,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     'Disco / Funk',
     'Disco-Pop',
     'Pop / Rock',
-    'Pop / Soul',
-    'Indonesian Pop / Hip-Hop'
+    'Pop / Soul'
   ];
 
   const handleOnlineSearch = async (term: string) => {
@@ -329,7 +433,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           <div className="flex items-center justify-between px-1">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Globe size={15} className="text-emerald-400" />
-              <span>Live Releases for "{searchQuery}"</span>
+              <span>Popular Releases for "{searchQuery}"</span>
             </h3>
             <div className="flex items-center gap-2">
               <span className="hidden sm:inline text-[11px] text-emerald-300 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/25">
@@ -348,70 +452,21 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-              {onlineResults.map((track) => {
-                const isSelected = track.id === currentTrack.id;
-                const isResolving = resolvingTrackId === track.id;
-                const isMaster = track.streamSource === 'studio-master' || Boolean(track.audioUrl);
-
-                return (
-                  <div
-                    key={track.id}
-                    onClick={() => handlePlayTrackWithLyrics(track)}
-                    className={`group relative p-3 rounded-2xl bg-[#0D111A] border transition-all duration-200 cursor-pointer hover:-translate-y-1 ${
-                      isSelected
-                        ? 'border-emerald-500/60 shadow-lg shadow-emerald-500/10'
-                        : 'border-[#1B2232] hover:border-[#2C3850]'
-                    }`}
-                  >
-                    <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-[#161C2A]">
-                      <img
-                        src={track.coverUrl}
-                        alt={track.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                      <div
-                        className={`absolute inset-0 bg-black/45 transition-opacity flex items-center justify-center ${
-                          isResolving ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                        }`}
-                      >
-                        <div className="w-10 h-10 rounded-full bg-emerald-500 text-black flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
-                          {isResolving ? (
-                            <Loader2 size={16} className="animate-spin" />
-                          ) : (
-                            <Play size={16} fill="currentColor" className="ml-0.5" />
-                          )}
-                        </div>
-                      </div>
-                      <span
-                        className={`absolute bottom-2 left-2 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[10px] font-mono font-bold border border-white/10 ${
-                          isMaster ? 'text-emerald-400' : 'text-cyan-300'
-                        }`}
-                      >
-                        {isResolving ? 'LOADING...' : isMaster ? 'STUDIO MASTER' : 'FULL TRACK'}
-                      </span>
-                    </div>
-
-                    <h4 className="text-xs font-bold text-white truncate group-hover:text-emerald-300 transition-colors">
-                      {track.title}
-                    </h4>
-                    <p className="text-[11px] text-gray-400 truncate mt-0.5">{track.artist}</p>
-
-                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#182030] text-[10px] text-gray-400 font-mono">
-                      <span className="truncate max-w-[80px]">{track.genre}</span>
-                      <span>
-                        {Math.floor(track.duration / 60)}:{track.duration % 60 < 10 ? '0' : ''}
-                        {track.duration % 60}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+              {onlineResults.map((track) => (
+                <TrackCard
+                  key={track.id}
+                  track={track}
+                  isSelected={track.id === currentTrack.id}
+                  isResolving={resolvingTrackId === track.id}
+                  onSelect={handlePlayTrackWithLyrics}
+                />
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Curated Global Studio Master Releases Grid */}
+      {/* Curated Global Studio Master Classics Grid */}
       <div className="space-y-3 pt-4 border-t border-[#1E2638]">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
@@ -432,58 +487,77 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           </div>
 
           <span className="text-xs text-emerald-400 font-mono hidden sm:inline shrink-0">
-            {filteredLocalTracks.length} 100% Master Releases
+            {filteredLocalTracks.length} Global Studio Masters
           </span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-          {filteredLocalTracks.map((track) => {
-            const isSelected = track.id === currentTrack.id;
-            return (
-              <div
-                key={track.id}
-                onClick={() => handlePlayTrackWithLyrics(track)}
-                className={`group relative p-3 rounded-2xl bg-[#0D111A] border transition-all duration-200 cursor-pointer hover:-translate-y-1 ${
-                  isSelected
-                    ? 'border-emerald-500/60 shadow-lg shadow-emerald-500/10'
-                    : 'border-[#1B2232] hover:border-[#2C3850]'
-                }`}
-              >
-                <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-[#161C2A]">
-                  <img
-                    src={track.coverUrl}
-                    alt={track.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <div className="w-10 h-10 rounded-full bg-emerald-500 text-black flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
-                      <Play size={16} fill="currentColor" className="ml-0.5" />
-                    </div>
-                  </div>
-
-                  <span className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[10px] font-mono text-emerald-400 font-bold border border-white/10 flex items-center gap-1">
-                    <Disc3 size={10} />
-                    {track.audioUrl ? 'STUDIO MASTER' : `${track.bpm} BPM`}
-                  </span>
-                </div>
-
-                <h4 className="text-xs font-bold text-white truncate group-hover:text-emerald-300 transition-colors">
-                  {track.title}
-                </h4>
-                <p className="text-[11px] text-gray-400 truncate mt-0.5">{track.artist}</p>
-
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#182030] text-[10px] text-gray-400 font-mono">
-                  <span className="truncate max-w-[80px]">{track.genre}</span>
-                  <span>
-                    {Math.floor(track.duration / 60)}:{track.duration % 60 < 10 ? '0' : ''}
-                    {track.duration % 60}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+          {filteredLocalTracks.map((track) => (
+            <TrackCard
+              key={track.id}
+              track={track}
+              isSelected={track.id === currentTrack.id}
+              isResolving={resolvingTrackId === track.id}
+              onSelect={handlePlayTrackWithLyrics}
+            />
+          ))}
         </div>
+      </div>
+
+      {/* Live Global & Regional Top Popular Charts */}
+      <div className="space-y-3 pt-4 border-t border-[#1E2638]">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <TrendingUp size={15} className="text-emerald-400" />
+            <span>Top Popular Charts (Full-Length Streaming)</span>
+          </h3>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setChartRegion('global')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                chartRegion === 'global'
+                  ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20'
+                  : 'bg-[#101420] text-gray-400 hover:text-white border border-[#1E2638]'
+              }`}
+            >
+              Global Top Hits
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartRegion('indonesia')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                chartRegion === 'indonesia'
+                  ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20'
+                  : 'bg-[#101420] text-gray-400 hover:text-white border border-[#1E2638]'
+              }`}
+            >
+              Indonesia Top Hits
+            </button>
+          </div>
+        </div>
+
+        {isLoadingCharts ? (
+          <div className="p-8 text-center text-xs text-gray-400 rounded-2xl bg-[#0D111A] border border-[#1E2638] flex items-center justify-center gap-2">
+            <Loader2 size={16} className="animate-spin text-emerald-400" />
+            <span>Loading live popular charts...</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {(chartRegion === 'indonesia' ? popularCharts.indonesia : popularCharts.global).map(
+              (track) => (
+                <TrackCard
+                  key={track.id}
+                  track={track}
+                  isSelected={track.id === currentTrack.id}
+                  isResolving={resolvingTrackId === track.id}
+                  onSelect={handlePlayTrackWithLyrics}
+                />
+              )
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
