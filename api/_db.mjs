@@ -50,7 +50,7 @@ export function normalizeTrackPayload(track) {
     sourceTag: track.sourceTag ? sanitizeText(track.sourceTag, 64) : undefined,
     genre: sanitizeText(track.genre, 64, 'Pop'),
     lyrics: Array.isArray(track.lyrics) ? track.lyrics.slice(0, 200) : [],
-    artistSolanaAddress: sanitizeText(track.artistSolanaAddress, 80, 'SonacastStudio'),
+    artistSolanaAddress: sanitizeText(track.artistSolanaAddress, 80, ''),
     bpm: Math.max(40, Math.min(240, Math.round(Number(track.bpm) || 120)))
   };
 }
@@ -171,11 +171,66 @@ export async function ensureSchema(sql) {
         )
       `;
 
+      await sql`
+        CREATE TABLE IF NOT EXISTS artist_wallets (
+          artist_key TEXT PRIMARY KEY,
+          artist_name TEXT NOT NULL,
+          wallet_address TEXT NOT NULL,
+          verified BOOLEAN NOT NULL DEFAULT FALSE,
+          signature_proof TEXT NOT NULL DEFAULT '',
+          signed_message TEXT NOT NULL DEFAULT '',
+          verified_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS tip_transactions (
+          id TEXT PRIMARY KEY,
+          tx_signature TEXT UNIQUE NOT NULL,
+          cluster TEXT NOT NULL DEFAULT 'devnet',
+          sender_wallet TEXT NOT NULL,
+          recipient_wallet TEXT NOT NULL,
+          treasury_wallet TEXT NOT NULL,
+          artist_key TEXT NOT NULL,
+          artist_name TEXT NOT NULL,
+          track_title TEXT NOT NULL,
+          route_type TEXT NOT NULL DEFAULT 'escrow_vault',
+          gross_lamports BIGINT NOT NULL,
+          artist_lamports BIGINT NOT NULL,
+          fee_lamports BIGINT NOT NULL,
+          fee_bps INT NOT NULL DEFAULT 1500,
+          claimed BOOLEAN NOT NULL DEFAULT FALSE,
+          claimed_tx TEXT,
+          verified_on_chain BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS proof_of_stream_logs (
+          id TEXT PRIMARY KEY,
+          listener_id TEXT NOT NULL,
+          track_id TEXT NOT NULL,
+          track_title TEXT NOT NULL,
+          artist_name TEXT NOT NULL,
+          seconds_listened INT NOT NULL DEFAULT 10,
+          accrued_units INT NOT NULL DEFAULT 1,
+          estimated_sol DOUBLE PRECISION NOT NULL DEFAULT 0.0001,
+          settlement_status TEXT NOT NULL DEFAULT 'pending_batch',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+
       await sql`CREATE INDEX IF NOT EXISTS idx_favorites_listener ON favorites (listener_id, pinned DESC, created_at DESC)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_albums_listener ON albums (listener_id, updated_at DESC)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_history_listener ON play_history (listener_id, played_at DESC)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_blends_creator ON music_blends (creator_id, updated_at DESC)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_followed_listener ON followed_artists (listener_id, created_at DESC)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_tips_artist_key ON tip_transactions (artist_key, created_at DESC)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_tips_created ON tip_transactions (created_at DESC)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_pos_listener ON proof_of_stream_logs (listener_id, created_at DESC)`;
       return true;
     })().catch((err) => {
       schemaReadyPromise = null;

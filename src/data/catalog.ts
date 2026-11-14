@@ -13,7 +13,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
     genre: 'Classic Rock',
     bpm: 72,
-    artistSolanaAddress: '8QueenBandSolanaDevnetArtistAddress11111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'Is this the real life? Is this just fantasy?' },
       { time: 7, text: 'Caught in a landslide, no escape from reality' },
@@ -35,7 +35,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-flashing-tunnel-lights-41838-large.mp4',
     genre: 'Synthwave / Pop',
     bpm: 171,
-    artistSolanaAddress: '7WeekndAbelSolanaDevnetArtistAddress1111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: "Yeah, I've been tryna call" },
       { time: 5, text: "I've been on my own for long enough" },
@@ -58,7 +58,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
     genre: 'Pop / Funk',
     bpm: 117,
-    artistSolanaAddress: 'MJ5MichaelJacksonSolanaDevnetAddress111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'She was more like a beauty queen from a movie scene' },
       { time: 7, text: "I said don't mind, but what do you mean, I am the one" },
@@ -85,7 +85,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
     genre: 'Hip-Hop',
     bpm: 171,
-    artistSolanaAddress: 'EM1NEMSolanaDevnetArtistAddress111111111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'Look, if you had one shot, or one opportunity' },
       { time: 7, text: 'To seize everything you ever wanted in one moment' },
@@ -111,7 +111,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
     genre: 'Pop',
     bpm: 96,
-    artistSolanaAddress: 'TS1989TaylorSwiftSolanaDevnetAddress111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'Nice to meet you, where you been?' },
       { time: 3, text: 'I could show you incredible things' },
@@ -137,7 +137,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
     genre: 'Pop / Funk',
     bpm: 134,
-    artistSolanaAddress: 'BM24KBrunoMarsSolanaDevnetAddress1111111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'Ayo, ayo, too good to say no' },
       { time: 5, text: 'I got a condo in Manhattan' },
@@ -161,7 +161,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
     genre: 'Soul / Pop',
     bpm: 105,
-    artistSolanaAddress: 'Adele21SolanaDevnetArtistAddress1111111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: "There's a fire starting in my heart" },
       { time: 4, text: "Reaching a fever pitch and it's bringing me out the dark" },
@@ -187,7 +187,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
     genre: 'Alternative / Rock',
     bpm: 125,
-    artistSolanaAddress: '1DImagineDragonsSolanaDevnetAddress1111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: "First things first, I'ma say all the words inside my head" },
       { time: 5, text: "I'm fired up and tired of the way that things have been, oh-ooh" },
@@ -209,7 +209,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
     genre: 'Electropop',
     bpm: 135,
-    artistSolanaAddress: 'BillieEilishSolanaDevnetAddress11111111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'White shirt now red, my bloody nose' },
       { time: 4, text: "Sleepin', you're on your tippy toes" },
@@ -234,7 +234,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-flashing-tunnel-lights-41838-large.mp4',
     genre: 'Disco / Funk',
     bpm: 116,
-    artistSolanaAddress: 'DaftPunkRAMSolanaDevnetAddress1111111111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'Like the legend of the phoenix, all ends with beginnings' },
       { time: 8, text: 'What keeps the planet spinning, the force from the beginning' },
@@ -256,7 +256,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-flashing-tunnel-lights-41838-large.mp4',
     genre: 'Disco-Pop',
     bpm: 103,
-    artistSolanaAddress: 'DuaLipaFutureNostalgiaSolanaAddress11111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'If you wanna run away with me, I know a galaxy' },
       { time: 4, text: 'And I can take you for a ride' },
@@ -282,7 +282,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-blurred-street-lights-on-a-rainy-night-41818-large.mp4',
     genre: 'Pop / Rock',
     bpm: 120,
-    artistSolanaAddress: 'PostMaloneHBDevnetAddress111111111111111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'Oh, oh, oh-oh' },
       { time: 8, text: 'Seasons change and our love went cold' },
@@ -306,7 +306,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-star-cluster-movement-in-outer-space-41617-large.mp4',
     genre: 'Alternative / Rock',
     bpm: 138,
-    artistSolanaAddress: '9ColdplayBandSolanaDevnetArtistAddress11111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'I used to rule the world' },
       { time: 5, text: 'Seas would rise when I gave the word' },
@@ -322,7 +322,7 @@ export const TRACK_CATALOG: Track[] = [
     id: 'track-edsheeran-shapeofyou',
     title: 'Shape of You',
     artist: 'Ed Sheeran',
-    album: '÷ (Deluxe)',
+    album: 'Ã· (Deluxe)',
     duration: 263,
     coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/15/e6/e8/15e6e8a4-4190-6a8b-86c3-ab4a51b88288/190295851286.jpg/600x600bb.jpg',
     audioUrl: './audio/ed-sheeran-shape-of-you.mp3',
@@ -330,7 +330,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
     genre: 'Pop',
     bpm: 96,
-    artistSolanaAddress: '3EdSheeranSolanaDevnetArtistAddress11111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: "The club isn't the best place to find a lover so the bar is where I go" },
       { time: 5, text: 'Me and my friends at the table doing shots, drinking fast and then we talk slow' },
@@ -352,7 +352,7 @@ export const TRACK_CATALOG: Track[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
     genre: 'Pop / Soul',
     bpm: 120,
-    artistSolanaAddress: '4LukasGrah4mSolanaDevnetArtistAddress1111111',
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: 'Once I was seven years old, my mama told me' },
       { time: 4, text: '"Go make yourself some friends, or you\'ll be lonely"' },
@@ -408,7 +408,7 @@ export const PODCAST_CATALOG: PodcastEpisode[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-recording-studio-with-microphone-and-mixer-41828-large.mp4',
     description: 'Deep dive into decentralized CDN networks, browser-side audio rendering pipelines, and sub-second micropayment settlement.',
     episodeNumber: 42,
-    hostSolanaAddress: '8wJ1Ksp7G2bQyN1M8Fv4D5aPq3h9xR7kZ2mVc4T6nYbE',
+    hostSolanaAddress: '',
     transcript: [
       { time: 0, text: 'Welcome back to Tech Horizon. Today we dissect browser-first audio streaming.' },
       { time: 8, text: 'For years, audio streaming meant heavy server transcoding clusters.' },
@@ -430,7 +430,7 @@ export const PODCAST_CATALOG: PodcastEpisode[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-sound-board-in-a-music-recording-studio-41830-large.mp4',
     description: 'Examining Blackman-Harris windowing, logarithmic frequency bucketing, and 60fps canvas spectrum algorithms.',
     episodeNumber: 18,
-    hostSolanaAddress: '5pL9Nx3b7C2eR1M8Fv4D5aPq3h9xR7kZ2mVc4T6nYbE',
+    hostSolanaAddress: '',
     transcript: [
       { time: 0, text: 'Today on DSP & Modern Web: the mathematics behind visual spectrum rings.' },
       { time: 9, text: 'Human hearing perceives pitch on a logarithmic scale, not linear.' },
@@ -451,7 +451,7 @@ export const PODCAST_CATALOG: PodcastEpisode[] = [
     videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-recording-studio-with-microphone-and-mixer-41828-large.mp4',
     description: 'How verifiable on-chain stream proofs replace fraudulent streaming bots and ensure authentic listener compensation.',
     episodeNumber: 64,
-    hostSolanaAddress: '3mK8Rx9b7C2eR1M8Fv4D5aPq3h9xR7kZ2mVc4T6nYbE',
+    hostSolanaAddress: '',
     transcript: [
       { time: 0, text: 'Streaming platforms report up to 15 percent fraudulent bot plays.' },
       { time: 9, text: 'Proof-of-Stream cryptographically binds playback session hashes with client entropy.' },

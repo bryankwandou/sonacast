@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { applyCoverFallback } from '../../utils/coverFallback';
+import { solanaService } from '../../services/solanaService';
 
 interface RightSidebarProps {
   queue: Track[];
@@ -350,12 +351,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           <div className="p-4 rounded-xl bg-[var(--bg-tint)] space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-[var(--text-primary)]">{t.directTipTitle}</span>
-              <span className="text-[10px] font-mono text-[var(--accent-text)]">Solana Devnet</span>
+              <span className="text-[10px] font-mono text-[var(--accent-text)]">
+                {solanaService.getCluster() === 'mainnet-beta' ? 'Solana Mainnet' : 'Solana Devnet'}
+              </span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              Send an instant micro-tip directly to{' '}
+              Send an atomic split tip for{' '}
               <span className="font-semibold text-[var(--text-primary)]">{currentTrack.artist}</span>{' '}
-              while listening to <span className="italic">{currentTrack.title}</span>.
+              on <span className="italic">{currentTrack.title}</span>: 85% goes to creator (or verified escrow) and 15% funds platform operations.
             </p>
             <button
               type="button"
@@ -363,7 +366,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               className="w-full py-2.5 rounded-lg bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
             >
               <Send size={13} />
-              <span>{t.tipArtist} (0.1 SOL)</span>
+              <span>{t.tipArtist} (85/15 Split)</span>
             </button>
           </div>
         )}

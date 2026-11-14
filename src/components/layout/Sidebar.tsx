@@ -24,6 +24,7 @@ interface SidebarProps {
   onTabChange: (tab: TabType) => void;
   onOpenWallet: () => void;
   walletBalanceSol: number;
+  walletCluster?: 'devnet' | 'mainnet-beta';
   isCloudConnected?: boolean;
   listenerHandle?: string;
   isMobileOpen?: boolean;
@@ -35,6 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   onOpenWallet,
   walletBalanceSol,
+  walletCluster = 'devnet',
   isCloudConnected = false,
   listenerHandle,
   isMobileOpen = false,
@@ -157,7 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] font-semibold text-[var(--text-secondary)] flex items-center gap-1.5">
               <Wallet size={12} className="text-[var(--accent-text)]" />
-              Devnet Wallet
+              {walletCluster === 'mainnet-beta' ? 'Mainnet Wallet' : 'Devnet Wallet'}
             </span>
             <span className="w-2 h-2 rounded-full bg-[var(--accent-emerald)] animate-pulse" />
           </div>

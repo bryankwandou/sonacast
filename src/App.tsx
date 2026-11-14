@@ -106,6 +106,9 @@ export default function App() {
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
   const [walletBalanceSol, setWalletBalanceSol] = useState(0);
+  const [walletCluster, setWalletCluster] = useState<'devnet' | 'mainnet-beta'>(() =>
+    solanaService.getCluster()
+  );
 
   // Top persistent search bar & SearchView handoff
   const [topSearchInput, setTopSearchInput] = useState('');
@@ -452,15 +455,23 @@ export default function App() {
     };
   }, [isYouTubeActive, playerMode, currentTab, isLyricsOpen, isStageVisible]);
 
-  // Periodically check Solana devnet balance
+  // Periodically check active Solana cluster balance & sync wallet switches
   useEffect(() => {
     const checkBal = async () => {
+      setWalletCluster(solanaService.getCluster());
       const bal = await solanaService.fetchBalance();
       setWalletBalanceSol(bal);
     };
     checkBal();
-    const interval = setInterval(checkBal, 8000);
-    return () => clearInterval(interval);
+    const unsub = solanaService.subscribe(() => {
+      setWalletCluster(solanaService.getCluster());
+      setWalletBalanceSol(solanaService.getCachedBalance());
+    });
+    const interval = setInterval(checkBal, 12000);
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
   }, []);
 
   const refillRadioQueueIfNeeded = useCallback(async (seedTrack: Track, force = false) => {
@@ -696,7 +707,7 @@ export default function App() {
         'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
       genre: 'Custom Audio',
       bpm: 120,
-      artistSolanaAddress: solanaService.getPublicKey(),
+      artistSolanaAddress: '',
       lyrics: [
         { time: 0, text: `Playing local file: ${file.name}` },
         { time: 5, text: 'Loaded with full 60 FPS Web Audio spectrum analysis' },
@@ -1510,6 +1521,7 @@ export default function App() {
               onTabChange={handleTabChange}
               onOpenWallet={() => setIsWalletModalOpen(true)}
               walletBalanceSol={walletBalanceSol}
+              walletCluster={walletCluster}
               isCloudConnected={cloudConnected}
               listenerHandle={listenerProfile.handle}
               isMobileOpen={isMobileNavOpen}
@@ -1781,6 +1793,8 @@ export default function App() {
                     currentTrackTitle={currentTrack.title}
                     currentArtist={currentTrack.artist}
                     isPlaying={isPlaying}
+                    listenerId={listenerProfile.listenerId}
+                    listenerName={listenerProfile.displayName}
                   />
                 )}
               </div>

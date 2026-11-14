@@ -298,7 +298,7 @@ async function searchAudiusTracks(query: string): Promise<Track[]> {
           sourceTag: 'Audius',
           genre: item.genre || 'Electronic',
           bpm: 118,
-          artistSolanaAddress: generateDeterministicSolanaAddress(artistName),
+          artistSolanaAddress: '',
           lyrics: [
             { time: 0, text: `Streaming open-catalog full release: "${item.title}"` },
             { time: 8, text: `Artist: ${artistName}` }
@@ -702,7 +702,7 @@ function buildTrackFromUnified(
         'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
       genre: item.genre || 'Pop',
       bpm: 120,
-      artistSolanaAddress: generateDeterministicSolanaAddress(item.artist || 'Artist'),
+      artistSolanaAddress: '',
       lyrics: [
         { time: 0, text: `Listening to "${item.title}" by ${item.artist}` },
         { time: 6, text: `Album: ${item.album || 'Single'}` },
@@ -731,7 +731,7 @@ function buildTrackFromUnified(
     streamSource: 'official-stream',
     genre: item.genre || 'Pop',
     bpm: 120,
-    artistSolanaAddress: generateDeterministicSolanaAddress(item.artist || 'Artist'),
+    artistSolanaAddress: '',
     lyrics: [
       { time: 0, text: `Streaming full-length official audio: "${item.title}"` },
       { time: 8, text: `Artist: ${item.artist}` },
@@ -1088,7 +1088,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           streamSource: masterMatch ? 'studio-master' : 'official-stream',
           genre: 'Original Release',
           bpm: 120,
-          artistSolanaAddress: generateDeterministicSolanaAddress(c.author || trimmed),
+          artistSolanaAddress: '',
           lyrics: [
             { time: 0, text: `Streaming 100% full-length release: "${c.title}"` },
             { time: 8, text: `Artist: ${c.author || trimmed}` },
@@ -1200,17 +1200,4 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
   };
 }
 
-function generateDeterministicSolanaAddress(name: string): string {
-  const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash << 5) - hash + name.charCodeAt(i);
-    hash |= 0;
-  }
-  let str = '';
-  for (let i = 0; i < 44; i++) {
-    const idx = Math.abs((hash * (i + 13)) % chars.length);
-    str += chars[idx];
-  }
-  return str;
-}
+

@@ -172,11 +172,68 @@ export type Language =
   | 'pl'
   | 'sv';
 
+export type SolanaCluster = 'devnet' | 'mainnet-beta';
+export type WalletAdapterName = 'phantom' | 'solflare' | 'backpack' | 'browser' | 'devnet-local';
+export type TipRouteType = 'direct_artist' | 'escrow_vault' | 'unconfigured';
+
+export interface FeeBenchmarkItem {
+  platform: string;
+  creatorSharePct: number;
+  platformFeePct: number;
+}
+
+export interface Web3ClusterConfig {
+  ready: boolean;
+  escrowReady?: boolean;
+  treasuryAddress: string;
+  escrowAddress: string;
+  hasCustomRpc: boolean;
+}
+
+export interface Web3TipsConfig {
+  connected: boolean;
+  platformFeeBps: number;
+  artistShareBps: number;
+  minTipSol: number;
+  feeBenchmarks: FeeBenchmarkItem[];
+  clusters: Record<SolanaCluster, Web3ClusterConfig>;
+}
+
+export interface ArtistWalletStatus {
+  artistKey: string;
+  artistName: string;
+  cluster: SolanaCluster;
+  verified: boolean;
+  verifiedWallet: string | null;
+  verifiedAt: string | null;
+  effectiveRecipient: string | null;
+  treasuryAddress: string | null;
+  escrowAddress: string | null;
+  routeType: TipRouteType;
+  stats: {
+    tipCount: number;
+    totalGrossSol: number;
+    totalArtistSol: number;
+    totalPlatformFeeSol: number;
+    unclaimedEscrowSol: number;
+  };
+}
+
 export interface TipRecord {
   id: string;
   recipient: string;
   recipientName: string;
   amountSol: number;
+  artistShareSol: number;
+  feeSol: number;
+  platformFeeBps: number;
+  treasuryAddress: string;
+  routeType: TipRouteType;
+  cluster: SolanaCluster;
+  senderWallet?: string;
+  verifiedOnChain: boolean;
+  claimed?: boolean;
+  claimedTx?: string | null;
   txSignature: string;
   timestamp: string;
   trackTitle: string;
@@ -190,6 +247,8 @@ export interface ProofOfStreamRecord {
   secondsListened: number;
   earnedRewardSol: number;
   verifiedOnChain: boolean;
+  settlementStatus?: 'pending_batch' | 'settled';
   txSignature?: string;
+  createdAt?: string;
 }
 

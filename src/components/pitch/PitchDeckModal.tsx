@@ -69,8 +69,8 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
           desc: 'Millisecond-accurate interactive transcripts enable interactive scrub, auto-scroll, and language translations.'
         },
         {
-          title: 'Proof-of-Stream Micro-Rewards',
-          desc: 'Listeners earn loyalty tokens for verified listening time, while artists receive 100% direct fan tips.'
+          title: 'Atomic 85/15 Fan Tipping & Escrow',
+          desc: 'One Solana transaction splits 85% directly to verified artists (or safe vault escrow) and 15% to platform operations.'
         }
       ]
     },
@@ -88,19 +88,19 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
           desc: 'Custom multi-oscillator polyphonic synth guarantees zero downtime even under offline or restricted networks.'
         },
         {
-          title: 'Solana Devnet Program',
-          desc: 'Non-custodial micro-transfers via @solana/web3.js with base58 transaction attestations on explorer.'
+          title: 'Solana Devnet & Mainnet-Beta Split Program',
+          desc: 'Phantom/Solflare/Backpack signing with atomic 2-instruction SOL split transfers, Ed25519 artist wallet verification, and Neon RPC verification.'
         }
       ]
     },
     {
       badge: 'SLIDE 5 · BUSINESS MODEL',
       title: 'Multi-Pronged Sustainable Revenue Model',
-      subtitle: 'Aligning incentives across indie artists, live radio curators, and listeners.',
+      subtitle: 'Transparent 85% creator payout beats legacy 30–50% creator take-rates while funding global infrastructure.',
       points: [
         {
-          title: '0.5% Protocol Routing Fee',
-          desc: 'Negligible fee on artist tips and listener micro-rewards sustains devnet & mainnet RPC nodes.'
+          title: '15% Platform Tip Protocol Fee',
+          desc: 'Below YouTube Super Chat (30%) and Twitch (30–50%), funding Mainnet RPC nodes, Escrow custody, and Neon analytics.'
         },
         {
           title: 'Creator Studio Pro Presets',
