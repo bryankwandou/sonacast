@@ -18,6 +18,7 @@ interface SearchViewProps {
   onUpdateLyrics?: (lyrics: LyricLine[]) => void;
   likedTrackIds?: Set<string>;
   onToggleLike?: (track: Track) => void;
+  onAddToAlbum?: (track: Track) => void;
   onAddToQueue?: (track: Track) => void;
   onStartRadio?: (track: Track) => void;
 }
@@ -35,6 +36,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   onUpdateLyrics,
   likedTrackIds,
   onToggleLike,
+  onAddToAlbum,
   onAddToQueue,
   onStartRadio
 }) => {
@@ -343,6 +345,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 }}
                 isLiked={likedTrackIds?.has(track.id)}
                 onToggleLike={onToggleLike}
+                onAddToAlbum={onAddToAlbum}
                 onAddToQueue={onAddToQueue}
                 onStartRadio={onStartRadio}
               />

@@ -5,13 +5,16 @@ import { ThemeLanguageControls } from './ThemeLanguageControls';
 import {
   Activity,
   Award,
+  Cloud,
   Compass,
+  Heart,
   Home,
   Mic2,
   Presentation,
   Radio,
   Search,
   Sparkles,
+  Users,
   Wallet,
   X,
 } from 'lucide-react';
@@ -21,6 +24,8 @@ interface SidebarProps {
   onTabChange: (tab: TabType) => void;
   onOpenWallet: () => void;
   walletBalanceSol: number;
+  isCloudConnected?: boolean;
+  listenerHandle?: string;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
 }
@@ -30,6 +35,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   onOpenWallet,
   walletBalanceSol,
+  isCloudConnected = false,
+  listenerHandle,
   isMobileOpen = false,
   onCloseMobile,
 }) => {
@@ -38,6 +45,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'landing', label: t.navLanding, icon: <Home size={17} /> },
     { id: 'discover', label: t.navDiscover, icon: <Compass size={17} /> },
+    { id: 'favorites', label: t.navFavorites, icon: <Heart size={17} /> },
+    { id: 'blend', label: t.navBlend, icon: <Users size={17} /> },
     { id: 'search', label: t.navSearch, icon: <Search size={17} /> },
     { id: 'radio', label: t.navRadio, icon: <Radio size={17} /> },
     { id: 'podcasts', label: t.navPodcasts, icon: <Mic2 size={17} /> },
@@ -119,6 +128,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Bottom Controls: Theme/Language (mobile drawer only) & Wallet */}
       <div className="space-y-3 pt-4 mt-4 border-t border-[var(--border-subtle)]">
         {isDrawer && <ThemeLanguageControls variant="sidebar" />}
+
+        <button
+          type="button"
+          data-testid="sidebar-cloud-status"
+          onClick={() => handleSelectNav('favorites')}
+          className="w-full px-3 py-2 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors flex items-center justify-between gap-2 text-left cursor-pointer"
+        >
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-secondary)] truncate">
+            <Cloud
+              size={12}
+              className={isCloudConnected ? 'text-[var(--accent-text)] shrink-0' : 'text-[var(--text-dim)] shrink-0'}
+            />
+            <span className="truncate">{isCloudConnected ? t.cloudSyncedLabel : 'Local Mode'}</span>
+          </span>
+          {listenerHandle && (
+            <span className="font-mono text-[10px] text-[var(--text-dim)] truncate max-w-[82px]">
+              {listenerHandle}
+            </span>
+          )}
+        </button>
 
         <button
           type="button"

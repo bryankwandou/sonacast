@@ -3,6 +3,7 @@ import type { PlayerMode, RepeatMode, Track } from '../../types';
 import {
   Activity,
   Disc,
+  FolderPlus,
   Heart,
   ListMusic,
   Loader2,
@@ -47,6 +48,7 @@ interface BottomPlayerBarProps {
   onCycleRepeat?: () => void;
   isLiked?: boolean;
   onToggleLike?: () => void;
+  onAddToAlbum?: () => void;
   onStartRadio?: () => void;
   onOpenExpandedPlayer?: () => void;
 }
@@ -75,6 +77,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   onCycleRepeat,
   isLiked = false,
   onToggleLike,
+  onAddToAlbum,
   onStartRadio,
   onOpenExpandedPlayer
 }) => {
@@ -170,6 +173,18 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                 }`}
               >
                 <Heart size={15} className={isLiked ? 'fill-current' : ''} />
+              </button>
+            )}
+            {onAddToAlbum && (
+              <button
+                type="button"
+                data-testid="player-album-toggle"
+                onClick={onAddToAlbum}
+                aria-label={t.addToAlbum}
+                title={t.addToAlbum}
+                className="p-1.5 rounded-lg transition-colors cursor-pointer text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+              >
+                <FolderPlus size={15} />
               </button>
             )}
             {onStartRadio && (

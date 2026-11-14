@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type {
+  BlendRoom,
+  CloudLibrarySnapshot,
   Track,
   PodcastEpisode,
   RadioStation,
@@ -8,7 +10,11 @@ import type {
   LyricLine,
   EqPreset,
   MoodPreset,
-  RepeatMode
+  RepeatMode,
+  FavoriteTrack,
+  FollowedArtist,
+  ListenerProfile,
+  ListeningStats
 } from './types';
 import { TRACK_CATALOG, PODCAST_CATALOG, RADIO_STATIONS } from './data/catalog';
 import { ARTISTS_DIRECTORY } from './data/artists800';
@@ -30,6 +36,14 @@ import {
   saveRecommendationState,
   type RecommendationState
 } from './services/recommendationEngine';
+import {
+  cloneSharedAlbumToNeon,
+  fetchListenerBlends,
+  fetchNeonLibrary,
+  getOrCreateListenerIdentity,
+  mutateNeonLibrary,
+  saveListenerDisplayName
+} from './services/neonSyncService';
 import { useAppPreferences } from './contexts/AppPreferencesContext';
 
 import { Sidebar } from './components/layout/Sidebar';
@@ -45,19 +59,25 @@ import { LiveLyrics } from './components/lyrics/LiveLyrics';
 
 import { LandingView } from './components/views/LandingView';
 import { DiscoverView } from './components/views/DiscoverView';
+import { FavoritesView } from './components/views/FavoritesView';
+import { BlendView } from './components/views/BlendView';
 import { SearchView } from './components/views/SearchView';
 import { RadioView } from './components/views/RadioView';
 import { PodcastsView } from './components/views/PodcastsView';
 import { VisualizerStudioView } from './components/views/VisualizerStudioView';
 import { ProofOfStreamView } from './components/rewards/ProofOfStreamView';
 
+import { AddToAlbumModal } from './components/modals/AddToAlbumModal';
+import { ShortcutsModal } from './components/modals/ShortcutsModal';
 import { SolanaWalletModal } from './components/web3/SolanaWalletModal';
 import { PitchDeckModal } from './components/pitch/PitchDeckModal';
 import {
   Activity,
   Award,
   Compass,
+  Heart,
   Home,
+  Keyboard,
   ListMusic,
   Menu,
   Mic2,
@@ -66,6 +86,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Users
 } from 'lucide-react';
 
 export default function App() {
@@ -103,6 +124,69 @@ export default function App() {
     () => new Set(recState.likedTracks.map((tr) => tr.id)),
     [recState.likedTracks]
   );
+
+  // Neon Postgres cloud sync & social library state
+  const initialIdentity = useMemo(() => getOrCreateListenerIdentity(), []);
+  const [cloudConnected, setCloudConnected] = useState(false);
+  const [listenerProfile, setListenerProfile] = useState<ListenerProfile>(() => ({
+    listenerId: initialIdentity.listenerId,
+    displayName: initialIdentity.displayName,
+    handle: `@${initialIdentity.displayName.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'listener'}`,
+    bio: ''
+  }));
+  const [favoritesMeta, setFavoritesMeta] = useState<FavoriteTrack[]>([]);
+  const [followedArtists, setFollowedArtists] = useState<FollowedArtist[]>([]);
+  const [cloudStats, setCloudStats] = useState<ListeningStats | null>(null);
+  const [blends, setBlends] = useState<BlendRoom[]>([]);
+  const [albumModalTrack, setAlbumModalTrack] = useState<Track | null>(null);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [initialBlendCode, setInitialBlendCode] = useState<string | null>(null);
+
+  const favoritesList = useMemo<FavoriteTrack[]>(() => {
+    const metaById = new Map(favoritesMeta.map((f) => [f.id, f]));
+    const merged = recState.likedTracks.map((tr) => {
+      const meta = metaById.get(tr.id);
+      return {
+        ...tr,
+        note: meta?.note || '',
+        pinned: Boolean(meta?.pinned),
+        favoritedAt: meta?.favoritedAt
+      };
+    });
+    return merged.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
+  }, [recState.likedTracks, favoritesMeta]);
+
+  const effectiveStats = useMemo<ListeningStats>(() => {
+    if (cloudStats) return cloudStats;
+    const totalMinutes = Math.round(
+      recState.recentTracks.reduce((sum, item) => sum + (item.duration || 0), 0) / 60
+    );
+    const topArtists = Object.entries(recState.artistAffinity)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, score]) => ({ name, score: Math.round(score) }));
+    const topGenres = Object.entries(recState.genreAffinity)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, score]) => ({ name, score: Math.round(score) }));
+    return {
+      totalPlays: recState.recentTracks.length,
+      totalMinutes,
+      favoritesCount: recState.likedTracks.length,
+      albumsCount: recState.playlists.length,
+      followedCount: followedArtists.length,
+      topArtists,
+      topGenres
+    };
+  }, [
+    cloudStats,
+    recState.recentTracks,
+    recState.artistAffinity,
+    recState.genreAffinity,
+    recState.likedTracks.length,
+    recState.playlists.length,
+    followedArtists.length
+  ]);
 
   // Stream resolution & official backend state
   const [isYouTubeActive, setIsYouTubeActive] = useState(false);
@@ -160,6 +244,91 @@ export default function App() {
       window.clearInterval(timer);
     };
   }, [sleepEndAtMs]);
+
+  const applyCloudSnapshot = useCallback((snapshot: CloudLibrarySnapshot | null) => {
+    if (!snapshot || !snapshot.connected) return;
+    setCloudConnected(true);
+    setListenerProfile(snapshot.profile);
+    if (snapshot.profile.displayName) {
+      saveListenerDisplayName(snapshot.profile.displayName);
+    }
+    setFavoritesMeta(snapshot.favorites);
+    setFollowedArtists(snapshot.followedArtists);
+    setCloudStats(snapshot.stats);
+
+    setRecState((prev) => {
+      const recentMap = new Map<string, Track>();
+      for (const tr of [...snapshot.recentHistory, ...prev.recentTracks]) {
+        if (tr?.id && !recentMap.has(tr.id)) {
+          recentMap.set(tr.id, tr);
+        }
+      }
+      const next: RecommendationState = {
+        ...prev,
+        likedTracks: snapshot.favorites,
+        playlists: snapshot.albums,
+        recentTracks: Array.from(recentMap.values()).slice(0, 40)
+      };
+      saveRecommendationState(next);
+      return next;
+    });
+  }, []);
+
+  // Hydrate Neon Postgres library, blends, and share deep-links (?blend= / ?album=)
+  useEffect(() => {
+    let cancelled = false;
+    const params =
+      typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const blendParam = params?.get('blend')?.trim().toUpperCase() || '';
+    const albumParam = params?.get('album')?.trim().toUpperCase() || '';
+
+    const hydrateCloud = async () => {
+      const snapshot = await fetchNeonLibrary(initialIdentity.listenerId);
+      if (cancelled) return;
+
+      if (snapshot && snapshot.connected) {
+        const local = recStateRef.current;
+        const missingFavs = local.likedTracks.some(
+          (lf) => !snapshot.favorites.some((cf) => cf.id === lf.id)
+        );
+        const missingAlbums = local.playlists.some(
+          (lp) => !snapshot.albums.some((ca) => ca.id === lp.id)
+        );
+
+        if (missingFavs || missingAlbums) {
+          const merged = await mutateNeonLibrary('sync_local_state', {
+            favorites: local.likedTracks,
+            albums: local.playlists
+          });
+          if (!cancelled) applyCloudSnapshot(merged || snapshot);
+        } else {
+          applyCloudSnapshot(snapshot);
+        }
+
+        if (albumParam) {
+          const cloned = await cloneSharedAlbumToNeon(albumParam);
+          if (!cancelled && cloned) {
+            applyCloudSnapshot(cloned);
+            setCurrentTab('favorites');
+          }
+        }
+      }
+
+      const listenerBlends = await fetchListenerBlends(initialIdentity.listenerId);
+      if (!cancelled) {
+        setBlends(listenerBlends);
+        if (blendParam) {
+          setInitialBlendCode(blendParam);
+          setCurrentTab('blend');
+        }
+      }
+    };
+
+    hydrateCloud();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialIdentity.listenerId, applyCloudSnapshot]);
 
   // Persistent YouTube host and layout target slots
   const ytHostRef = useRef<HTMLDivElement | null>(null);
@@ -351,6 +520,13 @@ export default function App() {
       setStreamError(null);
       setCurrentTrack(track);
       setCurrentTime(0);
+
+      mutateNeonLibrary('record_play', { track }).then((snap) => {
+        if (snap && snap.connected) {
+          setCloudConnected(true);
+          setCloudStats(snap.stats);
+        }
+      });
 
       setQueue((prevQueue) => {
         if (!prevQueue.some((t) => t.id === track.id)) {
@@ -596,9 +772,33 @@ export default function App() {
     handleNextRef.current = handleNext;
   }, [handleNext]);
 
-  const handleToggleLike = useCallback((track: Track) => {
-    setRecState((prev) => recordTrackSignal(prev, track, 'toggleLike'));
-  }, []);
+  const handleToggleLike = useCallback(
+    (track: Track) => {
+      setRecState((prev) => recordTrackSignal(prev, track, 'toggleLike'));
+      mutateNeonLibrary('toggle_favorite', { track }).then(applyCloudSnapshot);
+    },
+    [applyCloudSnapshot]
+  );
+
+  const handleTogglePin = useCallback(
+    (trackId: string, pinned: boolean) => {
+      setFavoritesMeta((prev) =>
+        prev.map((f) => (f.id === trackId ? { ...f, pinned } : f))
+      );
+      mutateNeonLibrary('update_favorite_meta', { trackId, pinned }).then(applyCloudSnapshot);
+    },
+    [applyCloudSnapshot]
+  );
+
+  const handleSaveFavoriteNote = useCallback(
+    (trackId: string, note: string) => {
+      setFavoritesMeta((prev) =>
+        prev.map((f) => (f.id === trackId ? { ...f, note } : f))
+      );
+      mutateNeonLibrary('update_favorite_meta', { trackId, note }).then(applyCloudSnapshot);
+    },
+    [applyCloudSnapshot]
+  );
 
   const handleAddToQueue = useCallback((track: Track) => {
     setManualQueue((prev) => (prev.some((x) => x.id === track.id) ? prev : [...prev, track]));
@@ -748,67 +948,213 @@ export default function App() {
     }
   }, []);
 
-  const handleCreatePlaylist = useCallback((name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setRecState((prev) => {
-      const next: RecommendationState = {
-        ...prev,
-        playlists: [
-          {
-            id: `pl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            name: trimmed,
-            tracks: [],
-            createdAt: Date.now()
-          },
-          ...prev.playlists
-        ]
-      };
-      saveRecommendationState(next);
-      return next;
-    });
-  }, []);
+  const handleCreatePlaylist = useCallback(
+    (name: string, description = '', initialTrack?: Track) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      setRecState((prev) => {
+        const next: RecommendationState = {
+          ...prev,
+          playlists: [
+            {
+              id: `alb-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              name: trimmed,
+              description: description.trim(),
+              coverUrl: initialTrack?.coverUrl || '',
+              tracks: initialTrack ? [initialTrack] : [],
+              createdAt: Date.now()
+            },
+            ...prev.playlists
+          ]
+        };
+        saveRecommendationState(next);
+        return next;
+      });
+      mutateNeonLibrary('create_album', {
+        name: trimmed,
+        description: description.trim(),
+        initialTrack
+      }).then(applyCloudSnapshot);
+    },
+    [applyCloudSnapshot]
+  );
 
-  const handleAddTrackToPlaylist = useCallback((playlistId: string, track: Track) => {
-    setRecState((prev) => {
-      const next: RecommendationState = {
-        ...prev,
-        playlists: prev.playlists.map((pl) =>
-          pl.id === playlistId && !pl.tracks.some((x) => x.id === track.id)
-            ? { ...pl, tracks: [...pl.tracks, track] }
-            : pl
-        )
-      };
-      saveRecommendationState(next);
-      return next;
-    });
-  }, []);
+  const handleAddTrackToPlaylist = useCallback(
+    (playlistId: string, track: Track) => {
+      setRecState((prev) => {
+        const next: RecommendationState = {
+          ...prev,
+          playlists: prev.playlists.map((pl) =>
+            pl.id === playlistId && !pl.tracks.some((x) => x.id === track.id)
+              ? { ...pl, tracks: [...pl.tracks, track], coverUrl: pl.coverUrl || track.coverUrl }
+              : pl
+          )
+        };
+        saveRecommendationState(next);
+        return next;
+      });
+      mutateNeonLibrary('add_to_album', { albumId: playlistId, track }).then(applyCloudSnapshot);
+    },
+    [applyCloudSnapshot]
+  );
 
-  const handleRemoveTrackFromPlaylist = useCallback((playlistId: string, trackId: string) => {
-    setRecState((prev) => {
-      const next: RecommendationState = {
-        ...prev,
-        playlists: prev.playlists.map((pl) =>
-          pl.id === playlistId
-            ? { ...pl, tracks: pl.tracks.filter((x) => x.id !== trackId) }
-            : pl
-        )
-      };
-      saveRecommendationState(next);
-      return next;
-    });
-  }, []);
+  const handleRemoveTrackFromPlaylist = useCallback(
+    (playlistId: string, trackId: string) => {
+      setRecState((prev) => {
+        const next: RecommendationState = {
+          ...prev,
+          playlists: prev.playlists.map((pl) =>
+            pl.id === playlistId
+              ? { ...pl, tracks: pl.tracks.filter((x) => x.id !== trackId) }
+              : pl
+          )
+        };
+        saveRecommendationState(next);
+        return next;
+      });
+      mutateNeonLibrary('remove_from_album', { albumId: playlistId, trackId }).then(
+        applyCloudSnapshot
+      );
+    },
+    [applyCloudSnapshot]
+  );
 
-  const handleDeletePlaylist = useCallback((playlistId: string) => {
-    setRecState((prev) => {
-      const next: RecommendationState = {
+  const handleToggleTrackInAlbum = useCallback(
+    (albumId: string, track: Track, currentlyInAlbum: boolean) => {
+      if (currentlyInAlbum) {
+        handleRemoveTrackFromPlaylist(albumId, track.id);
+      } else {
+        handleAddTrackToPlaylist(albumId, track);
+      }
+    },
+    [handleAddTrackToPlaylist, handleRemoveTrackFromPlaylist]
+  );
+
+  const handleDeletePlaylist = useCallback(
+    (playlistId: string) => {
+      setRecState((prev) => {
+        const next: RecommendationState = {
+          ...prev,
+          playlists: prev.playlists.filter((pl) => pl.id !== playlistId)
+        };
+        saveRecommendationState(next);
+        return next;
+      });
+      mutateNeonLibrary('delete_album', { albumId: playlistId }).then(applyCloudSnapshot);
+    },
+    [applyCloudSnapshot]
+  );
+
+  const handleToggleFollowArtist = useCallback(
+    (artistName: string, genre: string) => {
+      const cleanName = artistName.trim();
+      if (!cleanName) return;
+      setFollowedArtists((prev) => {
+        const exists = prev.some((a) => a.name.toLowerCase() === cleanName.toLowerCase());
+        return exists
+          ? prev.filter((a) => a.name.toLowerCase() !== cleanName.toLowerCase())
+          : [{ name: cleanName, genre, followedAt: Date.now() }, ...prev];
+      });
+      mutateNeonLibrary('toggle_follow_artist', { artistName: cleanName, genre }).then(
+        applyCloudSnapshot
+      );
+    },
+    [applyCloudSnapshot]
+  );
+
+  const handleUpdateProfile = useCallback(
+    (displayName: string, bio: string) => {
+      const cleanName = displayName.trim() || listenerProfile.displayName;
+      saveListenerDisplayName(cleanName);
+      setListenerProfile((prev) => ({
         ...prev,
-        playlists: prev.playlists.filter((pl) => pl.id !== playlistId)
-      };
+        displayName: cleanName,
+        handle: `@${cleanName.toLowerCase().replace(/[^a-z0-9_]+/g, '') || 'listener'}`,
+        bio
+      }));
+      mutateNeonLibrary('upsert_profile', { displayName: cleanName, bio }).then(
+        applyCloudSnapshot
+      );
+    },
+    [listenerProfile.displayName, applyCloudSnapshot]
+  );
+
+  const handleCloneSharedAlbum = useCallback(
+    async (shareCode: string): Promise<boolean> => {
+      const snap = await cloneSharedAlbumToNeon(shareCode);
+      if (snap && snap.connected) {
+        applyCloudSnapshot(snap);
+        return true;
+      }
+      return false;
+    },
+    [applyCloudSnapshot]
+  );
+
+  const handleClearHistory = useCallback(() => {
+    setPlayHistory([]);
+    setRecState((prev) => {
+      const next: RecommendationState = { ...prev, recentTracks: [] };
       saveRecommendationState(next);
       return next;
     });
-  }, []);
+    mutateNeonLibrary('clear_history', {}).then(applyCloudSnapshot);
+  }, [applyCloudSnapshot]);
+
+  const handleRefreshBlends = useCallback(async () => {
+    const rows = await fetchListenerBlends(listenerProfile.listenerId);
+    setBlends(rows);
+  }, [listenerProfile.listenerId]);
+
+  const handleSaveBlendAsAlbum = useCallback(
+    async (name: string, tracksList: Track[]) => {
+      const cleanName = name.trim();
+      if (!cleanName || tracksList.length === 0) return;
+
+      const createdSnap = await mutateNeonLibrary('create_album', {
+        name: cleanName,
+        description: 'Curated Music Blend Mix',
+        initialTrack: tracksList[0]
+      });
+
+      if (createdSnap && createdSnap.connected) {
+        const newestAlbum = createdSnap.albums[0];
+        let latestSnap: CloudLibrarySnapshot | null = createdSnap;
+        if (newestAlbum) {
+          for (const extraTrack of tracksList.slice(1, 14)) {
+            const updated = await mutateNeonLibrary('add_to_album', {
+              albumId: newestAlbum.id,
+              track: extraTrack
+            });
+            if (updated) latestSnap = updated;
+          }
+        }
+        applyCloudSnapshot(latestSnap);
+      } else {
+        const localId = `alb-${Date.now()}`;
+        setRecState((prev) => {
+          const next: RecommendationState = {
+            ...prev,
+            playlists: [
+              {
+                id: localId,
+                name: cleanName,
+                description: 'Curated Music Blend Mix',
+                coverUrl: tracksList[0]?.coverUrl || '',
+                tracks: tracksList.slice(0, 14),
+                createdAt: Date.now()
+              },
+              ...prev.playlists
+            ]
+          };
+          saveRecommendationState(next);
+          return next;
+        });
+      }
+      setCurrentTab('favorites');
+    },
+    [applyCloudSnapshot]
+  );
 
   // Background pre-resolve next upcoming track into module cache
   useEffect(() => {
@@ -862,9 +1208,10 @@ export default function App() {
     }
   }, [currentTrack, handlePrev]);
 
-  // Global keyboard shortcuts (Space play/pause, Arrows seek/skip, M mute, L like)
+  // Global keyboard shortcuts (Space play/pause, Arrows seek/skip, M mute, L like, A album, F favorites, B blend, S shuffle, R repeat, ? help)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
       if (
         target &&
@@ -893,11 +1240,25 @@ export default function App() {
         sharedAudioEngine.setVolume(nextVol);
       } else if (e.key === 'l' || e.key === 'L') {
         handleToggleLike(currentTrackRef.current);
+      } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        setAlbumModalTrack(currentTrackRef.current);
+      } else if (e.key === 'f' || e.key === 'F') {
+        setCurrentTab('favorites');
+      } else if (e.key === 'b' || e.key === 'B') {
+        setCurrentTab('blend');
+      } else if (e.key === 's' || e.key === 'S') {
+        handleToggleShuffle();
+      } else if (e.key === 'r' || e.key === 'R') {
+        handleCycleRepeat();
+      } else if (e.key === '?') {
+        e.preventDefault();
+        setIsShortcutsOpen((prev) => !prev);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handlePrev, handleToggleLike]);
+  }, [handlePrev, handleToggleLike, handleToggleShuffle, handleCycleRepeat]);
 
   const handleSeek = (secs: number) => {
     sharedAudioEngine.seek(secs);
@@ -987,6 +1348,8 @@ export default function App() {
   const mobileNavChips: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'landing', label: t.navLanding, icon: <Home size={13} /> },
     { id: 'discover', label: t.navDiscover, icon: <Compass size={13} /> },
+    { id: 'favorites', label: t.navFavorites, icon: <Heart size={13} /> },
+    { id: 'blend', label: t.navBlend, icon: <Users size={13} /> },
     { id: 'search', label: t.navSearch, icon: <Search size={13} /> },
     { id: 'radio', label: t.navRadio, icon: <Radio size={13} /> },
     { id: 'podcasts', label: t.navPodcasts, icon: <Mic2 size={13} /> },
@@ -1037,6 +1400,7 @@ export default function App() {
           onOpenPitchDeck={() => setIsPitchModalOpen(true)}
           likedTrackIds={likedTrackIds}
           onToggleLike={handleToggleLike}
+          onOpenAddToAlbum={(tr) => setAlbumModalTrack(tr)}
         />
       ) : (
         <>
@@ -1089,6 +1453,17 @@ export default function App() {
 
               <button
                 type="button"
+                data-testid="shortcuts-open-btn"
+                onClick={() => setIsShortcutsOpen(true)}
+                aria-label={t.keyboardShortcutsLabel}
+                title={t.keyboardShortcutsLabel}
+                className="hidden sm:flex w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] items-center justify-center shrink-0 cursor-pointer"
+              >
+                <Keyboard size={15} />
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setIsMobileQueueOpen(true)}
                 aria-label={t.queue}
                 className="min-[1380px]:hidden w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center shrink-0 cursor-pointer"
@@ -1116,6 +1491,8 @@ export default function App() {
               onTabChange={handleTabChange}
               onOpenWallet={() => setIsWalletModalOpen(true)}
               walletBalanceSol={walletBalanceSol}
+              isCloudConnected={cloudConnected}
+              listenerHandle={listenerProfile.handle}
               isMobileOpen={isMobileNavOpen}
               onCloseMobile={() => setIsMobileNavOpen(false)}
             />
@@ -1275,15 +1652,66 @@ export default function App() {
                     playlists={recState.playlists}
                     likedTrackIds={likedTrackIds}
                     onToggleLike={handleToggleLike}
+                    onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
                     onAddToQueue={handleAddToQueue}
                     onStartRadio={handleStartRadio}
                     onPlayTrackList={handlePlayTrackList}
-                    onCreatePlaylist={handleCreatePlaylist}
+                    onCreatePlaylist={(name) => handleCreatePlaylist(name)}
                     onAddTrackToPlaylist={handleAddTrackToPlaylist}
                     onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
                     onDeletePlaylist={handleDeletePlaylist}
                     activeMood={activeMood}
                     onSelectMood={handleSelectMood}
+                  />
+                )}
+
+                {currentTab === 'favorites' && (
+                  <FavoritesView
+                    favorites={favoritesList}
+                    albums={recState.playlists}
+                    followedArtists={followedArtists}
+                    recentTracks={recState.recentTracks}
+                    profile={listenerProfile}
+                    stats={effectiveStats}
+                    isCloudConnected={cloudConnected}
+                    currentTrack={currentTrack}
+                    onSelectTrack={handleSelectTrack}
+                    onPlayTrackList={handlePlayTrackList}
+                    onToggleLike={handleToggleLike}
+                    onTogglePin={handleTogglePin}
+                    onSaveNote={handleSaveFavoriteNote}
+                    onOpenAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+                    onAddToQueue={handleAddToQueue}
+                    onStartRadio={handleStartRadio}
+                    onCreateAlbum={(name, desc) => handleCreatePlaylist(name, desc)}
+                    onDeleteAlbum={handleDeletePlaylist}
+                    onRemoveTrackFromAlbum={handleRemoveTrackFromPlaylist}
+                    onToggleFollowArtist={handleToggleFollowArtist}
+                    onSearchArtist={(name) => navigateToSearch(name)}
+                    onUpdateProfile={handleUpdateProfile}
+                    onCloneSharedAlbum={handleCloneSharedAlbum}
+                    onClearHistory={handleClearHistory}
+                    onOpenBlend={() => handleTabChange('blend')}
+                  />
+                )}
+
+                {currentTab === 'blend' && (
+                  <BlendView
+                    listenerName={listenerProfile.displayName}
+                    favorites={favoritesList}
+                    recentTracks={recState.recentTracks}
+                    catalogTracks={TRACK_CATALOG}
+                    blends={blends}
+                    initialBlendCode={initialBlendCode}
+                    isCloudConnected={cloudConnected}
+                    currentTrack={currentTrack}
+                    onSelectTrack={handleSelectTrack}
+                    onPlayTrackList={handlePlayTrackList}
+                    onRefreshBlends={handleRefreshBlends}
+                    onSaveBlendAsAlbum={handleSaveBlendAsAlbum}
+                    onOpenAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+                    onToggleLike={handleToggleLike}
+                    likedTrackIds={likedTrackIds}
                   />
                 )}
 
@@ -1300,6 +1728,7 @@ export default function App() {
                     onUpdateLyrics={handleUpdateTrackLyrics}
                     likedTrackIds={likedTrackIds}
                     onToggleLike={handleToggleLike}
+                    onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
                     onAddToQueue={handleAddToQueue}
                     onStartRadio={handleStartRadio}
                   />
@@ -1385,11 +1814,43 @@ export default function App() {
             onCycleRepeat={handleCycleRepeat}
             isLiked={likedTrackIds.has(currentTrack.id)}
             onToggleLike={() => handleToggleLike(currentTrack)}
+            onAddToAlbum={() => setAlbumModalTrack(currentTrack)}
             onStartRadio={() => handleStartRadio(currentTrack)}
             onOpenExpandedPlayer={() => setIsExpandedPlayerOpen(true)}
           />
         </>
       )}
+
+      {/* Add to Album / Pin / Note / Artist Follow Sheet */}
+      <AddToAlbumModal
+        track={albumModalTrack}
+        onClose={() => setAlbumModalTrack(null)}
+        albums={recState.playlists}
+        isLiked={albumModalTrack ? likedTrackIds.has(albumModalTrack.id) : false}
+        favoriteMeta={
+          albumModalTrack ? favoritesList.find((f) => f.id === albumModalTrack.id) || null : null
+        }
+        isArtistFollowed={
+          albumModalTrack
+            ? followedArtists.some((a) => {
+                const primary =
+                  albumModalTrack.artist.split(/,|feat\.?|ft\.?|&/i)[0].trim() ||
+                  albumModalTrack.artist;
+                return a.name.toLowerCase() === primary.toLowerCase();
+              })
+            : false
+        }
+        onToggleLike={handleToggleLike}
+        onTogglePin={handleTogglePin}
+        onSaveNote={handleSaveFavoriteNote}
+        onToggleFollowArtist={handleToggleFollowArtist}
+        onCreateAlbum={handleCreatePlaylist}
+        onToggleTrackInAlbum={handleToggleTrackInAlbum}
+        onAddToQueue={handleAddToQueue}
+      />
+
+      {/* Keyboard Shortcuts Reference Modal */}
+      <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
 
       {/* Full Expanded Now Playing Sheet (Resso / Spotify Style) */}
       <ExpandedPlayerModal

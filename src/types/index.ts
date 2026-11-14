@@ -30,8 +30,81 @@ export type MoodPreset = 'all' | 'focus' | 'chill' | 'upbeat' | 'workout' | 'cla
 export interface UserPlaylist {
   id: string;
   name: string;
+  description?: string;
+  coverUrl?: string;
+  shareCode?: string;
+  isPublic?: boolean;
   tracks: Track[];
   createdAt: number;
+  updatedAt?: number;
+}
+
+export interface FavoriteTrack extends Track {
+  note?: string;
+  pinned?: boolean;
+  favoritedAt?: number;
+}
+
+export interface FollowedArtist {
+  name: string;
+  genre: string;
+  followedAt?: number;
+}
+
+export interface ListenerProfile {
+  listenerId: string;
+  displayName: string;
+  handle: string;
+  bio: string;
+}
+
+export interface ListeningStats {
+  totalPlays: number;
+  totalMinutes: number;
+  favoritesCount: number;
+  albumsCount: number;
+  followedCount: number;
+  topArtists: { name: string; score: number }[];
+  topGenres: { name: string; score: number }[];
+}
+
+export interface BlendRoom {
+  blendCode: string;
+  creatorId: string;
+  creatorName: string;
+  partnerId?: string | null;
+  partnerName?: string | null;
+  title: string;
+  matchScore: number;
+  sharedArtists: string[];
+  sharedGenres: string[];
+  blendedTracks: Track[];
+  creatorProfile?: {
+    name?: string;
+    artists?: string[];
+    genres?: string[];
+    avgBpm?: number;
+  };
+  partnerProfile?: {
+    name?: string;
+    artists?: string[];
+    genres?: string[];
+    avgBpm?: number;
+  } | null;
+  status: 'open' | 'matched';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CloudLibrarySnapshot {
+  connected: boolean;
+  database: string;
+  profile: ListenerProfile;
+  favorites: FavoriteTrack[];
+  albums: UserPlaylist[];
+  followedArtists: FollowedArtist[];
+  recentHistory: (Track & { playedAt?: number })[];
+  stats: ListeningStats;
 }
 
 export interface PodcastEpisode {
@@ -61,7 +134,17 @@ export interface RadioStation {
 }
 
 export type PlayerMode = 'cover' | 'video' | 'orbwave';
-export type TabType = 'landing' | 'discover' | 'search' | 'radio' | 'podcasts' | 'visualizer' | 'pitch' | 'proofOfStream';
+export type TabType =
+  | 'landing'
+  | 'discover'
+  | 'favorites'
+  | 'blend'
+  | 'search'
+  | 'radio'
+  | 'podcasts'
+  | 'visualizer'
+  | 'pitch'
+  | 'proofOfStream';
 export type ThemeMode = 'dark' | 'light';
 export type Language =
   | 'en'

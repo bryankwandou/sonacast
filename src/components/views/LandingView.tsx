@@ -3,6 +3,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   Disc3,
+  FolderPlus,
   Heart,
   Loader2,
   Pause,
@@ -32,6 +33,7 @@ interface LandingViewProps {
   onOpenPitchDeck: () => void;
   likedTrackIds?: Set<string>;
   onToggleLike?: (track: Track) => void;
+  onOpenAddToAlbum?: (track: Track) => void;
 }
 
 const FEATURED_ARTIST_LINKS: string[] = [
@@ -67,7 +69,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onOpenWallet,
   onOpenPitchDeck,
   likedTrackIds,
-  onToggleLike
+  onToggleLike,
+  onOpenAddToAlbum
 }) => {
   const { t } = useAppPreferences();
   const { popularCharts, isLoadingCharts } = usePopularCharts();
@@ -464,6 +467,19 @@ export const LandingView: React.FC<LandingViewProps> = ({
                           <Heart size={15} className={isLiked ? 'fill-current' : ''} />
                         </button>
                       )}
+
+                      {onOpenAddToAlbum && (
+                        <button
+                          type="button"
+                          data-testid="landing-album-btn"
+                          onClick={() => onOpenAddToAlbum(currentTrack)}
+                          aria-label={t.addToAlbum}
+                          title={t.addToAlbum}
+                          className="w-10 h-10 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-dim)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors cursor-pointer"
+                        >
+                          <FolderPlus size={15} />
+                        </button>
+                      )}
                     </div>
 
                     <button
@@ -711,6 +727,22 @@ export const LandingView: React.FC<LandingViewProps> = ({
                   className="py-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
                 >
                   {t.navSearch}
+                </button>
+                <button
+                  type="button"
+                  data-testid="footer-favorites-link"
+                  onClick={() => onEnterApp('favorites')}
+                  className="py-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                >
+                  {t.navFavorites}
+                </button>
+                <button
+                  type="button"
+                  data-testid="footer-blend-link"
+                  onClick={() => onEnterApp('blend')}
+                  className="py-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                >
+                  {t.navBlend}
                 </button>
                 <button
                   type="button"

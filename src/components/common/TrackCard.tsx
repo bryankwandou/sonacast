@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Track } from '../../types';
-import { Disc3, Heart, ListPlus, Loader2, Play, Radio } from 'lucide-react';
+import { Disc3, FolderPlus, Heart, ListPlus, Loader2, Play, Radio } from 'lucide-react';
 import { applyCoverFallback } from '../../utils/coverFallback';
 
 interface TrackCardProps {
@@ -11,6 +11,7 @@ interface TrackCardProps {
   rank?: number;
   isLiked?: boolean;
   onToggleLike?: (track: Track) => void;
+  onAddToAlbum?: (track: Track) => void;
   onAddToQueue?: (track: Track) => void;
   onStartRadio?: (track: Track) => void;
 }
@@ -23,6 +24,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   rank,
   isLiked,
   onToggleLike,
+  onAddToAlbum,
   onAddToQueue,
   onStartRadio
 }) => {
@@ -43,27 +45,25 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           onSelect(track);
         }
       }}
-      className={`group text-left p-3 rounded-xl transition-all flex flex-col gap-2.5 w-full cursor-pointer select-none ${
-        isSelected
-          ? 'bg-[var(--accent-soft)] ring-1 ring-[var(--accent-emerald)]'
-          : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)]'
-      }`}
+      className={`group text-left p-3 rounded-xl transition-all flex flex-col gap-2.5 w-full cursor-pointer select-none ${isSelected
+        ? 'bg-[var(--accent-soft)] ring-1 ring-[var(--accent-emerald)]'
+        : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)]'
+        }`}
     >
       <div className="relative aspect-square w-full rounded-lg overflow-hidden bg-[var(--bg-elevated)] shadow-sm">
         <img
           src={track.coverUrl}
           alt={track.title}
           loading="lazy"
-          onError={(e) => applyCoverFallback(e, track.title, track.artist)}
+          onError={(e) => applyCoverFallback(e.currentTarget, track.title, track.artist)}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
 
         {/* Quick Action Pill Overlay (top-right on hover or liked) */}
-        {(onToggleLike || onAddToQueue || onStartRadio) && (
+        {(onToggleLike || onAddToAlbum || onAddToQueue || onStartRadio) && (
           <div
-            className={`absolute top-2 right-2 flex items-center gap-1 transition-opacity ${
-              isLiked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
-            }`}
+            className={`absolute top-2 right-2 flex items-center gap-1 transition-opacity ${isLiked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+              }`}
           >
             {onToggleLike && (
               <button
@@ -74,13 +74,27 @@ export const TrackCard: React.FC<TrackCardProps> = ({
                 }}
                 aria-label={isLiked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
                 title={isLiked ? 'Liked' : 'Like'}
-                className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer ${
-                  isLiked
-                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                    : 'bg-black/65 text-white hover:bg-black/85'
-                }`}
+                className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer ${isLiked
+                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                  : 'bg-black/65 text-white hover:bg-black/85'
+                  }`}
               >
                 <Heart size={13} className={isLiked ? 'fill-current' : ''} />
+              </button>
+            )}
+            {onAddToAlbum && (
+              <button
+                type="button"
+                data-testid="track-card-album-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToAlbum(track);
+                }}
+                aria-label="Add to album"
+                title="Add to album"
+                className="w-7 h-7 rounded-full bg-black/65 text-white hover:bg-[var(--accent-emerald)] hover:text-[var(--accent-fg)] flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer"
+              >
+                <FolderPlus size={13} />
               </button>
             )}
             {onAddToQueue && (
@@ -116,11 +130,10 @@ export const TrackCard: React.FC<TrackCardProps> = ({
 
         {/* Bottom Play/Resolving Badge */}
         <div
-          className={`absolute bottom-2 right-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition-all ${
-            isSelected || isResolving
-              ? 'opacity-100 translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-              : 'opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-          }`}
+          className={`absolute bottom-2 right-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition-all ${isSelected || isResolving
+            ? 'opacity-100 translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+            : 'opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+            }`}
         >
           {isResolving ? (
             <Loader2 size={16} className="animate-spin" />
@@ -148,9 +161,8 @@ export const TrackCard: React.FC<TrackCardProps> = ({
 
       <div className="min-w-0 space-y-0.5">
         <div
-          className={`text-sm font-bold truncate ${
-            isSelected ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
-          }`}
+          className={`text-sm font-bold truncate ${isSelected ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
+            }`}
         >
           {track.title}
         </div>

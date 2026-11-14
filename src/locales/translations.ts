@@ -105,6 +105,23 @@ export interface TranslationKeys {
   footerExplore: string;
   footerProtocol: string;
   footerTagline: string;
+  navFavorites: string;
+  navBlend: string;
+  addToAlbum: string;
+  createAlbum: string;
+  albumNamePlaceholder: string;
+  albumDescPlaceholder: string;
+  personalNotePlaceholder: string;
+  pinTrack: string;
+  musicBlendHeading: string;
+  musicBlendDesc: string;
+  createBlendBtn: string;
+  joinBlendLabel: string;
+  followedArtistsLabel: string;
+  listeningStatsLabel: string;
+  keyboardShortcutsLabel: string;
+  cloudSyncedLabel: string;
+  importSharedAlbum: string;
 }
 
 export interface LanguageOption {
@@ -245,7 +262,24 @@ const EN_BASE: TranslationKeys = {
   tryInPlayer: 'Launch Web Player',
   footerExplore: 'Web Player',
   footerProtocol: 'Creator & Project',
-  footerTagline: 'Crafted for uninterrupted full-length music listening.'
+  footerTagline: 'Crafted for uninterrupted full-length music listening.',
+  navFavorites: 'Favorites & Albums',
+  navBlend: 'Blend Music',
+  addToAlbum: 'Add to Album',
+  createAlbum: 'New Album',
+  albumNamePlaceholder: 'Album or collection title...',
+  albumDescPlaceholder: 'Optional notes or mood description...',
+  personalNotePlaceholder: 'Add a personal memory or note for this song...',
+  pinTrack: 'Pin to Top',
+  musicBlendHeading: 'Music Blend',
+  musicBlendDesc: 'Combine your listening fingerprint with friends or curated taste profiles in Neon Postgres.',
+  createBlendBtn: 'Create Friend Blend',
+  joinBlendLabel: 'Join Blend Code',
+  followedArtistsLabel: 'Followed Artists',
+  listeningStatsLabel: 'Listening Stats',
+  keyboardShortcutsLabel: 'Shortcuts',
+  cloudSyncedLabel: 'Neon DB Synced',
+  importSharedAlbum: 'Import Shared Album'
 };
 
 const loc = (overrides: Partial<TranslationKeys>): TranslationKeys => ({
@@ -358,7 +392,24 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     tryInPlayer: 'Buka di Web Player',
     footerExplore: 'Web Player',
     footerProtocol: 'Kreator & Ekosistem',
-    footerTagline: 'Dirancang bersih untuk pengalaman mendengarkan lagu seutuhnya.'
+    footerTagline: 'Dirancang bersih untuk pengalaman mendengarkan lagu seutuhnya.',
+    navFavorites: 'Favorit & Album',
+    navBlend: 'Blend Musik',
+    addToAlbum: 'Tambah ke Album',
+    createAlbum: 'Album Baru',
+    albumNamePlaceholder: 'Nama album atau koleksi...',
+    albumDescPlaceholder: 'Catatan atau deskripsi mood opsional...',
+    personalNotePlaceholder: 'Tulis catatan pribadi untuk lagu ini...',
+    pinTrack: 'Sematkan di Atas',
+    musicBlendHeading: 'Blend Musik',
+    musicBlendDesc: 'Gabungkan profil selera musikmu dengan teman atau kurasi di Neon Postgres.',
+    createBlendBtn: 'Buat Undangan Blend',
+    joinBlendLabel: 'Gabung Kode Blend',
+    followedArtistsLabel: 'Artis Diikuti',
+    listeningStatsLabel: 'Statistik Dengar',
+    keyboardShortcutsLabel: 'Pintasan',
+    cloudSyncedLabel: 'Neon DB Tersinkron',
+    importSharedAlbum: 'Impor Album Teman'
   }),
   ms: loc({
     navLanding: 'Halaman Utama',
