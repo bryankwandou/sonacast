@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { sharedAudioEngine } from '../../services/audioEngine';
 import type { LyricLine } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { buildCoverFallbackDataUri } from '../../utils/coverFallback';
 import { Maximize2, Minimize2, Sparkles, Sliders } from 'lucide-react';
 
 interface OrbwaveCanvasProps {
@@ -59,15 +60,42 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
 
   const coverImageRef = useRef<HTMLImageElement | null>(null);
 
-  // Preload cover image
+  // Preload cover image without CORS cache lock-in and reset cleanly on track change
   useEffect(() => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = coverUrl;
-    img.onload = () => {
-      coverImageRef.current = img;
+    let cancelled = false;
+    coverImageRef.current = null;
+
+    const loadFallback = () => {
+      if (cancelled) return;
+      const fallbackImg = new Image();
+      fallbackImg.onload = () => {
+        if (!cancelled) {
+          coverImageRef.current = fallbackImg;
+        }
+      };
+      fallbackImg.src = buildCoverFallbackDataUri(title, artist);
     };
-  }, [coverUrl]);
+
+    if (!coverUrl) {
+      loadFallback();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      if (!cancelled) {
+        coverImageRef.current = img;
+      }
+    };
+    img.onerror = loadFallback;
+    img.src = coverUrl;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [coverUrl, title, artist]);
 
   // Find currently active lyric line
   const activeLyric = lyrics.slice().reverse().find((l) => currentTime >= l.time) || lyrics[0];
@@ -319,7 +347,7 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full min-h-[340px] lg:min-h-[460px] bg-[var(--bg-app)] rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex flex-col items-center justify-center select-none transition-colors"
+      className="relative w-full h-full min-h-[260px] sm:min-h-[300px] xl:min-h-[400px] bg-[var(--bg-app)] rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex flex-col items-center justify-center select-none transition-colors"
     >
       {/* Visualizer Canvas */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full block" />

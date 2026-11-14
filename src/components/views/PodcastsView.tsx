@@ -1,6 +1,7 @@
 import React from 'react';
 import type { PodcastEpisode } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 import { Mic2, Play, Clock } from 'lucide-react';
 
 interface PodcastsViewProps {
@@ -51,8 +52,9 @@ export const PodcastsView: React.FC<PodcastsViewProps> = ({
             >
               <div className="flex items-center gap-4">
                 <img
-                  src={ep.coverUrl}
+                  src={ep.coverUrl || DEFAULT_COVER_DATA_URI}
                   alt={ep.title}
+                  onError={(e) => applyCoverFallback(e, ep.title, ep.host)}
                   className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover shrink-0 border border-[var(--border-subtle)]"
                 />
                 <div>

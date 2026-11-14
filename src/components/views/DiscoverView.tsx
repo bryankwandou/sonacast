@@ -5,6 +5,7 @@ import { searchTracksOnline, fetchSyncedLyrics } from '../../services/musicServi
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { usePopularCharts } from '../../hooks/usePopularCharts';
 import { TrackCard } from '../common/TrackCard';
+import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 import {
   Play,
   Pause,
@@ -277,8 +278,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 
           <div className="absolute right-6 top-6 bottom-6 w-52 sm:w-64 rounded-2xl overflow-hidden border border-[var(--border-subtle)] shadow-xl hidden md:block">
             <img
-              src={featuredTrack.coverUrl}
+              src={featuredTrack.coverUrl || DEFAULT_COVER_DATA_URI}
               alt={featuredTrack.title}
+              onError={(e) => applyCoverFallback(e, featuredTrack.title, featuredTrack.artist)}
               className="w-full h-full object-cover"
             />
           </div>

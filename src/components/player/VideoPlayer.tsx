@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 import { Video, Maximize2, Minimize2, Radio } from 'lucide-react';
 
 interface VideoPlayerProps {
@@ -51,12 +52,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full min-h-[340px] lg:min-h-[460px] bg-black rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex items-center justify-center select-none group"
+      className="relative w-full h-full min-h-[260px] sm:min-h-[300px] xl:min-h-[400px] bg-black rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex items-center justify-center select-none group"
     >
       {isOfficialStreamActive ? (
         <div
           ref={officialSlotRef}
-          className="w-full h-full min-h-[340px] lg:min-h-[460px] bg-black"
+          className="w-full h-full min-h-[260px] sm:min-h-[300px] xl:min-h-[400px] bg-black"
         />
       ) : videoUrl && !videoError ? (
         <video
@@ -72,8 +73,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       ) : (
         <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-tr from-[#080B12] via-[#121826] to-[#0A0E17]">
           <img
-            src={coverUrl}
+            src={coverUrl || DEFAULT_COVER_DATA_URI}
             alt={title}
+            onError={(e) => applyCoverFallback(e, title, artist)}
             className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-110"
           />
           <div className="relative z-10 text-center p-6 bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 max-w-sm">

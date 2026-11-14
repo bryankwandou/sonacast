@@ -18,6 +18,7 @@ import type { TabType, Track } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { usePopularCharts } from '../../hooks/usePopularCharts';
 import { TrackCard } from '../common/TrackCard';
+import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 
 interface LandingViewProps {
   tracks: Track[];
@@ -175,8 +176,9 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
               <div className="flex items-center gap-4">
                 <img
-                  src={currentTrack.coverUrl}
+                  src={currentTrack.coverUrl || DEFAULT_COVER_DATA_URI}
                   alt={currentTrack.title}
+                  onError={(e) => applyCoverFallback(e, currentTrack.title, currentTrack.artist)}
                   className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border border-[var(--border-subtle)] shrink-0"
                 />
                 <div className="min-w-0 flex-1 space-y-1">

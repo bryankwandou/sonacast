@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { sharedAudioEngine } from '../../services/audioEngine';
+import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 import { Disc3, Radio } from 'lucide-react';
 
 interface VinylCoverProps {
@@ -34,7 +35,7 @@ export const VinylCover: React.FC<VinylCoverProps> = ({
 
   return (
     <div
-      className="relative w-full h-full min-h-[360px] lg:min-h-[460px] rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex flex-col items-center justify-center p-6 sm:p-8 select-none transition-colors"
+      className="relative w-full h-full min-h-[280px] sm:min-h-[320px] xl:min-h-[400px] rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex flex-col items-center justify-center p-5 sm:p-7 select-none transition-colors"
       style={{ background: 'var(--hero-gradient)', boxShadow: 'var(--card-shadow)' }}
     >
       {/* Background ambient lighting */}
@@ -67,8 +68,9 @@ export const VinylCover: React.FC<VinylCoverProps> = ({
           {/* Album Cover Center Label */}
           <div className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden border-2 border-[var(--accent-emerald)] shadow-inner">
             <img
-              src={coverUrl}
+              src={coverUrl || DEFAULT_COVER_DATA_URI}
               alt={title}
+              onError={(e) => applyCoverFallback(e, title, artist)}
               className="w-full h-full object-cover"
             />
             {/* Center Spindle Hole */}

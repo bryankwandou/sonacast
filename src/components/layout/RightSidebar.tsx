@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Track, RadioStation } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 import { Coins, Disc3, Play, Radio, Tv, Users, X } from 'lucide-react';
 
 interface RightSidebarProps {
@@ -123,8 +124,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 }`}
               >
                 <img
-                  src={track.coverUrl}
+                  src={track.coverUrl || DEFAULT_COVER_DATA_URI}
                   alt={track.title}
+                  onError={(e) => applyCoverFallback(e, track.title, track.artist)}
                   className="w-10 h-10 rounded-lg object-cover shrink-0"
                 />
                 <div className="flex-1 min-w-0">
@@ -191,14 +193,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   return (
     <>
       {/* Desktop Right Panel */}
-      <aside className="hidden xl:flex xl:flex-col w-80 bg-[var(--bg-sidebar)] border-l border-[var(--border-subtle)] shrink-0 h-full transition-colors">
+      <aside className="hidden min-[1380px]:flex min-[1380px]:flex-col w-80 bg-[var(--bg-sidebar)] border-l border-[var(--border-subtle)] shrink-0 h-full transition-colors">
         {renderContent(false)}
       </aside>
 
-      {/* Mobile / Tablet Queue Drawer */}
+      {/* Mobile / Tablet / Laptop Queue Drawer */}
       {isMobileOpen && (
         <div
-          className="fixed inset-0 z-50 xl:hidden flex justify-end"
+          className="fixed inset-0 z-50 min-[1380px]:hidden flex justify-end"
           role="dialog"
           aria-modal="true"
           aria-label={t.queue}

@@ -47,7 +47,7 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
 
   return (
     <div
-      className="relative w-full h-full min-h-[360px] lg:min-h-[460px] bg-[var(--bg-surface)] rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex flex-col p-5 sm:p-6 select-none transition-colors"
+      className="relative w-full h-full min-h-[280px] sm:min-h-[320px] xl:min-h-[400px] bg-[var(--bg-surface)] rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex flex-col p-5 sm:p-6 select-none transition-colors"
       style={{ boxShadow: 'var(--card-shadow)' }}
     >
       {/* Header */}

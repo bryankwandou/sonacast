@@ -1,6 +1,7 @@
 import React from 'react';
 import { Disc3, Loader2, Play } from 'lucide-react';
 import type { Track } from '../../types';
+import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 
 export interface TrackCardProps {
   track: Track;
@@ -34,9 +35,10 @@ export const TrackCard: React.FC<TrackCardProps> = ({
     >
       <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-[var(--bg-elevated)]">
         <img
-          src={track.coverUrl}
+          src={track.coverUrl || DEFAULT_COVER_DATA_URI}
           alt={track.title}
           loading="lazy"
+          onError={(e) => applyCoverFallback(e, track.title, track.artist)}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
         <div

@@ -106,11 +106,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={() => handleSelectNav(item.id)}
                 data-nav-tab={item.id}
-                className={`w-full flex items-center gap-3 px-3.5 min-h-[42px] py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  isActive
+                className={`w-full flex items-center gap-3 px-3.5 min-h-[42px] py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${isActive
                     ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border border-transparent'
-                }`}
+                  }`}
               >
                 <span className={isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-dim)]'}>
                   {item.icon}
@@ -155,7 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex md:flex-col w-64 bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] shrink-0 h-full transition-colors">
+      <aside className="hidden md:flex md:flex-col w-56 xl:w-64 bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] shrink-0 h-full transition-colors">
         {renderInner(false)}
       </aside>
 

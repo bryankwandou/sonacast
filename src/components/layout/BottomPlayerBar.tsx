@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Track, PlayerMode } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 import {
   Disc3,
   ListMusic,
@@ -106,8 +107,9 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
         {/* Left: Track Information */}
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 md:flex-none md:w-1/4 md:max-w-[260px]">
           <img
-            src={currentTrack.coverUrl}
+            src={currentTrack.coverUrl || DEFAULT_COVER_DATA_URI}
             alt={currentTrack.title}
+            onError={(e) => applyCoverFallback(e, currentTrack.title, currentTrack.artist)}
             className="w-11 h-11 md:w-14 md:h-14 rounded-xl object-cover border border-[var(--border-subtle)] shrink-0"
           />
           <div className="min-w-0">
@@ -265,7 +267,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             <button
               type="button"
               onClick={onOpenMobileQueue}
-              className="xl:hidden w-9 h-9 rounded-xl border bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors cursor-pointer"
+              className="min-[1380px]:hidden w-9 h-9 rounded-xl border bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors cursor-pointer"
               title={t.queue}
               aria-label={t.queue}
             >

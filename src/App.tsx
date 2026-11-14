@@ -118,7 +118,7 @@ export default function App() {
     };
   }, []);
 
-  const isStageVisible = isStageOpen || currentTab === 'discover' || currentTab === 'visualizer';
+  const isStageVisible = isStageOpen || currentTab === 'visualizer';
 
   // Synchronize fixed overlay #sonacast-yt-host bounds with active slot (Video stage or RightSidebar monitor)
   useEffect(() => {
@@ -412,7 +412,9 @@ export default function App() {
       setIsPitchModalOpen(true);
     } else {
       setCurrentTab(tab);
-      if (tab === 'landing') {
+      if (tab === 'visualizer') {
+        setIsStageOpen(true);
+      } else if (tab === 'landing') {
         setIsStageOpen(false);
       }
     }
@@ -420,9 +422,7 @@ export default function App() {
 
   const handlePlayerModeChange = (mode: PlayerMode) => {
     setPlayerMode(mode);
-    if (mode === 'video' || mode === 'orbwave') {
-      setIsStageOpen(true);
-    }
+    setIsStageOpen(true);
   };
 
   const handleToggleLyrics = () => {
@@ -458,7 +458,16 @@ export default function App() {
   };
 
   const handleHardRefresh = () => {
-    window.location.reload();
+    if (typeof window.caches !== 'undefined') {
+      window.caches
+        .keys()
+        .then((keys) => Promise.all(keys.map((k) => window.caches.delete(k))))
+        .finally(() => {
+          window.location.reload();
+        });
+      return;
+    }
+    globalThis.location.reload();
   };
 
   const mobileNavChips: { id: TabType; label: string; icon: React.ReactNode }[] = [
@@ -533,7 +542,7 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          <span className="text-[11px] text-[var(--accent-text)] font-mono hidden xl:flex items-center gap-1 mr-1">
+          <span className="text-[11px] text-[var(--accent-text)] font-mono hidden min-[1380px]:flex items-center gap-1 mr-1">
             <Globe size={11} />
             100% Full-Length &amp; LRCLIB
           </span>
@@ -544,7 +553,7 @@ export default function App() {
             type="button"
             onClick={() => setIsMobileQueueOpen(true)}
             aria-label={t.queue}
-            className="xl:hidden w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center shrink-0 cursor-pointer"
+            className="min-[1380px]:hidden w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center shrink-0 cursor-pointer"
           >
             <ListMusic size={15} />
           </button>
@@ -613,7 +622,7 @@ export default function App() {
                 {ARTISTS_DIRECTORY.length} Artists
               </button>
 
-              {currentTab !== 'discover' && currentTab !== 'visualizer' && (
+              {currentTab !== 'visualizer' && (
                 <button
                   type="button"
                   onClick={() => setIsStageOpen((prev) => !prev)}
@@ -656,7 +665,7 @@ export default function App() {
 
           {/* Top Stage Player Area */}
           {isStageVisible && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[340px] lg:min-h-[460px]">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[260px] sm:min-h-[300px] xl:min-h-[400px]">
               <div
                 className={`transition-all duration-300 ${
                   isLyricsOpen ? 'lg:col-span-7' : 'lg:col-span-12'
@@ -697,7 +706,7 @@ export default function App() {
               </div>
 
               {isLyricsOpen && (
-                <div className="lg:col-span-5 h-[360px] lg:h-[460px]">
+                <div className="lg:col-span-5 h-[300px] sm:h-[340px] xl:h-[400px]">
                   <LiveLyrics
                     lyrics={currentTrack.lyrics}
                     currentTime={currentTime}
