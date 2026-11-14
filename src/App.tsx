@@ -245,6 +245,8 @@ export default function App() {
     };
   }, [sleepEndAtMs]);
 
+  const pendingCloudMutationsRef = useRef(0);
+
   const applyCloudSnapshot = useCallback((snapshot: CloudLibrarySnapshot | null) => {
     if (!snapshot || !snapshot.connected) return;
     setCloudConnected(true);
@@ -273,6 +275,29 @@ export default function App() {
       return next;
     });
   }, []);
+
+  const runCloudMutation = useCallback(
+    async (action: string, payload: Record<string, unknown>) => {
+      pendingCloudMutationsRef.current += 1;
+      try {
+        const snap = await mutateNeonLibrary(action, payload);
+        pendingCloudMutationsRef.current = Math.max(0, pendingCloudMutationsRef.current - 1);
+        if (snap && snap.connected) {
+          if (pendingCloudMutationsRef.current === 0) {
+            applyCloudSnapshot(snap);
+          } else {
+            setCloudConnected(true);
+            setCloudStats(snap.stats);
+          }
+        }
+        return snap;
+      } catch {
+        pendingCloudMutationsRef.current = Math.max(0, pendingCloudMutationsRef.current - 1);
+        return null;
+      }
+    },
+    [applyCloudSnapshot]
+  );
 
   // Hydrate Neon Postgres library, blends, and share deep-links (?blend= / ?album=)
   useEffect(() => {
@@ -775,9 +800,9 @@ export default function App() {
   const handleToggleLike = useCallback(
     (track: Track) => {
       setRecState((prev) => recordTrackSignal(prev, track, 'toggleLike'));
-      mutateNeonLibrary('toggle_favorite', { track }).then(applyCloudSnapshot);
+      void runCloudMutation('toggle_favorite', { track });
     },
-    [applyCloudSnapshot]
+    [runCloudMutation]
   );
 
   const handleTogglePin = useCallback(
@@ -785,9 +810,9 @@ export default function App() {
       setFavoritesMeta((prev) =>
         prev.map((f) => (f.id === trackId ? { ...f, pinned } : f))
       );
-      mutateNeonLibrary('update_favorite_meta', { trackId, pinned }).then(applyCloudSnapshot);
+      void runCloudMutation('update_favorite_meta', { trackId, pinned });
     },
-    [applyCloudSnapshot]
+    [runCloudMutation]
   );
 
   const handleSaveFavoriteNote = useCallback(
@@ -795,9 +820,9 @@ export default function App() {
       setFavoritesMeta((prev) =>
         prev.map((f) => (f.id === trackId ? { ...f, note } : f))
       );
-      mutateNeonLibrary('update_favorite_meta', { trackId, note }).then(applyCloudSnapshot);
+      void runCloudMutation('update_favorite_meta', { trackId, note });
     },
-    [applyCloudSnapshot]
+    [runCloudMutation]
   );
 
   const handleAddToQueue = useCallback((track: Track) => {
@@ -970,13 +995,13 @@ export default function App() {
         saveRecommendationState(next);
         return next;
       });
-      mutateNeonLibrary('create_album', {
+      void runCloudMutation('create_album', {
         name: trimmed,
         description: description.trim(),
         initialTrack
-      }).then(applyCloudSnapshot);
+      });
     },
-    [applyCloudSnapshot]
+    [runCloudMutation]
   );
 
   const handleAddTrackToPlaylist = useCallback(
@@ -993,9 +1018,9 @@ export default function App() {
         saveRecommendationState(next);
         return next;
       });
-      mutateNeonLibrary('add_to_album', { albumId: playlistId, track }).then(applyCloudSnapshot);
+      void runCloudMutation('add_to_album', { albumId: playlistId, track });
     },
-    [applyCloudSnapshot]
+    [runCloudMutation]
   );
 
   const handleRemoveTrackFromPlaylist = useCallback(
@@ -1012,11 +1037,9 @@ export default function App() {
         saveRecommendationState(next);
         return next;
       });
-      mutateNeonLibrary('remove_from_album', { albumId: playlistId, trackId }).then(
-        applyCloudSnapshot
-      );
+      void runCloudMutation('remove_from_album', { albumId: playlistId, trackId });
     },
-    [applyCloudSnapshot]
+    [runCloudMutation]
   );
 
   const handleToggleTrackInAlbum = useCallback(
@@ -1040,9 +1063,9 @@ export default function App() {
         saveRecommendationState(next);
         return next;
       });
-      mutateNeonLibrary('delete_album', { albumId: playlistId }).then(applyCloudSnapshot);
+      void runCloudMutation('delete_album', { albumId: playlistId });
     },
-    [applyCloudSnapshot]
+    [runCloudMutation]
   );
 
   const handleToggleFollowArtist = useCallback(
@@ -1055,11 +1078,9 @@ export default function App() {
           ? prev.filter((a) => a.name.toLowerCase() !== cleanName.toLowerCase())
           : [{ name: cleanName, genre, followedAt: Date.now() }, ...prev];
       });
-      mutateNeonLibrary('toggle_follow_artist', { artistName: cleanName, genre }).then(
-        applyCloudSnapshot
-      );
+      void runCloudMutation('toggle_follow_artist', { artistName: cleanName, genre });
     },
-    [applyCloudSnapshot]
+    [runCloudMutation]
   );
 
   const handleUpdateProfile = useCallback(
@@ -1072,11 +1093,9 @@ export default function App() {
         handle: `@${cleanName.toLowerCase().replace(/[^a-z0-9_]+/g, '') || 'listener'}`,
         bio
       }));
-      mutateNeonLibrary('upsert_profile', { displayName: cleanName, bio }).then(
-        applyCloudSnapshot
-      );
+      void runCloudMutation('upsert_profile', { displayName: cleanName, bio });
     },
-    [listenerProfile.displayName, applyCloudSnapshot]
+    [listenerProfile.displayName, runCloudMutation]
   );
 
   const handleCloneSharedAlbum = useCallback(
@@ -1098,8 +1117,8 @@ export default function App() {
       saveRecommendationState(next);
       return next;
     });
-    mutateNeonLibrary('clear_history', {}).then(applyCloudSnapshot);
-  }, [applyCloudSnapshot]);
+    void runCloudMutation('clear_history', {});
+  }, [runCloudMutation]);
 
   const handleRefreshBlends = useCallback(async () => {
     const rows = await fetchListenerBlends(listenerProfile.listenerId);
