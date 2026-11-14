@@ -129,6 +129,8 @@ export interface TranslationKeys {
   playingFrom: string;
   queuedByYou: string;
   autoplaySimilar: string;
+  autoNextShort: string;
+  similarClassLabel: string;
   playAlbum: string;
   playOrdered: string;
   switchToRadio: string;
@@ -307,6 +309,8 @@ const EN_BASE: TranslationKeys = {
   playingFrom: 'Playing From',
   queuedByYou: 'Queued by You',
   autoplaySimilar: 'Autoplay Similar Tracks',
+  autoNextShort: 'Auto-Next',
+  similarClassLabel: 'Similar Class',
   playAlbum: 'Play Album',
   playOrdered: 'Play In Order',
   switchToRadio: 'Switch to Radio',
@@ -457,6 +461,8 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     playingFrom: 'Memutar Dari',
     queuedByYou: 'Antrean Kamu',
     autoplaySimilar: 'Autoplay Lagu Serupa',
+    autoNextShort: 'Auto-Next',
+    similarClassLabel: 'Kelas Serupa',
     playAlbum: 'Putar Album',
     playOrdered: 'Putar Berurutan',
     switchToRadio: 'Mode Radio',

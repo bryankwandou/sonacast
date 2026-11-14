@@ -5,6 +5,7 @@ import {
   Disc,
   FolderPlus,
   Heart,
+  Infinity as InfinityIcon,
   ListMusic,
   Loader2,
   Maximize2,
@@ -46,6 +47,8 @@ interface BottomPlayerBarProps {
   onToggleShuffle?: () => void;
   repeatMode?: RepeatMode;
   onCycleRepeat?: () => void;
+  autoplayEnabled?: boolean;
+  onToggleAutoplay?: () => void;
   isLiked?: boolean;
   onToggleLike?: () => void;
   onAddToAlbum?: () => void;
@@ -73,8 +76,10 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   onOpenMobileQueue,
   shuffle = false,
   onToggleShuffle,
-  repeatMode = 'all',
+  repeatMode = 'off',
   onCycleRepeat,
+  autoplayEnabled = true,
+  onToggleAutoplay,
   isLiked = false,
   onToggleLike,
   onAddToAlbum,
@@ -273,6 +278,25 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             >
               {repeatMode === 'one' ? <Repeat1 size={15} /> : <Repeat size={15} />}
             </button>
+
+            {onToggleAutoplay && (
+              <button
+                type="button"
+                onClick={onToggleAutoplay}
+                data-testid="player-autoplay-toggle"
+                aria-label={`${t.autoplaySimilar}: ${autoplayEnabled ? 'ON' : 'OFF'}`}
+                aria-pressed={autoplayEnabled}
+                title={`${t.autoplaySimilar} (${autoplayEnabled ? 'ON' : 'OFF'})`}
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold transition-colors cursor-pointer border ${
+                  autoplayEnabled
+                    ? 'text-[var(--accent-text)] bg-[var(--accent-soft)] border-[var(--accent-border)]'
+                    : 'text-[var(--text-dim)] bg-[var(--bg-tint)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <InfinityIcon size={13} />
+                <span className="hidden lg:inline">{t.autoNextShort}</span>
+              </button>
+            )}
           </div>
 
           <div className="hidden md:flex items-center gap-2 text-[11px] font-mono text-[var(--text-dim)]">

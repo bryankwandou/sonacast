@@ -622,7 +622,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-            {results.map((track, idx) => (
+            {results.map((track) => (
               <TrackCard
                 key={track.id}
                 track={track}
@@ -631,19 +631,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 onSelect={(chosen) => {
                   if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id) {
                     onTogglePlay();
-                  } else if (onPlayTrackList) {
-                    onPlayTrackList(
-                      results,
-                      false,
-                      {
-                        id: `search-${searchQuery}`,
-                        type: 'search',
-                        title: `Search: ${searchQuery}`,
-                        coverUrl: chosen.coverUrl,
-                        ordered: true
-                      },
-                      idx
-                    );
                   } else {
                     handlePlayTrackWithLyrics(chosen);
                   }

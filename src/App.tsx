@@ -31,8 +31,9 @@ import {
 } from './services/musicService';
 import {
   buildSmartQueueFromPool,
+  classifyTrackTier,
+  getClassMatchedSeedQueries,
   getMoodSeedQueries,
-  getRelatedArtistsFromDirectory,
   loadRecommendationState,
   pickNextTrackPure,
   recordTrackSignal,
@@ -226,6 +227,9 @@ export default function App() {
   const loadedTrackIdRef = useRef<string | null>(null);
   const isRefillingRadioRef = useRef(false);
   const preResolvedIdsRef = useRef<Set<string>>(new Set());
+  const discoveredPoolRef = useRef<Map<string, Track>>(new Map());
+  const autoRetryCountRef = useRef(0);
+  const lastErrAutoSkipAtRef = useRef(0);
 
   const currentTrackRef = useRef(currentTrack);
   const currentTimeRef = useRef(currentTime);
@@ -474,7 +478,12 @@ export default function App() {
 
   useEffect(() => {
     const unsubTime = sharedAudioEngine.subscribeTimeUpdate((t) => setCurrentTime(t));
-    const unsubState = sharedAudioEngine.subscribeStateChange((p) => setIsPlaying(p));
+    const unsubState = sharedAudioEngine.subscribeStateChange((p) => {
+      setIsPlaying(p);
+      if (p) {
+        autoRetryCountRef.current = 0;
+      }
+    });
     const unsubEnd = sharedAudioEngine.subscribeTrackEnded(() => {
       handleNextRef.current(true);
     });
@@ -483,6 +492,17 @@ export default function App() {
     });
     const unsubErr = sharedAudioEngine.subscribeError((msg) => {
       setStreamError(msg);
+      const now = Date.now();
+      if (
+        autoplayEnabledRef.current &&
+        playbackContextRef.current.type === 'radio' &&
+        autoRetryCountRef.current < 2 &&
+        now - lastErrAutoSkipAtRef.current > 2500
+      ) {
+        lastErrAutoSkipAtRef.current = now;
+        autoRetryCountRef.current += 1;
+        window.setTimeout(() => handleNextRef.current(true), 450);
+      }
     });
 
     return () => {
@@ -578,6 +598,34 @@ export default function App() {
     };
   }, []);
 
+  const buildAutoSimilarContext = useCallback((track: Track): PlaybackContextInfo => {
+    const tier = classifyTrackTier(track);
+    return {
+      id: `auto-${track.id}`,
+      type: 'radio',
+      title: `Auto-Next · ${tier.classLabel}`,
+      subtitle: `Similar to ${track.title} · ${track.artist}`,
+      coverUrl: track.coverUrl,
+      ordered: false
+    };
+  }, []);
+
+  const gatherLocalCandidatePool = useCallback((excludeTrackId?: string): Track[] => {
+    const merged = new Map<string, Track>();
+    for (const src of [
+      ...Array.from(discoveredPoolRef.current.values()),
+      ...recStateRef.current.likedTracks,
+      ...recStateRef.current.recentTracks,
+      ...queueRef.current,
+      ...TRACK_CATALOG
+    ]) {
+      if (src && src.id && src.id !== excludeTrackId && !merged.has(src.id)) {
+        merged.set(src.id, src);
+      }
+    }
+    return Array.from(merged.values());
+  }, []);
+
   const refillRadioQueueIfNeeded = useCallback(async (seedTrack: Track, force = false) => {
     if (isRefillingRadioRef.current) return;
     const currentQ = queueRef.current;
@@ -587,23 +635,39 @@ export default function App() {
 
     isRefillingRadioRef.current = true;
     try {
-      const queries =
-        activeMoodRef.current !== 'all'
-          ? getMoodSeedQueries(activeMoodRef.current)
-          : getRelatedArtistsFromDirectory(seedTrack.artist, seedTrack.genre, 3).map((a) => a.name);
-
-      const batches = await Promise.allSettled(queries.slice(0, 3).map((q) => searchTracksOnline(q)));
+      const queries = getClassMatchedSeedQueries(seedTrack, activeMoodRef.current, 4);
+      const batches = await Promise.allSettled(queries.map((q) => searchTracksOnline(q)));
       const pooled: Track[] = [];
       for (const b of batches) {
         if (b.status === 'fulfilled' && Array.isArray(b.value)) {
-          pooled.push(...b.value);
+          for (const tr of b.value) {
+            if (tr && tr.id) {
+              discoveredPoolRef.current.set(tr.id, tr);
+              pooled.push(tr);
+            }
+          }
         }
       }
       if (pooled.length === 0) return;
 
+      const seedTier = classifyTrackTier(seedTrack);
+      const sameOrCompatible = pooled.filter((c) => {
+        const ct = classifyTrackTier(c);
+        return (
+          ct.classId === seedTier.classId ||
+          seedTier.compatibleClasses.includes(ct.classId)
+        );
+      });
+      const candidatePool = sameOrCompatible.length >= 4 ? sameOrCompatible : pooled;
+
       setQueue((prev) => {
-        const existingIds = new Set(prev.map((p) => p.id));
-        const freshCandidates = pooled.filter((c) => c && c.id && !existingIds.has(c.id));
+        const activeId = currentTrackRef.current.id;
+        const activeIdx = prev.findIndex((p) => p.id === activeId);
+        // When force-refreshing for an auto-similar class switch, replace unplayed disparate tail cleanly
+        const preservedHead =
+          force && activeIdx >= 0 ? prev.slice(0, activeIdx + 1) : prev;
+        const headIds = new Set(preservedHead.map((p) => p.id));
+        const freshCandidates = candidatePool.filter((c) => c && c.id && !headIds.has(c.id));
         if (freshCandidates.length === 0) return prev;
         const rankedFresh = buildSmartQueueFromPool(
           seedTrack,
@@ -611,9 +675,11 @@ export default function App() {
           recStateRef.current.recentTracks,
           recStateRef.current,
           activeMoodRef.current,
-          15
+          20
         );
-        return [...prev, ...rankedFresh].slice(-60);
+        const merged = [...preservedHead, ...rankedFresh].slice(-50);
+        queueRef.current = merged;
+        return merged;
       });
     } catch {
       // Quiet background radio refill
@@ -629,10 +695,14 @@ export default function App() {
   const handleSelectTrack = useCallback(
     async (
       track: Track,
-      options?: { skipHistoryPush?: boolean; fromEnded?: boolean }
+      options?: { skipHistoryPush?: boolean; fromEnded?: boolean; fromContextList?: boolean }
     ) => {
       const selectionSeq = ++selectionCounterRef.current;
       loadedTrackIdRef.current = track.id;
+      discoveredPoolRef.current.set(track.id, track);
+      if (!options?.fromEnded) {
+        autoRetryCountRef.current = 0;
+      }
 
       const prevTrack = currentTrackRef.current;
       const elapsedSeconds = currentTimeRef.current;
@@ -668,18 +738,61 @@ export default function App() {
         }
       });
 
-      setQueue((prevQueue) => {
-        if (!prevQueue.some((t) => t.id === track.id)) {
-          const nextQ = [track, ...prevQueue];
-          queueRef.current = nextQ;
-          return nextQ;
-        }
-        return prevQueue;
-      });
+      const isSingleStandalonePlay = !options?.fromContextList && autoplayEnabledRef.current;
 
-      const ctxType = playbackContextRef.current.type;
-      if (ctxType === 'radio') {
-        refillRadioQueueIfNeeded(track, false);
+      if (isSingleStandalonePlay) {
+        const autoCtx = buildAutoSimilarContext(track);
+        playbackContextRef.current = autoCtx;
+        setPlaybackContext(autoCtx);
+
+        const seedTier = classifyTrackTier(track);
+        const instantPool = gatherLocalCandidatePool(track.id);
+        const classMatchedInstant = instantPool.filter((cand) => {
+          const ct = classifyTrackTier(cand);
+          return ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
+        });
+        const rankedInstant = buildSmartQueueFromPool(
+          track,
+          classMatchedInstant.length >= 3 ? classMatchedInstant : instantPool,
+          recStateRef.current.recentTracks,
+          recStateRef.current,
+          activeMoodRef.current,
+          18
+        );
+        const nextQueue = [track, ...rankedInstant];
+        queueRef.current = nextQueue;
+        setQueue(nextQueue);
+        refillRadioQueueIfNeeded(track, true);
+      } else {
+        setQueue((prevQueue) => {
+          if (!prevQueue.some((t) => t.id === track.id)) {
+            const nextQ = [track, ...prevQueue];
+            queueRef.current = nextQ;
+            return nextQ;
+          }
+          return prevQueue;
+        });
+
+        const ctxType = playbackContextRef.current.type;
+        if (ctxType === 'radio') {
+          refillRadioQueueIfNeeded(track, false);
+        } else if (autoplayEnabledRef.current && recStateRef.current.repeatMode !== 'one') {
+          // Preload peer class candidates into discoveredPool before an ordered album/playlist finishes
+          const q = queueRef.current;
+          const idx = q.findIndex((t) => t.id === track.id);
+          if (idx >= 0 && q.length - 1 - idx <= 1) {
+            const peerQueries = getClassMatchedSeedQueries(track, activeMoodRef.current, 2);
+            Promise.allSettled(peerQueries.map((pq) => searchTracksOnline(pq))).then((batches) => {
+              for (const b of batches) {
+                if (b.status === 'fulfilled' && Array.isArray(b.value)) {
+                  for (const cand of b.value) {
+                    if (cand && cand.id) discoveredPoolRef.current.set(cand.id, cand);
+                  }
+                }
+              }
+            });
+          }
+        }
       }
 
       if (track.lyrics.length <= 4) {
@@ -764,6 +877,10 @@ export default function App() {
           setIsYouTubeActive(false);
           setStreamError('Full official stream unavailable for this release. Try another track.');
           sharedAudioEngine.pause();
+          if (options?.fromEnded && autoplayEnabledRef.current && autoRetryCountRef.current < 3) {
+            autoRetryCountRef.current += 1;
+            window.setTimeout(() => handleNextRef.current(true), 350);
+          }
         }
       } catch {
         if (selectionSeq !== selectionCounterRef.current) return;
@@ -771,8 +888,12 @@ export default function App() {
         setIsYouTubeActive(false);
         setStreamError('Unable to resolve full-length stream. Try another release.');
         sharedAudioEngine.pause();
+        if (options?.fromEnded && autoplayEnabledRef.current && autoRetryCountRef.current < 3) {
+          autoRetryCountRef.current += 1;
+          window.setTimeout(() => handleNextRef.current(true), 350);
+        }
       }
-    }, [refillRadioQueueIfNeeded]);
+    }, [buildAutoSimilarContext, gatherLocalCandidatePool, refillRadioQueueIfNeeded]);
 
   const handleSelectRadio = (station: RadioStation) => {
     handleSelectTrack(station.currentTrack);
@@ -792,7 +913,7 @@ export default function App() {
       artistSolanaAddress: episode.hostSolanaAddress,
       bpm: 90
     };
-    handleSelectTrack(podTrack);
+    handleSelectTrack(podTrack, { fromContextList: true });
   };
 
   const handleUploadTrack = async (file: File) => {
@@ -851,7 +972,7 @@ export default function App() {
   };
 
   const handleNext = useCallback(
-    (fromEnded = false) => {
+    async (fromEnded = false) => {
       if (fromEnded && recStateRef.current.repeatMode === 'one') {
         sharedAudioEngine.seek(0);
         setCurrentTime(0);
@@ -859,41 +980,74 @@ export default function App() {
         return;
       }
 
-      if (fromEnded && recStateRef.current.repeatMode === 'off') {
+      if (recStateRef.current.repeatMode === 'off') {
         const curIdx = queueRef.current.findIndex((t) => t.id === currentTrackRef.current.id);
-        if (curIdx === queueRef.current.length - 1 && manualQueueRef.current.length === 0) {
-          setRecState((prev) => recordTrackSignal(prev, currentTrackRef.current, 'complete'));
+        const atQueueEnd = curIdx === queueRef.current.length - 1 || curIdx === -1;
+        if (atQueueEnd && manualQueueRef.current.length === 0) {
+          if (fromEnded) {
+            setRecState((prev) => recordTrackSignal(prev, currentTrackRef.current, 'complete'));
+          }
           if (autoplayEnabledRef.current) {
             const seed = currentTrackRef.current;
-            const autoCtx: PlaybackContextInfo = {
-              id: `autoplay-${seed.id}`,
-              type: 'radio',
-              title: `Autoplay · Similar to ${seed.title}`,
-              subtitle: seed.artist,
-              coverUrl: seed.coverUrl,
-              ordered: false
-            };
+            const autoCtx = buildAutoSimilarContext(seed);
             playbackContextRef.current = autoCtx;
             setPlaybackContext(autoCtx);
-            const fallbackPool = buildSmartQueueFromPool(
+
+            const seedTier = classifyTrackTier(seed);
+            let pool = gatherLocalCandidatePool(seed.id).filter((cand) => {
+              const ct = classifyTrackTier(cand);
+              return (
+                ct.classId === seedTier.classId ||
+                seedTier.compatibleClasses.includes(ct.classId)
+              );
+            });
+
+            if (pool.length === 0) {
+              try {
+                const liveQueries = getClassMatchedSeedQueries(seed, activeMoodRef.current, 3);
+                const liveBatches = await Promise.allSettled(
+                  liveQueries.map((q) => searchTracksOnline(q))
+                );
+                const fetched: Track[] = [];
+                for (const b of liveBatches) {
+                  if (b.status === 'fulfilled' && Array.isArray(b.value)) {
+                    for (const item of b.value) {
+                      if (item && item.id && item.id !== seed.id) {
+                        discoveredPoolRef.current.set(item.id, item);
+                        fetched.push(item);
+                      }
+                    }
+                  }
+                }
+                pool = fetched;
+              } catch {
+                // Fall back to full local pool below
+              }
+            }
+
+            if (pool.length === 0) {
+              pool = gatherLocalCandidatePool(seed.id);
+            }
+
+            const rankedPool = buildSmartQueueFromPool(
               seed,
-              TRACK_CATALOG,
+              pool,
               recStateRef.current.recentTracks,
               recStateRef.current,
               activeMoodRef.current,
-              12
+              16
             );
-            const additions = fallbackPool.filter(
-              (t) => !queueRef.current.some((existing) => existing.id === t.id)
-            );
-            const nextAuto = additions[0] || fallbackPool.find((t) => t.id !== seed.id);
+            const existingIds = new Set(queueRef.current.map((existing) => existing.id));
+            const additions = rankedPool.filter((t) => !existingIds.has(t.id));
+            const nextAuto = additions[0] || rankedPool.find((t) => t.id !== seed.id);
             if (nextAuto) {
               const extendedQueue = [...queueRef.current, ...additions];
               queueRef.current = extendedQueue;
               setQueue(extendedQueue);
-              handleSelectTrack(nextAuto, { fromEnded: true });
+              handleSelectTrack(nextAuto, { fromEnded, fromContextList: true });
+              refillRadioRef.current(nextAuto, true);
+              return;
             }
-            refillRadioRef.current(seed, true);
           }
           return;
         }
@@ -919,9 +1073,9 @@ export default function App() {
         setManualQueue((prev) => prev.slice(1));
       }
 
-      handleSelectTrack(decision.nextTrack, { fromEnded });
+      handleSelectTrack(decision.nextTrack, { fromEnded, fromContextList: true });
     },
-    [handleSelectTrack]
+    [buildAutoSimilarContext, gatherLocalCandidatePool, handleSelectTrack]
   );
 
   const handlePrev = useCallback(() => {
@@ -935,13 +1089,13 @@ export default function App() {
     if (history.length > 0) {
       const target = history[history.length - 1];
       setPlayHistory((prev) => prev.slice(0, -1));
-      handleSelectTrack(target, { skipHistoryPush: true });
+      handleSelectTrack(target, { skipHistoryPush: true, fromContextList: true });
       return;
     }
 
     const currentIndex = queueRef.current.findIndex((t) => t.id === currentTrackRef.current.id);
     const prevIndex = (currentIndex - 1 + queueRef.current.length) % queueRef.current.length;
-    handleSelectTrack(queueRef.current[prevIndex], { skipHistoryPush: true });
+    handleSelectTrack(queueRef.current[prevIndex], { skipHistoryPush: true, fromContextList: true });
   }, [handleSelectTrack]);
 
   useEffect(() => {
@@ -1009,10 +1163,9 @@ export default function App() {
       queueRef.current = nextQueue;
       setQueue(nextQueue);
       if (seedTrack.id !== currentTrackRef.current.id) {
-        handleSelectTrack(seedTrack);
-      } else {
-        refillRadioQueueIfNeeded(seedTrack, true);
+        handleSelectTrack(seedTrack, { fromContextList: true });
       }
+      refillRadioQueueIfNeeded(seedTrack, true);
     },
     [handleSelectTrack, refillRadioQueueIfNeeded]
   );
@@ -1065,7 +1218,7 @@ export default function App() {
             24
           );
           setQueue([seed, ...smartNext]);
-          handleSelectTrack(seed);
+          handleSelectTrack(seed, { fromContextList: true });
           return;
         }
       } catch {
@@ -1138,7 +1291,7 @@ export default function App() {
       setQueue(resolvedTracks);
 
       const initialTrack = resolvedTracks[shouldShuffle ? 0 : safeStart] || resolvedTracks[0];
-      handleSelectTrack(initialTrack);
+      handleSelectTrack(initialTrack, { fromContextList: true });
     },
     [handleSelectTrack]
   );
@@ -2031,7 +2184,7 @@ export default function App() {
               queue={queue}
               manualQueue={manualQueue}
               currentTrack={currentTrack}
-              onSelectTrack={handleSelectTrack}
+              onSelectTrack={(item) => handleSelectTrack(item, { fromContextList: true })}
               onRemoveFromManualQueue={handleRemoveFromManualQueue}
               onRefreshRadioMix={handleRefreshRadioMix}
               playbackContext={playbackContext}
@@ -2076,6 +2229,8 @@ export default function App() {
             onToggleShuffle={handleToggleShuffle}
             repeatMode={recState.repeatMode}
             onCycleRepeat={handleCycleRepeat}
+            autoplayEnabled={autoplayEnabled}
+            onToggleAutoplay={handleToggleAutoplay}
             isLiked={likedTrackIds.has(currentTrack.id)}
             onToggleLike={() => handleToggleLike(currentTrack)}
             onAddToAlbum={() => setAlbumModalTrack(currentTrack)}

@@ -19,6 +19,7 @@ export interface RecommendationState {
   skippedAtByTrackId: Record<string, number>;
   shuffle: boolean;
   repeatMode: RepeatMode;
+  autoplayDefaultApplied?: boolean;
   playbackRate: number;
   eqPreset: EqPreset;
   crossfadeSeconds: number;
@@ -32,7 +33,8 @@ export const DEFAULT_RECOMMENDATION_STATE: RecommendationState = {
   genreAffinity: {},
   skippedAtByTrackId: {},
   shuffle: false,
-  repeatMode: 'all',
+  repeatMode: 'off',
+  autoplayDefaultApplied: true,
   playbackRate: 1,
   eqPreset: 'flat',
   crossfadeSeconds: 2
@@ -63,6 +65,232 @@ type GenreFamily =
   | 'jazz'
   | 'classical'
   | 'global';
+
+export type SonicClassId =
+  | 'piano_neoclassical'
+  | 'soundtrack_epic'
+  | 'indo_pop_ballad'
+  | 'indo_band_rock'
+  | 'indo_indie_folk'
+  | 'indo_koplo_dangdut'
+  | 'rnb_late_soul'
+  | 'classic_global_legend'
+  | 'modern_chart_pop'
+  | 'kpop_idol'
+  | 'jpop_city_anime'
+  | 'alt_indie_rock'
+  | 'heavy_metal_hard'
+  | 'electronic_dance_synth'
+  | 'hiphop_rap_trap'
+  | 'jazz_blues_acoustic'
+  | 'latin_global';
+
+export interface SonicClassProfile {
+  classId: SonicClassId;
+  classLabel: string;
+  isInstrumental: boolean;
+  compatibleClasses: SonicClassId[];
+  peerArtists: string[];
+  keywords: string[];
+}
+
+const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
+  piano_neoclassical: {
+    classId: 'piano_neoclassical',
+    classLabel: 'Piano & Neoclassical',
+    isInstrumental: true,
+    compatibleClasses: ['soundtrack_epic', 'jazz_blues_acoustic'],
+    peerArtists: ['Yiruma', 'Ludovico Einaudi', 'Max Richter', 'Joe Hisaishi', 'Frederic Chopin', 'Ryuichi Sakamoto'],
+    keywords: ['chopin', 'debussy', 'mozart', 'beethoven', 'yiruma', 'ludovico einaudi', 'max richter', 'ryuichi sakamoto', 'joe hisaishi', 'lang lang', 'yo-yo ma', '2cellos']
+  },
+  soundtrack_epic: {
+    classId: 'soundtrack_epic',
+    classLabel: 'Film Score & Orchestral',
+    isInstrumental: true,
+    compatibleClasses: ['piano_neoclassical'],
+    peerArtists: ['Hans Zimmer', 'John Williams', 'Ramin Djawadi', 'Howard Shore', 'Ennio Morricone', 'Ludwig Goransson'],
+    keywords: ['hans zimmer', 'john williams', 'ramin djawadi', 'howard shore', 'ennio morricone', 'thomas bergersen', 'two steps from hell', 'hiroyuki sawano', 'kensuke ushio']
+  },
+  indo_pop_ballad: {
+    classId: 'indo_pop_ballad',
+    classLabel: 'Indo Pop & Ballad Soul',
+    isInstrumental: false,
+    compatibleClasses: ['indo_band_rock', 'indo_indie_folk', 'rnb_late_soul'],
+    peerArtists: ['Tulus', 'Raisa', 'Afgan', 'Glenn Fredly', 'Nadin Amizah', 'Mahalini', 'Tiara Andini', 'Judika', 'Lyodra', 'Bernadya'],
+    keywords: ['tulus', 'raisa', 'afgan', 'glenn fredly', 'judika', 'mahalini', 'tiara andini', 'lyodra', 'ziva magnolya', 'bernadya', 'nadin amizah', 'pamungkas', 'rizky febian', 'juicy luicy', 'virgoun', 'budi doremi', 'rossa', 'bunga citra lestari', 'isyana sarasvati', 'yura yunita', 'sal priadi', 'siti nurhaliza', 'maher zain']
+  },
+  indo_band_rock: {
+    classId: 'indo_band_rock',
+    classLabel: 'Indo Band & Pop Rock',
+    isInstrumental: false,
+    compatibleClasses: ['indo_pop_ballad', 'indo_indie_folk', 'alt_indie_rock'],
+    peerArtists: ['Sheila On 7', 'Dewa 19', 'Noah', 'Padi', 'Peterpan', 'Gigi', 'Ada Band', 'Chrisye', 'Nidji'],
+    keywords: ['dewa 19', 'sheila on 7', 'noah', 'peterpan', 'padi', 'gigi', 'ada band', 'chrisye', 'ungu', 'nidji', 'd\'masiv', 'letto', 'slank', 'armada', 'seventeen', 'kahitna', 'yovie']
+  },
+  indo_indie_folk: {
+    classId: 'indo_indie_folk',
+    classLabel: 'Indo Indie & Folk',
+    isInstrumental: false,
+    compatibleClasses: ['indo_pop_ballad', 'indo_band_rock', 'alt_indie_rock', 'jazz_blues_acoustic'],
+    peerArtists: ['Hindia', 'Payung Teduh', 'Fourtwnty', 'Efek Rumah Kaca', 'Reality Club', 'Banda Neira', 'Feby Putri', 'Kunto Aji'],
+    keywords: ['hindia', 'feast', 'efek rumah kaca', 'payung teduh', 'fourtwnty', 'banda neira', 'reality club', 'barasuara', 'feby putri', 'kunto aji', 'fiersa besari', 'dere', 'idgitaf', 'iwan fals']
+  },
+  indo_koplo_dangdut: {
+    classId: 'indo_koplo_dangdut',
+    classLabel: 'Indo Dangdut & Koplo',
+    isInstrumental: false,
+    compatibleClasses: ['indo_band_rock', 'latin_global'],
+    peerArtists: ['Denny Caknan', 'Happy Asmara', 'Guyon Waton', 'NDX A.K.A.', 'Wali', 'Didi Kempot'],
+    keywords: ['denny caknan', 'happy asmara', 'ndx', 'guyon waton', 'wali', 'kangen band', 'st12', 'didi kempot', 'rhoma irama']
+  },
+  rnb_late_soul: {
+    classId: 'rnb_late_soul',
+    classLabel: 'R&B & Late-Night Soul',
+    isInstrumental: false,
+    compatibleClasses: ['modern_chart_pop', 'hiphop_rap_trap', 'jazz_blues_acoustic', 'indo_pop_ballad'],
+    peerArtists: ['Frank Ocean', 'The Weeknd', 'SZA', 'Daniel Caesar', 'Giveon', 'Brent Faiyaz', 'Joji', 'NIKI', 'Khalid'],
+    keywords: ['the weeknd', 'frank ocean', 'sza', 'daniel caesar', 'giveon', 'brent faiyaz', 'joji', 'niki', 'khalid', 'h.e.r.', 'summer walker', 'usher', 'alicia keys', 'john legend', 'miguel', 'anderson .paak', 'steve lacy', 'kali uchis', 'keshi', 'sade', 'tems', 'tyla', 'burna boy']
+  },
+  classic_global_legend: {
+    classId: 'classic_global_legend',
+    classLabel: 'Classic Global Anthem',
+    isInstrumental: false,
+    compatibleClasses: ['alt_indie_rock', 'jazz_blues_acoustic', 'modern_chart_pop'],
+    peerArtists: ['Queen', 'The Beatles', 'Michael Jackson', 'Fleetwood Mac', 'Elton John', 'Whitney Houston', 'Eagles', 'ABBA'],
+    keywords: ['queen', 'the beatles', 'beatles', 'michael jackson', 'whitney houston', 'elton john', 'fleetwood mac', 'eagles', 'abba', 'billy joel', 'stevie wonder', 'prince', 'george michael', 'celine dion', 'mariah carey', 'pink floyd', 'led zeppelin', 'rolling stones', 'phil collins', 'bob marley']
+  },
+  modern_chart_pop: {
+    classId: 'modern_chart_pop',
+    classLabel: 'Modern Global Pop',
+    isInstrumental: false,
+    compatibleClasses: ['rnb_late_soul', 'electronic_dance_synth', 'kpop_idol', 'alt_indie_rock'],
+    peerArtists: ['Taylor Swift', 'Dua Lipa', 'Ariana Grande', 'Billie Eilish', 'Bruno Mars', 'Ed Sheeran', 'Harry Styles', 'Sabrina Carpenter', 'Olivia Rodrigo'],
+    keywords: ['taylor swift', 'dua lipa', 'ariana grande', 'billie eilish', 'olivia rodrigo', 'sabrina carpenter', 'harry styles', 'bruno mars', 'ed sheeran', 'justin bieber', 'shawn mendes', 'charlie puth', 'benson boone', 'teddy swims', 'chappell roan', 'adele', 'sam smith', 'maroon 5', 'lady gaga', 'rihanna', 'katy perry']
+  },
+  kpop_idol: {
+    classId: 'kpop_idol',
+    classLabel: 'K-Pop Studio Hits',
+    isInstrumental: false,
+    compatibleClasses: ['jpop_city_anime', 'modern_chart_pop', 'rnb_late_soul', 'electronic_dance_synth'],
+    peerArtists: ['BTS', 'BLACKPINK', 'NewJeans', 'SEVENTEEN', 'TWICE', 'Stray Kids', 'aespa', 'IVE', 'LE SSERAFIM', 'IU'],
+    keywords: ['bts', 'blackpink', 'newjeans', 'seventeen', 'stray kids', 'twice', 'aespa', 'ive', 'le sserafim', 'iu', 'jungkook', 'jennie', 'rose', 'lisa', 'exo', 'nct', 'txt', 'enhypen', 'red velvet', 'itzy', 'babymonster']
+  },
+  jpop_city_anime: {
+    classId: 'jpop_city_anime',
+    classLabel: 'J-Pop, Anime & City Pop',
+    isInstrumental: false,
+    compatibleClasses: ['kpop_idol', 'modern_chart_pop', 'alt_indie_rock', 'electronic_dance_synth'],
+    peerArtists: ['YOASOBI', 'Kenshi Yonezu', 'Fujii Kaze', 'Official HIGE DANDism', 'Ado', 'Vaundy', 'Yorushika', 'Aimer'],
+    keywords: ['yoasobi', 'kenshi yonezu', 'fujii kaze', 'ado', 'official hige', 'king gnu', 'yorushika', 'vaundy', 'mrs. green apple', 'one ok rock', 'radwimps', 'lisa', 'aimer', 'mariya takeuchi', 'miki matsubara', 'tatsuro yamashita', 'hikaru utada', 'creepy nuts', 'imase']
+  },
+  alt_indie_rock: {
+    classId: 'alt_indie_rock',
+    classLabel: 'Alternative & Indie Rock',
+    isInstrumental: false,
+    compatibleClasses: ['classic_global_legend', 'modern_chart_pop', 'indo_indie_folk', 'heavy_metal_hard'],
+    peerArtists: ['Coldplay', 'Arctic Monkeys', 'Radiohead', 'Tame Impala', 'Lana Del Rey', 'The 1975', 'Muse', 'Oasis', 'Cigarettes After Sex'],
+    keywords: ['coldplay', 'arctic monkeys', 'radiohead', 'muse', 'oasis', 'tame impala', 'lana del rey', 'cigarettes after sex', 'mac demarco', 'the 1975', 'the neighbourhood', 'imagine dragons', 'onerepublic', 'linkin park', 'nirvana', 'foo fighters', 'green day', 'red hot chili peppers', 'the killers', 'vampire weekend', 'clairo', 'phoebe bridgers', 'mitski']
+  },
+  heavy_metal_hard: {
+    classId: 'heavy_metal_hard',
+    classLabel: 'Hard Rock & Metal',
+    isInstrumental: false,
+    compatibleClasses: ['alt_indie_rock', 'classic_global_legend'],
+    peerArtists: ['Metallica', 'AC/DC', 'Iron Maiden', 'Slipknot', 'Bring Me The Horizon', 'Avenged Sevenfold', 'Guns N\' Roses'],
+    keywords: ['metallica', 'iron maiden', 'megadeth', 'slayer', 'slipknot', 'system of a down', 'deftones', 'tool', 'avenged sevenfold', 'bring me the horizon', 'ac/dc', 'guns n\' roses', 'black sabbath', 'rammstein', 'burgerkill', 'seringai']
+  },
+  electronic_dance_synth: {
+    classId: 'electronic_dance_synth',
+    classLabel: 'Electronic, House & Synth',
+    isInstrumental: false,
+    compatibleClasses: ['modern_chart_pop', 'kpop_idol', 'jpop_city_anime', 'hiphop_rap_trap'],
+    peerArtists: ['Daft Punk', 'Calvin Harris', 'Kygo', 'Avicii', 'Fred again..', 'Disclosure', 'Zedd', 'Martin Garrix', 'Odesza'],
+    keywords: ['daft punk', 'calvin harris', 'david guetta', 'avicii', 'martin garrix', 'kygo', 'zedd', 'alan walker', 'fred again', 'disclosure', 'peggy gou', 'odesza', 'flume', 'm83', 'skrillex', 'the chainsmokers', 'marshmello', 'tiesto', 'armin van buuren', 'deadmau5', 'justice', 'kavinsky']
+  },
+  hiphop_rap_trap: {
+    classId: 'hiphop_rap_trap',
+    classLabel: 'Hip-Hop, Rap & Melodic Trap',
+    isInstrumental: false,
+    compatibleClasses: ['rnb_late_soul', 'electronic_dance_synth', 'latin_global'],
+    peerArtists: ['Kendrick Lamar', 'Drake', 'Travis Scott', 'Eminem', 'J. Cole', 'Post Malone', 'Tyler, The Creator', 'Rich Brian'],
+    keywords: ['eminem', 'drake', 'kendrick lamar', 'post malone', 'travis scott', 'kanye west', 'jay-z', 'nas', 'tupac', 'notorious', 'snoop dogg', 'j. cole', 'tyler, the creator', 'future', '21 savage', 'metro boomin', 'juice wrld', 'central cee', 'rich brian', 'nf']
+  },
+  jazz_blues_acoustic: {
+    classId: 'jazz_blues_acoustic',
+    classLabel: 'Jazz, Acoustic & Warm Vocals',
+    isInstrumental: false,
+    compatibleClasses: ['rnb_late_soul', 'piano_neoclassical', 'classic_global_legend', 'indo_indie_folk'],
+    peerArtists: ['Laufey', 'Norah Jones', 'Frank Sinatra', 'John Mayer', 'Amy Winehouse', 'Miles Davis', 'Chet Baker', 'Bon Iver'],
+    keywords: ['laufey', 'norah jones', 'frank sinatra', 'nat king cole', 'chet baker', 'miles davis', 'john coltrane', 'amy winehouse', 'billie holiday', 'ella fitzgerald', 'nina simone', 'john mayer', 'bon iver', 'hozier', 'noah kahan', 'jason mraz', 'ed sheeran', 'passenger', 'johnny cash', 'chris stapleton']
+  },
+  latin_global: {
+    classId: 'latin_global',
+    classLabel: 'Latin & Afro Rhythms',
+    isInstrumental: false,
+    compatibleClasses: ['modern_chart_pop', 'hiphop_rap_trap', 'rnb_late_soul'],
+    peerArtists: ['Bad Bunny', 'Shakira', 'Karol G', 'J Balvin', 'Rosalia', 'Feid', 'Rauw Alejandro', 'RemA'],
+    keywords: ['bad bunny', 'shakira', 'karol g', 'j balvin', 'maluma', 'ozuna', 'feid', 'rauw alejandro', 'rosalia', 'daddy yankee', 'luis fonsi', 'peso pluma', 'anitta']
+  }
+};
+
+export function normalizeBaseTitle(title: string): string {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+    .replace(/\b(live|remix|remaster(?:ed)?|acoustic|slowed|reverb|cover|version|edit|radio)\b/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function classifyTrackTier(
+  track: Pick<Track, 'title' | 'artist' | 'genre' | 'bpm'>
+): SonicClassProfile {
+  const artistLower = String(track.artist || '').toLowerCase();
+  const titleLower = String(track.title || '').toLowerCase();
+  const genreLower = String(track.genre || '').toLowerCase();
+
+  // Check explicit instrumental / classical cues first so piano pieces never cross into vocal pop
+  if (
+    /\b(nocturne|sonata|concerto|prelude|etude|piano solo|symphony|opus|op\.\s*\d|instrumental)\b/.test(
+      titleLower
+    )
+  ) {
+    return SONIC_CLASS_PROFILES.piano_neoclassical;
+  }
+
+  for (const profile of Object.values(SONIC_CLASS_PROFILES)) {
+    if (profile.keywords.some((kw) => artistLower.includes(kw))) {
+      return profile;
+    }
+  }
+
+  const family = resolveGenreFamily(genreLower, artistLower);
+  if (family === 'classical') {
+    return genreLower.includes('soundtrack')
+      ? SONIC_CLASS_PROFILES.soundtrack_epic
+      : SONIC_CLASS_PROFILES.piano_neoclassical;
+  }
+  if (family === 'indonesian') {
+    if (genreLower.includes('dangdut') || genreLower.includes('koplo')) return SONIC_CLASS_PROFILES.indo_koplo_dangdut;
+    if (genreLower.includes('indie') || genreLower.includes('folk')) return SONIC_CLASS_PROFILES.indo_indie_folk;
+    if (genreLower.includes('rock') || genreLower.includes('band')) return SONIC_CLASS_PROFILES.indo_band_rock;
+    return SONIC_CLASS_PROFILES.indo_pop_ballad;
+  }
+  if (family === 'kpop') return SONIC_CLASS_PROFILES.kpop_idol;
+  if (family === 'jpop') return SONIC_CLASS_PROFILES.jpop_city_anime;
+  if (family === 'rnb') return SONIC_CLASS_PROFILES.rnb_late_soul;
+  if (family === 'hiphop') return SONIC_CLASS_PROFILES.hiphop_rap_trap;
+  if (family === 'electronic') return SONIC_CLASS_PROFILES.electronic_dance_synth;
+  if (family === 'latin') return SONIC_CLASS_PROFILES.latin_global;
+  if (family === 'jazz' || family === 'acoustic') return SONIC_CLASS_PROFILES.jazz_blues_acoustic;
+  if (family === 'rock') {
+    return genreLower.includes('metal') || genreLower.includes('punk') || (track.bpm || 0) >= 148
+      ? SONIC_CLASS_PROFILES.heavy_metal_hard
+      : SONIC_CLASS_PROFILES.alt_indie_rock;
+  }
+  return SONIC_CLASS_PROFILES.modern_chart_pop;
+}
 
 const GENRE_COMPATIBILITY: Record<GenreFamily, GenreFamily[]> = {
   pop: ['indonesian', 'rnb', 'kpop', 'jpop', 'electronic', 'latin'],
@@ -133,7 +361,13 @@ export function loadRecommendationState(): RecommendationState {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_RECOMMENDATION_STATE };
     const parsed = JSON.parse(raw) as Partial<RecommendationState>;
-    return {
+    const migratedRepeat: RepeatMode =
+      !parsed.autoplayDefaultApplied && parsed.repeatMode === 'all'
+        ? 'off'
+        : parsed.repeatMode === 'off' || parsed.repeatMode === 'all' || parsed.repeatMode === 'one'
+          ? parsed.repeatMode
+          : 'off';
+    const loaded: RecommendationState = {
       likedTracks: Array.isArray(parsed.likedTracks) ? parsed.likedTracks.slice(0, 200) : [],
       recentTracks: Array.isArray(parsed.recentTracks) ? parsed.recentTracks.slice(0, 60) : [],
       playlists: Array.isArray(parsed.playlists) ? parsed.playlists.slice(0, 30) : [],
@@ -146,10 +380,8 @@ export function loadRecommendationState(): RecommendationState {
           ? parsed.skippedAtByTrackId
           : {},
       shuffle: Boolean(parsed.shuffle),
-      repeatMode:
-        parsed.repeatMode === 'off' || parsed.repeatMode === 'all' || parsed.repeatMode === 'one'
-          ? parsed.repeatMode
-          : 'all',
+      repeatMode: migratedRepeat,
+      autoplayDefaultApplied: true,
       playbackRate:
         typeof parsed.playbackRate === 'number' && parsed.playbackRate >= 0.5 && parsed.playbackRate <= 2
           ? parsed.playbackRate
@@ -167,6 +399,10 @@ export function loadRecommendationState(): RecommendationState {
           ? parsed.crossfadeSeconds
           : 2
     };
+    if (!parsed.autoplayDefaultApplied) {
+      saveRecommendationState(loaded);
+    }
+    return loaded;
   } catch {
     return { ...DEFAULT_RECOMMENDATION_STATE };
   }
@@ -245,26 +481,47 @@ export function scoreCandidateTrack(
   const candArtist = extractPrimaryArtist(candidate.artist);
   const seedFamily = resolveGenreFamily(seedTrack.genre, seedTrack.artist);
   const candFamily = resolveGenreFamily(candidate.genre, candidate.artist);
+  const seedClass = classifyTrackTier(seedTrack);
+  const candClass = classifyTrackTier(candidate);
+
+  // 0. Equivalent Class / Style Tier Matching
+  if (candClass.classId === seedClass.classId) {
+    score += 58;
+  } else if (seedClass.compatibleClasses.includes(candClass.classId)) {
+    score += 22;
+  } else {
+    score -= 48;
+  }
+
+  if (seedClass.isInstrumental !== candClass.isInstrumental) {
+    score -= 55;
+  }
+
+  const seedBaseTitle = normalizeBaseTitle(seedTrack.title);
+  const candBaseTitle = normalizeBaseTitle(candidate.title);
+  if (seedBaseTitle && candBaseTitle && seedBaseTitle === candBaseTitle) {
+    score -= 180;
+  }
 
   // 1. Genre continuity
   if (candidate.genre.toLowerCase() === seedTrack.genre.toLowerCase() && candidate.genre) {
-    score += 34;
+    score += 28;
   } else if (candFamily === seedFamily) {
-    score += 24;
+    score += 20;
   } else if (GENRE_COMPATIBILITY[seedFamily]?.includes(candFamily)) {
-    score += 11;
+    score += 9;
   } else {
-    score -= 4;
+    score -= 8;
   }
 
   // 2. Tempo / BPM transition smoothness
   const seedBpm = seedTrack.bpm > 40 ? seedTrack.bpm : 112;
   const candBpm = candidate.bpm > 40 ? candidate.bpm : 112;
   const bpmDelta = Math.abs(seedBpm - candBpm);
-  if (bpmDelta <= 6) score += 20;
-  else if (bpmDelta <= 15) score += 14;
-  else if (bpmDelta <= 28) score += 6;
-  else if (bpmDelta > 55) score -= 10;
+  if (bpmDelta <= 8) score += 20;
+  else if (bpmDelta <= 18) score += 14;
+  else if (bpmDelta <= 30) score += 6;
+  else if (bpmDelta > 50) score -= 14;
 
   // 3. Artist separation & recency cooldown
   if (candArtist && candArtist === seedArtist) {
@@ -507,6 +764,63 @@ export function getRelatedArtistsFromDirectory(
     }
   }
   return picked;
+}
+
+export function getClassMatchedSeedQueries(
+  track: Pick<Track, 'title' | 'artist' | 'genre' | 'bpm'>,
+  mood: MoodPreset = 'all',
+  count = 4
+): string[] {
+  const seedPrimary = extractPrimaryArtist(track.artist);
+  const classProfile = classifyTrackTier(track);
+
+  const peerPool = classProfile.peerArtists.filter(
+    (name) => name.toLowerCase() !== seedPrimary && !seedPrimary.includes(name.toLowerCase())
+  );
+
+  const directorySameClass = ARTISTS_DIRECTORY.filter((entry) => {
+    const norm = entry.name.toLowerCase();
+    if (norm === seedPrimary || peerPool.some((p) => p.toLowerCase() === norm)) return false;
+    return classifyTrackTier({ title: '', artist: entry.name, genre: entry.genre, bpm: track.bpm }).classId === classProfile.classId;
+  }).map((e) => e.name);
+
+  const moodQueries = mood !== 'all' ? getMoodSeedQueries(mood) : [];
+  const seedHash = Math.floor(hashPair(track.artist || 'artist', track.title || 'title') * 100);
+
+  const combined = Array.from(new Set(peerPool));
+  const result: string[] = [];
+
+  if (mood !== 'all' && moodQueries.length > 0) {
+    result.push(moodQueries[seedHash % moodQueries.length]);
+  }
+
+  const pickRotated = (list: string[]) => {
+    if (list.length === 0) return;
+    const step = list.length > count ? Math.max(1, Math.floor(list.length / Math.max(1, count))) : 1;
+    for (let i = 0; i < list.length && result.length < count; i++) {
+      const candidate = list[(seedHash + i * step) % list.length];
+      if (!result.includes(candidate)) {
+        result.push(candidate);
+      }
+    }
+  };
+
+  pickRotated(combined);
+  if (result.length < count) {
+    pickRotated(directorySameClass);
+  }
+
+  if (result.length < count) {
+    const fallback = getRelatedArtistsFromDirectory(track.artist, track.genre, count);
+    for (const f of fallback) {
+      if (result.length >= count) break;
+      if (!result.includes(f.name) && f.name.toLowerCase() !== seedPrimary) {
+        result.push(f.name);
+      }
+    }
+  }
+
+  return result.slice(0, count);
 }
 
 export function getMoodSeedQueries(mood: MoodPreset): string[] {

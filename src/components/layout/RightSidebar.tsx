@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { applyCoverFallback } from '../../utils/coverFallback';
+import { classifyTrackTier } from '../../services/recommendationEngine';
 import { solanaService } from '../../services/solanaService';
 
 interface RightSidebarProps {
@@ -215,6 +216,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                       {playbackContext?.ordered && !isShuffled ? ' · Ordered' : ''}
                     </div>
                   )}
+                  <div className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-[var(--bg-tint)] text-[10px] font-semibold text-[var(--text-secondary)]">
+                    <span>{t.similarClassLabel}: {classifyTrackTier(currentTrack).classLabel}</span>
+                  </div>
                 </div>
 
                 {onRefreshRadioMix && (
@@ -252,6 +256,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     type="button"
                     onClick={onToggleAutoplay}
                     data-testid="queue-autoplay-toggle"
+                    aria-pressed={autoplayEnabled}
                     title={t.autoplaySimilar}
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
                       autoplayEnabled
