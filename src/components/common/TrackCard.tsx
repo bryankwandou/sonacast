@@ -66,7 +66,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
         {/* Quick Action Pill Overlay (top-right on hover or liked) */}
         {(onToggleLike || onAddToAlbum || onPlayNext || onAddToQueue || onStartRadio) && (
           <div
-            className={`absolute top-2 right-2 flex items-center gap-1 transition-opacity ${isLiked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+            className={`absolute top-1.5 right-1.5 z-20 flex flex-wrap justify-end items-center gap-1 max-w-[calc(100%-12px)] transition-opacity ${isLiked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
               }`}
           >
             {onToggleLike && (
@@ -149,7 +149,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
 
         {/* Bottom Play/Resolving Badge */}
         <div
-          className={`absolute bottom-2 right-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition-all ${isSelected || isResolving
+          className={`pointer-events-none z-10 absolute bottom-2 right-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition-all ${isSelected || isResolving
             ? 'opacity-100 translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
             : 'opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
             }`}
@@ -162,14 +162,14 @@ export const TrackCard: React.FC<TrackCardProps> = ({
         </div>
 
         {typeof rank === 'number' && (
-          <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/75 text-white text-[10px] font-mono font-bold">
+          <div className="pointer-events-none z-10 absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/75 text-white text-[10px] font-mono font-bold transition-opacity group-hover:opacity-0">
             #{rank}
           </div>
         )}
 
         {track.streamSource === 'studio-master' && typeof rank !== 'number' && (
           <div
-            className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/70 text-[var(--accent-emerald-hover)] flex items-center gap-1 text-[9px] font-semibold"
+            className="pointer-events-none z-10 absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/70 text-[var(--accent-emerald-hover)] flex items-center gap-1 text-[9px] font-semibold transition-opacity group-hover:opacity-0"
             title="Full Studio Master"
           >
             <Disc3 size={10} />
