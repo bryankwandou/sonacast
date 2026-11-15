@@ -1028,33 +1028,74 @@ export const SearchView: React.FC<SearchViewProps> = ({
           })}
         </div>
 
-        {/* Aligned Artist Directory Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2">
-          {visibleArtists.map((artist) => {
-            const isSelected = activeArtistFilter.toLowerCase() === artist.name.toLowerCase();
-            return (
-              <button
-                key={artist.name}
-                type="button"
-                onClick={() => handleArtistClick(artist.name)}
-                className={`px-3 py-2 rounded-xl border text-left transition-all cursor-pointer min-w-0 ${
-                  isSelected
-                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)] border-[var(--accent-emerald)] shadow-sm'
-                    : 'bg-[var(--bg-elevated)]/70 border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--bg-surface)] hover:border-[var(--accent-border)]'
-                }`}
-              >
-                <div className="text-xs font-semibold truncate">{artist.name}</div>
-                <div
-                  className={`text-[10px] truncate ${
-                    isSelected ? 'text-[var(--accent-fg)]/80' : 'text-[var(--text-dim)]'
+        {/* Clean Horizontal Artist Strip (Collapsed) or Filterable Grid (Expanded) */}
+        {!showAllArtists && !artistDirectoryFilter ? (
+          <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-1">
+            {visibleArtists.map((artist) => {
+              const isSelected = activeArtistFilter.toLowerCase() === artist.name.toLowerCase();
+              const initial = artist.name.trim().charAt(0).toUpperCase() || 'A';
+              return (
+                <button
+                  key={artist.name}
+                  type="button"
+                  onClick={() => handleArtistClick(artist.name)}
+                  className={`flex items-center gap-2.5 pl-1.5 pr-3.5 py-1.5 rounded-full border text-left transition-all cursor-pointer shrink-0 ${
+                    isSelected
+                      ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)] border-[var(--accent-emerald)] shadow-sm'
+                      : 'bg-[var(--bg-elevated)]/80 border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] hover:border-[var(--accent-border)]'
                   }`}
                 >
-                  {artist.genre}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                  <span
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-extrabold shrink-0 ${
+                      isSelected
+                        ? 'bg-black/15 text-[var(--accent-fg)]'
+                        : 'bg-[var(--bg-surface)] text-[var(--accent-text)] border border-[var(--border-subtle)]'
+                    }`}
+                  >
+                    {initial}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold whitespace-nowrap">{artist.name}</div>
+                    <div
+                      className={`text-[10px] whitespace-nowrap ${
+                        isSelected ? 'text-[var(--accent-fg)]/80' : 'text-[var(--text-dim)]'
+                      }`}
+                    >
+                      {artist.genre}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2">
+            {visibleArtists.map((artist) => {
+              const isSelected = activeArtistFilter.toLowerCase() === artist.name.toLowerCase();
+              return (
+                <button
+                  key={artist.name}
+                  type="button"
+                  onClick={() => handleArtistClick(artist.name)}
+                  className={`px-3 py-2 rounded-xl border text-left transition-all cursor-pointer min-w-0 ${
+                    isSelected
+                      ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)] border-[var(--accent-emerald)] shadow-sm'
+                      : 'bg-[var(--bg-elevated)]/70 border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--bg-surface)] hover:border-[var(--accent-border)]'
+                  }`}
+                >
+                  <div className="text-xs font-semibold truncate">{artist.name}</div>
+                  <div
+                    className={`text-[10px] truncate ${
+                      isSelected ? 'text-[var(--accent-fg)]/80' : 'text-[var(--text-dim)]'
+                    }`}
+                  >
+                    {artist.genre}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {filteredArtists.length > INITIAL_ARTIST_CHIP_LIMIT && (
           <div className="pt-1 flex justify-center">

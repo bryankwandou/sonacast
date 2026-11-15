@@ -30,6 +30,7 @@ import { solanaService } from './services/solanaService';
 import {
   fetchLyricsWithMeta,
   findMasterAudio,
+  peekCachedTrackStream,
   resolveFullTrackStream,
   resolveMusicVideoStream,
   searchAlbumsOnline,
@@ -747,16 +748,22 @@ export default function App() {
     });
     const unsubErr = sharedAudioEngine.subscribeError((msg) => {
       setStreamError(msg);
-      const now = Date.now();
+      const now = performance.now();
+      const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+      const canAdvance =
+        recStateRef.current.repeatMode !== 'one' &&
+        (autoplayEnabledRef.current ||
+          queueRef.current.length > 1 ||
+          manualQueueRef.current.length > 0);
       if (
-        autoplayEnabledRef.current &&
-        playbackContextRef.current.type === 'radio' &&
-        autoRetryCountRef.current < 2 &&
-        now - lastErrAutoSkipAtRef.current > 2500
+        online &&
+        canAdvance &&
+        autoRetryCountRef.current < 4 &&
+        now - lastErrAutoSkipAtRef.current > 1800
       ) {
         lastErrAutoSkipAtRef.current = now;
         autoRetryCountRef.current += 1;
-        window.setTimeout(() => handleNextRef.current(true), 450);
+        window.setTimeout(() => handleNextRef.current(true), 420);
       }
     });
 
@@ -828,13 +835,16 @@ export default function App() {
       const isVideoStage = stageMode === 'video-only' || stageMode === 'video-lyric';
       const target = isStageVisible && isVideoStage ? videoSlotRef.current : ytMonitorRef.current;
       if (!target) {
-        host.style.left = '-9999px';
-        host.style.top = '-9999px';
-        host.style.width = '320px';
-        host.style.height = '180px';
-        host.style.opacity = '0.001';
+        host.style.left = 'auto';
+        host.style.top = 'auto';
+        host.style.right = '12px';
+        host.style.bottom = '92px';
+        host.style.width = '160px';
+        host.style.height = '90px';
+        host.style.opacity = '0.005';
         host.style.pointerEvents = 'none';
         host.style.clipPath = 'none';
+        host.style.zIndex = '1';
         return;
       }
 
@@ -843,13 +853,16 @@ export default function App() {
         if (isStageVisible && isVideoStage && mainScrollRef.current) {
           const mainRect = mainScrollRef.current.getBoundingClientRect();
           if (rect.bottom <= mainRect.top + 8 || rect.top >= mainRect.bottom - 8) {
-            host.style.left = '-9999px';
-            host.style.top = '-9999px';
-            host.style.width = '320px';
-            host.style.height = '180px';
-            host.style.opacity = '0.001';
+            host.style.left = 'auto';
+            host.style.top = 'auto';
+            host.style.right = '12px';
+            host.style.bottom = '92px';
+            host.style.width = '160px';
+            host.style.height = '90px';
+            host.style.opacity = '0.005';
             host.style.pointerEvents = 'none';
             host.style.clipPath = 'none';
+            host.style.zIndex = '1';
             return;
           }
           const clipTop = Math.max(0, mainRect.top - rect.top);
@@ -861,21 +874,27 @@ export default function App() {
         } else {
           host.style.clipPath = 'none';
         }
+        host.style.right = 'auto';
+        host.style.bottom = 'auto';
         host.style.left = `${rect.left}px`;
         host.style.top = `${rect.top}px`;
         host.style.width = `${rect.width}px`;
         host.style.height = `${rect.height}px`;
         host.style.opacity = '1';
         host.style.pointerEvents = 'auto';
+        host.style.zIndex = '25';
         host.style.borderRadius = isVideoStage ? '1rem' : '0.75rem';
       } else {
-        host.style.left = '-9999px';
-        host.style.top = '-9999px';
-        host.style.width = '320px';
-        host.style.height = '180px';
-        host.style.opacity = '0.001';
+        host.style.left = 'auto';
+        host.style.top = 'auto';
+        host.style.right = '12px';
+        host.style.bottom = '92px';
+        host.style.width = '160px';
+        host.style.height = '90px';
+        host.style.opacity = '0.005';
         host.style.pointerEvents = 'none';
         host.style.clipPath = 'none';
+        host.style.zIndex = '1';
       }
     };
 
@@ -1453,26 +1472,61 @@ export default function App() {
         return;
       }
 
-      // 3. Pre-resolved candidate YouTube official stream IDs
+      // 3. Pre-resolved candidate YouTube official stream IDs (explicit or warm cache)
       const existingIds =
         track.candidateVideoIds && track.candidateVideoIds.length > 0
           ? track.candidateVideoIds
           : track.youtubeId
             ? [track.youtubeId]
             : [];
+      const cachedStream =
+        !isVideoStageActive && existingIds.length === 0
+          ? peekCachedTrackStream(track.title, track.artist)
+          : null;
+      const readyIds =
+        existingIds.length > 0 ? existingIds : cachedStream?.candidateIds || [];
 
-      if (existingIds.length > 0) {
+      if (readyIds.length > 0) {
+        const readyDuration =
+          track.duration >= 60 ? track.duration : cachedStream?.duration || track.duration;
         resolvingTrackIdRef.current = null;
         setResolvingTrackId(null);
         if (isVideoStageActive) {
           void activateMusicVideoForTrack(track, 0);
         } else {
           setIsYouTubeActive(true);
-          sharedAudioEngine.playYouTubeTrack(existingIds, track.duration, track.bpm);
+          sharedAudioEngine.playYouTubeTrack(readyIds, readyDuration, track.bpm);
+          if (existingIds.length === 0 && cachedStream) {
+            const hydratedTrack: Track = {
+              ...track,
+              youtubeId: cachedStream.youtubeId,
+              candidateVideoIds: cachedStream.candidateIds,
+              duration: readyDuration,
+              streamSource: 'official-stream'
+            };
+            setCurrentTrack((prev) =>
+              prev.id === track.id
+                ? {
+                    ...hydratedTrack,
+                    lyrics: prev.lyrics.length > hydratedTrack.lyrics.length ? prev.lyrics : hydratedTrack.lyrics
+                  }
+                : prev
+            );
+            setQueue((prevQ) =>
+              prevQ.map((t) =>
+                t.id === track.id
+                  ? {
+                      ...hydratedTrack,
+                      lyrics: t.lyrics.length > hydratedTrack.lyrics.length ? t.lyrics : hydratedTrack.lyrics
+                    }
+                  : t
+              )
+            );
+          }
         }
-        if (existingIds.length < 4) {
+        if (readyIds.length < 4) {
           const activeGen = sharedAudioEngine.getPlayGeneration();
-          resolveFullTrackStream(track.title, track.artist, track.duration)
+          resolveFullTrackStream(track.title, track.artist, readyDuration)
             .then((resolved) => {
               if (!resolved || selectionSeq !== selectionCounterRef.current) return;
               sharedAudioEngine.appendCandidateIds(resolved.candidateIds, activeGen);
@@ -1490,6 +1544,11 @@ export default function App() {
       resolvingTrackIdRef.current = track.id;
       setResolvingTrackId(track.id);
       setIsYouTubeActive(true);
+      const canAutoSkipError =
+        recStateRef.current.repeatMode !== 'one' &&
+        (autoplayEnabledRef.current ||
+          queueRef.current.length > 1 ||
+          manualQueueRef.current.length > 0);
       try {
         const mvResolved = isVideoStageActive
           ? await resolveMusicVideoStream(
@@ -1555,7 +1614,7 @@ export default function App() {
           setIsYouTubeActive(false);
           setStreamError('Full official stream unavailable for this release. Try another track.');
           sharedAudioEngine.pause();
-          if (options?.fromEnded && autoplayEnabledRef.current && autoRetryCountRef.current < 3) {
+          if (canAutoSkipError && autoRetryCountRef.current < 4) {
             autoRetryCountRef.current += 1;
             window.setTimeout(() => handleNextRef.current(true), 350);
           }
@@ -1567,7 +1626,7 @@ export default function App() {
         setIsYouTubeActive(false);
         setStreamError('Unable to resolve full-length stream. Try another release.');
         sharedAudioEngine.pause();
-        if (options?.fromEnded && autoplayEnabledRef.current && autoRetryCountRef.current < 3) {
+        if (canAutoSkipError && autoRetryCountRef.current < 4) {
           autoRetryCountRef.current += 1;
           window.setTimeout(() => handleNextRef.current(true), 350);
         }
@@ -1751,12 +1810,23 @@ export default function App() {
               16
             );
             const existingIds = new Set(queueRef.current.map((existing) => existing.id));
-            const additions = rankedPool.filter((t) => !existingIds.has(t.id));
-            const nextAuto = additions[0] || rankedPool.find((t) => t.id !== seed.id);
+            let additions = rankedPool.filter((t) => !existingIds.has(t.id));
+            if (additions.length === 0) {
+              const fallbackPool = gatherLocalCandidatePool(seed.id).filter(
+                (t) => !existingIds.has(t.id)
+              );
+              additions = fallbackPool.slice(0, 10);
+            }
+            const nextAuto =
+              additions[0] ||
+              rankedPool.find((t) => t.id !== seed.id) ||
+              queueRef.current.find((t) => t.id !== seed.id);
             if (nextAuto) {
-              const extendedQueue = [...queueRef.current, ...additions];
-              queueRef.current = extendedQueue;
-              setQueue(extendedQueue);
+              if (additions.length > 0) {
+                const extendedQueue = [...queueRef.current, ...additions].slice(-60);
+                queueRef.current = extendedQueue;
+                setQueue(extendedQueue);
+              }
               handleSelectTrack(nextAuto, { fromEnded, fromContextList: true });
               refillRadioRef.current(nextAuto, true);
               return;
@@ -2505,10 +2575,109 @@ export default function App() {
     [applyCloudSnapshot]
   );
 
-  // Background pre-resolve next upcoming track into module cache
+  const hydrateTrackStreamInQueues = useCallback(
+    (
+      trackId: string,
+      resolved: { youtubeId: string; candidateIds: string[]; duration?: number },
+      asMusicVideo = false
+    ) => {
+      if (!trackId || resolved.candidateIds.length === 0) return;
+      const patchItem = (item: Track): Track => {
+        if (item.id !== trackId) return item;
+        const resolvedDuration =
+          item.duration >= 60
+            ? item.duration
+            : resolved.duration && resolved.duration >= 60
+              ? resolved.duration
+              : item.duration;
+        return {
+          ...item,
+          youtubeId: item.youtubeId || resolved.youtubeId,
+          candidateVideoIds:
+            item.candidateVideoIds && item.candidateVideoIds.length > 0
+              ? item.candidateVideoIds
+              : resolved.candidateIds,
+          duration: resolvedDuration,
+          streamSource: item.audioUrl ? item.streamSource : 'official-stream',
+          ...(asMusicVideo
+            ? {
+                musicVideoId: item.musicVideoId || resolved.youtubeId
+              }
+            : {})
+        };
+      };
+      queueRef.current = queueRef.current.map(patchItem);
+      manualQueueRef.current = manualQueueRef.current.map(patchItem);
+      setQueue((prev) => prev.map(patchItem));
+      setManualQueue((prev) => prev.map(patchItem));
+    },
+    []
+  );
+
+  const prewarmTrackStream = useCallback(
+    (candidate: Track | null | undefined) => {
+      if (
+        !candidate?.id ||
+        candidate.id === currentTrackRef.current.id ||
+        candidate.audioUrl ||
+        (candidate.candidateVideoIds && candidate.candidateVideoIds.length > 0) ||
+        findMasterAudio(candidate.title, candidate.artist)
+      ) {
+        return;
+      }
+      const existingCache = peekCachedTrackStream(candidate.title, candidate.artist);
+      if (existingCache && existingCache.candidateIds.length > 0) {
+        if (preResolvedIdsRef.current.has(candidate.id)) return;
+        preResolvedIdsRef.current.add(candidate.id);
+        window.setTimeout(() => hydrateTrackStreamInQueues(candidate.id, existingCache), 0);
+        return;
+      }
+      if (preResolvedIdsRef.current.has(candidate.id)) return;
+      preResolvedIdsRef.current.add(candidate.id);
+      const isVideoActive =
+        isStageVisibleRef.current &&
+        (stageModeRef.current === 'video-only' || stageModeRef.current === 'video-lyric');
+      const fetcher = isVideoActive ? resolveMusicVideoStream : resolveFullTrackStream;
+      fetcher(candidate.title, candidate.artist, candidate.duration)
+        .then((resolved) => {
+          if (!resolved || resolved.candidateIds.length === 0) return;
+          hydrateTrackStreamInQueues(candidate.id, resolved, isVideoActive);
+        })
+        .catch(() => { });
+    },
+    [hydrateTrackStreamInQueues]
+  );
+
+  // Immediately pre-warm the next 2 tracks whenever active track or queue updates
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextDecision = pickNextTrackPure({
+        currentTrack,
+        queue,
+        manualQueue,
+        recentTracks: recState.recentTracks,
+        state: recState,
+        mood: activeMood
+      }).nextTrack;
+      prewarmTrackStream(nextDecision);
+
+      const secondUp =
+        manualQueue[1] ||
+        queue.find(
+          (item, idx) =>
+            idx > queue.findIndex((q) => q.id === currentTrack.id) &&
+            item.id !== currentTrack.id &&
+            item.id !== nextDecision?.id
+        );
+      prewarmTrackStream(secondUp);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [currentTrack, queue, manualQueue, recState, activeMood, prewarmTrackStream]);
+
+  // Background pre-resolve next upcoming track mid-playback in case queue changed dynamically
   useEffect(() => {
     if (!isPlaying || currentTrack.duration <= 0) return;
-    if (currentTime < 15 || currentTime / currentTrack.duration < 0.45) return;
+    if (currentTime / currentTrack.duration < 0.35) return;
 
     const preview = pickNextTrackPure({
       currentTrack,
@@ -2519,16 +2688,8 @@ export default function App() {
       mood: activeMood
     }).nextTrack;
 
-    if (
-      preview &&
-      preview.id !== currentTrack.id &&
-      !preview.audioUrl &&
-      !preResolvedIdsRef.current.has(preview.id)
-    ) {
-      preResolvedIdsRef.current.add(preview.id);
-      resolveFullTrackStream(preview.title, preview.artist, preview.duration).catch(() => { });
-    }
-  }, [isPlaying, currentTime, currentTrack, queue, manualQueue, recState, activeMood]);
+    prewarmTrackStream(preview);
+  }, [isPlaying, currentTime, currentTrack, queue, manualQueue, recState, activeMood, prewarmTrackStream]);
 
   // OS Lockscreen / Media Keys integration
   useEffect(() => {
@@ -4143,6 +4304,8 @@ export default function App() {
         onToggleLike={handleToggleLike}
         onToggleShuffle={handleToggleShuffle}
         onCycleRepeat={handleCycleRepeat}
+        autoplayEnabled={autoplayEnabled}
+        onToggleAutoplay={handleToggleAutoplay}
         onSelectEqPreset={handleSelectEqPreset}
         onSelectPlaybackRate={handleSelectPlaybackRate}
         onSelectCrossfade={handleSelectCrossfade}

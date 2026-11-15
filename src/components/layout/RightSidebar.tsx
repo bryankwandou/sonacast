@@ -462,8 +462,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                           </div>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                            {item.title}
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                              {item.title}
+                            </span>
+                            {(Boolean(item.audioUrl) ||
+                              (Array.isArray(item.candidateVideoIds) && item.candidateVideoIds.length > 0)) && (
+                              <span
+                                title="Stream pre-buffered for gapless autoplay"
+                                className="w-1.5 h-1.5 rounded-full bg-[var(--accent-emerald)] shrink-0"
+                              />
+                            )}
                           </div>
                           <div className="text-[11px] text-[var(--text-dim)] truncate">
                             {item.artist}

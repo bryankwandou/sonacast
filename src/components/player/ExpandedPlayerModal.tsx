@@ -5,6 +5,7 @@ import {
   Film,
   Gauge,
   Heart,
+  Infinity as InfinityIcon,
   ListPlus,
   Loader2,
   Mic2,
@@ -41,6 +42,7 @@ interface ExpandedPlayerModalProps {
   isLiked: boolean;
   shuffle: boolean;
   repeatMode: RepeatMode;
+  autoplayEnabled?: boolean;
   eqPreset: EqPreset;
   playbackRate: number;
   crossfadeSeconds: number;
@@ -57,6 +59,7 @@ interface ExpandedPlayerModalProps {
   onToggleLike: (track: Track) => void;
   onToggleShuffle: () => void;
   onCycleRepeat: () => void;
+  onToggleAutoplay?: () => void;
   onSelectEqPreset: (preset: EqPreset) => void;
   onSelectPlaybackRate: (rate: number) => void;
   onSelectCrossfade: (secs: number) => void;
@@ -100,6 +103,7 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   isLiked,
   shuffle,
   repeatMode,
+  autoplayEnabled = true,
   eqPreset,
   playbackRate,
   crossfadeSeconds,
@@ -115,6 +119,7 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   onToggleLike,
   onToggleShuffle,
   onCycleRepeat,
+  onToggleAutoplay,
   onSelectEqPreset,
   onSelectPlaybackRate,
   onSelectCrossfade,
@@ -284,6 +289,24 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
               {exportStatus === 'saved' ? 'Saved PNG' : t.exportLyricCard}
             </span>
           </button>
+
+          {onToggleAutoplay && (
+            <button
+              type="button"
+              onClick={onToggleAutoplay}
+              data-testid="expanded-autoplay-toggle"
+              aria-pressed={autoplayEnabled}
+              title={`${t.autoplaySimilar} (${autoplayEnabled ? 'ON' : 'OFF'})`}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                autoplayEnabled
+                  ? 'bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-text)]'
+                  : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:bg-[var(--bg-tint-hover)]'
+              }`}
+            >
+              <InfinityIcon size={14} />
+              <span className="hidden sm:inline">{t.autoNextShort}</span>
+            </button>
+          )}
 
           <button
             type="button"

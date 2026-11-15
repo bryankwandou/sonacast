@@ -952,6 +952,20 @@ const STREAM_CACHE_KEY = 'sonacast_stream_cache_v1';
 const STREAM_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const streamMemoryCache = new Map<string, { value: ResolvedFullStream; cachedAt: number }>();
 
+function buildStreamCacheKey(title: string, artist: string): { query: string; cacheKey: string } {
+  const cleanTitle = stripTitleModifiers(title);
+  const cleanArtist = artist.split(/[,&]|ft\.?|feat\.?/i)[0].trim();
+  const query = cleanArtist && !cleanTitle.toLowerCase().includes(cleanArtist.toLowerCase())
+    ? `${cleanArtist} ${cleanTitle}`
+    : cleanTitle;
+  return { query, cacheKey: normalizeText(query) };
+}
+
+export function peekCachedTrackStream(title: string, artist: string): ResolvedFullStream | null {
+  const { cacheKey } = buildStreamCacheKey(title, artist);
+  return cacheKey ? readStreamCache(cacheKey) : null;
+}
+
 function readStreamCache(key: string): ResolvedFullStream | null {
   const now = Date.now();
   const memHit = streamMemoryCache.get(key);
@@ -1005,12 +1019,7 @@ export async function resolveFullTrackStream(
 ): Promise<ResolvedFullStream | null> {
   if (parentSignal?.aborted) return null;
 
-  const cleanTitle = stripTitleModifiers(title);
-  const cleanArtist = artist.split(/[,&]|ft\.?|feat\.?/i)[0].trim();
-  const query = cleanArtist && !cleanTitle.toLowerCase().includes(cleanArtist.toLowerCase())
-    ? `${cleanArtist} ${cleanTitle}`
-    : cleanTitle;
-  const cacheKey = normalizeText(query);
+  const { query, cacheKey } = buildStreamCacheKey(title, artist);
   if (cacheKey) {
     const cached = readStreamCache(cacheKey);
     if (cached) return cached;
