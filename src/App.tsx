@@ -2560,6 +2560,7 @@ export default function App() {
       setExternalSearchTrigger((n) => n + 1);
     }
     setIsTopSearchFocused(false);
+    topSearchInputRef.current?.blur();
     setCurrentTab('search');
   };
 
@@ -2586,6 +2587,8 @@ export default function App() {
     if (trimmed) {
       navigateToSearch(trimmed);
     } else {
+      setIsTopSearchFocused(false);
+      topSearchInputRef.current?.blur();
       setCurrentTab('search');
     }
   };
@@ -2858,24 +2861,38 @@ export default function App() {
                   <div
                     data-testid="topbar-search-dropdown"
                     onMouseDown={(e) => e.preventDefault()}
-                    className="absolute left-0 right-0 md:right-auto md:min-w-[460px] top-full mt-1.5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-medium)] shadow-2xl p-3 space-y-3 z-50 max-h-[72vh] overflow-y-auto"
+                    className="absolute left-0 right-0 md:right-auto md:w-[560px] max-w-[92vw] top-full mt-1.5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-medium)] shadow-2xl p-2.5 space-y-2 z-50 max-h-[68vh] overflow-y-auto"
                   >
                     {topSearchInput.trim().length >= 2 ? (
                       <div className="space-y-2.5">
-                        <div className="flex items-center justify-between px-1 pb-1 border-b border-[var(--border-subtle)]">
+                        <div className="flex items-center justify-between gap-2 px-1 pb-1 border-b border-[var(--border-subtle)]">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1.5">
                             {isLoadingTopInstant && (
                               <Loader2 size={11} className="animate-spin text-[var(--accent-text)]" />
                             )}
                             <span>{t.instantResults}</span>
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => navigateToSearch(topSearchInput.trim(), 'songs')}
-                            className="text-[10px] font-bold text-[var(--accent-text)] hover:underline cursor-pointer"
-                          >
-                            {t.browseCatalog} &rarr;
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => navigateToSearch(topSearchInput.trim(), 'songs')}
+                              className="text-[10px] font-bold text-[var(--accent-text)] hover:underline cursor-pointer"
+                            >
+                              {t.browseCatalog} &rarr;
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="topbar-search-close"
+                              aria-label={t.removeSearchItem}
+                              onClick={() => {
+                                setIsTopSearchFocused(false);
+                                topSearchInputRef.current?.blur();
+                              }}
+                              className="p-1 rounded-md text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] cursor-pointer"
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
                         </div>
 
                         {topInstantResults.tracks.length > 0 && (
@@ -2982,35 +2999,49 @@ export default function App() {
                     ) : (
                       <>
                         {/* Quick Jump Search Scope */}
-                        <div className="flex flex-wrap items-center gap-1.5 pb-2 border-b border-[var(--border-subtle)]">
+                        <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-[var(--border-subtle)]">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => navigateToSearch(topSearchInput.trim() || 'Queen', 'songs')}
+                              className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Search size={11} />
+                              <span>{t.searchSongsTab}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => navigateToSearch(topSearchInput.trim() || 'Queen', 'albums')}
+                              className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Disc3 size={11} />
+                              <span>{t.searchAlbumsTab}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => navigateToSearch(topSearchInput.trim() || 'Top Hits', 'playlists')}
+                              className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <ListMusic size={11} />
+                              <span>{t.searchPlaylistsTab}</span>
+                            </button>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => navigateToSearch(topSearchInput.trim() || 'Queen', 'songs')}
-                            className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
+                            data-testid="topbar-search-close"
+                            aria-label={t.removeSearchItem}
+                            onClick={() => {
+                              setIsTopSearchFocused(false);
+                              topSearchInputRef.current?.blur();
+                            }}
+                            className="p-1 rounded-md text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] cursor-pointer shrink-0"
                           >
-                            <Search size={11} />
-                            <span>{t.searchSongsTab}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => navigateToSearch(topSearchInput.trim() || 'Queen', 'albums')}
-                            className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
-                          >
-                            <Disc3 size={11} />
-                            <span>{t.searchAlbumsTab}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => navigateToSearch(topSearchInput.trim() || 'Top Hits', 'playlists')}
-                            className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
-                          >
-                            <ListMusic size={11} />
-                            <span>{t.searchPlaylistsTab}</span>
+                            <X size={13} />
                           </button>
                         </div>
 
                         {/* Mood Choices in Search Bar */}
-                        <div data-testid="topbar-mood-choices" className="space-y-1.5">
+                        <div data-testid="topbar-mood-choices" className="space-y-1">
                           <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
                             {t.moodChoicesLabel}
                           </div>
@@ -3027,76 +3058,79 @@ export default function App() {
                           />
                         </div>
 
-                        {/* Top Daily Albums in Search Bar */}
-                        {popularCharts.albums.length > 0 && (
-                          <div data-testid="topbar-daily-albums" className="space-y-1.5">
-                            <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1">
-                              <Disc3 size={11} className="text-[var(--accent-text)]" />
-                              <span>{t.topDailyAlbums}</span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                              {popularCharts.albums.slice(0, 4).map((alb) => (
-                                <button
-                                  key={`top-alb-${alb.id}`}
-                                  type="button"
-                                  data-testid={`topbar-daily-album-${alb.id}`}
-                                  onClick={() => navigateToSearch(alb.title, 'albums', { album: alb })}
-                                  className="flex items-center gap-2 p-1.5 rounded-xl bg-[var(--bg-elevated)]/70 hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-left transition-colors cursor-pointer min-w-0"
-                                >
-                                  <img
-                                    src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
-                                    alt={alb.title}
-                                    onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
-                                    className="w-9 h-9 rounded-lg object-cover shrink-0"
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">
-                                      {alb.title}
-                                    </div>
-                                    <div className="text-[10px] text-[var(--text-dim)] truncate">
-                                      {alb.artist}
-                                    </div>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                        {/* Top Daily Albums & Top Daily Playlists Side-by-Side */}
+                        {(popularCharts.albums.length > 0 || popularCharts.playlists.length > 0) && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            {popularCharts.albums.length > 0 && (
+                              <div data-testid="topbar-daily-albums" className="space-y-1 min-w-0">
+                                <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1">
+                                  <Disc3 size={11} className="text-[var(--accent-text)]" />
+                                  <span>{t.topDailyAlbums}</span>
+                                </div>
+                                <div className="space-y-1">
+                                  {popularCharts.albums.slice(0, 3).map((alb) => (
+                                    <button
+                                      key={`top-alb-${alb.id}`}
+                                      type="button"
+                                      data-testid={`topbar-daily-album-${alb.id}`}
+                                      onClick={() => navigateToSearch(alb.title, 'albums', { album: alb })}
+                                      className="w-full flex items-center gap-2 p-1 rounded-xl bg-[var(--bg-elevated)]/70 hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-left transition-colors cursor-pointer min-w-0"
+                                    >
+                                      <img
+                                        src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
+                                        alt={alb.title}
+                                        onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
+                                        className="w-8 h-8 rounded-lg object-cover shrink-0"
+                                      />
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">
+                                          {alb.title}
+                                        </div>
+                                        <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                          {alb.artist}
+                                        </div>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
-                        {/* Top Daily Playlists in Search Bar */}
-                        {popularCharts.playlists.length > 0 && (
-                          <div data-testid="topbar-daily-playlists" className="space-y-1.5">
-                            <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1">
-                              <ListMusic size={11} className="text-[var(--accent-text)]" />
-                              <span>{t.topDailyPlaylists}</span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                              {popularCharts.playlists.slice(0, 4).map((pl) => (
-                                <button
-                                  key={`top-pl-${pl.id}`}
-                                  type="button"
-                                  data-testid={`topbar-daily-playlist-${pl.id}`}
-                                  onClick={() => navigateToSearch(pl.title, 'playlists', { playlist: pl })}
-                                  className="flex items-center gap-2 p-1.5 rounded-xl bg-[var(--bg-elevated)]/70 hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-left transition-colors cursor-pointer min-w-0"
-                                >
-                                  <img
-                                    src={pl.coverUrl || DEFAULT_COVER_DATA_URI}
-                                    alt={pl.title}
-                                    onError={(e) => applyCoverFallback(e, pl.title, pl.creator)}
-                                    className="w-9 h-9 rounded-lg object-cover shrink-0"
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">
-                                      {pl.title}
-                                    </div>
-                                    <div className="text-[10px] text-[var(--text-dim)] truncate">
-                                      {pl.creator}
-                                      {pl.nbTracks ? ` · ${pl.nbTracks}t` : ''}
-                                    </div>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
+                            {popularCharts.playlists.length > 0 && (
+                              <div data-testid="topbar-daily-playlists" className="space-y-1 min-w-0">
+                                <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1">
+                                  <ListMusic size={11} className="text-[var(--accent-text)]" />
+                                  <span>{t.topDailyPlaylists}</span>
+                                </div>
+                                <div className="space-y-1">
+                                  {popularCharts.playlists.slice(0, 3).map((pl) => (
+                                    <button
+                                      key={`top-pl-${pl.id}`}
+                                      type="button"
+                                      data-testid={`topbar-daily-playlist-${pl.id}`}
+                                      onClick={() => navigateToSearch(pl.title, 'playlists', { playlist: pl })}
+                                      className="w-full flex items-center gap-2 p-1 rounded-xl bg-[var(--bg-elevated)]/70 hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-left transition-colors cursor-pointer min-w-0"
+                                    >
+                                      <img
+                                        src={pl.coverUrl || DEFAULT_COVER_DATA_URI}
+                                        alt={pl.title}
+                                        onError={(e) => applyCoverFallback(e, pl.title, pl.creator)}
+                                        className="w-8 h-8 rounded-lg object-cover shrink-0"
+                                      />
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">
+                                          {pl.title}
+                                        </div>
+                                        <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                          {pl.creator}
+                                          {pl.nbTracks ? ` · ${pl.nbTracks}t` : ''}
+                                        </div>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 
