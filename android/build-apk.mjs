@@ -344,6 +344,8 @@ function main() {
       '-jar',
       tools.apksignerJar,
       'sign',
+      '--v4-signing-enabled',
+      'false',
       '--ks',
       keystorePath,
       '--ks-pass',

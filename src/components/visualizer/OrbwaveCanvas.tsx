@@ -356,13 +356,15 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
       const rect = containerRef.current.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
       const dpr = lowCpuMode ? Math.min(window.devicePixelRatio || 1, 1.5) : window.devicePixelRatio || 1;
-      canvas.width = Math.floor(rect.width * dpr);
-      canvas.height = Math.floor(rect.height * dpr);
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
-      if (lowCpuMode || !isPlaying || document.hidden) {
-        drawFrame();
+      const targetW = Math.floor(rect.width * dpr);
+      const targetH = Math.floor(rect.height * dpr);
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+        canvas.style.width = `${rect.width}px`;
+        canvas.style.height = `${rect.height}px`;
       }
+      drawFrame();
     };
 
     const handleVisibilityChange = () => {
