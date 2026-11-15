@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import type { PlaybackContextInfo, RadioStation, Track } from '../../types';
 import {
   ChevronUp,
+  Film,
   Heart,
   Infinity as InfinityIcon,
   ListMusic,
   ListPlus,
+  Maximize2,
   Mic2,
   Play,
   Radio,
   RefreshCw,
+  Save,
   Send,
   Share2,
   Shuffle,
@@ -52,6 +55,8 @@ interface RightSidebarProps {
   onOpenLyricCard?: () => void;
   ytMonitorRef: React.RefObject<HTMLDivElement | null>;
   showYtMonitor: boolean;
+  onExpandVideoStage?: () => void;
+  onSaveQueueAsPlaylist?: () => void;
   lyricsStatus?: 'idle' | 'loading' | 'loaded' | 'unavailable';
   lyricsSource?: string;
   lyricsSynced?: boolean;
@@ -90,6 +95,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onOpenLyricCard,
   ytMonitorRef,
   showYtMonitor,
+  onExpandVideoStage,
+  onSaveQueueAsPlaylist,
   lyricsStatus = 'idle',
   lyricsSource,
   lyricsSynced,
@@ -168,16 +175,28 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         }
       >
         {showYtMonitor && (
-          <div className="px-3 py-1.5 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] flex items-center justify-between text-[10px]">
-            <span className="font-mono font-bold text-[var(--accent-text)] truncate">
-              STREAM AUDIO FEED
+          <div className="px-3 py-1.5 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] flex items-center justify-between gap-2 text-[10px]">
+            <span className="inline-flex items-center gap-1 font-mono font-bold text-[var(--accent-text)] truncate">
+              <Film size={11} />
+              <span className="truncate">{currentTrack.title}</span>
             </span>
-            <span className="text-[var(--text-dim)] truncate max-w-[130px]">{currentTrack.title}</span>
+            {onExpandVideoStage && (
+              <button
+                type="button"
+                data-testid="sidebar-expand-video-btn"
+                onClick={onExpandVideoStage}
+                title={t.expandVideoStage}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent-text)] font-semibold hover:brightness-110 transition cursor-pointer shrink-0"
+              >
+                <Maximize2 size={10} />
+                <span>{t.expandVideoStage}</span>
+              </button>
+            )}
           </div>
         )}
         <div
           ref={ytMonitorRef}
-          className={showYtMonitor ? 'w-full h-[140px] bg-black' : 'w-full h-[140px]'}
+          className={showYtMonitor ? 'w-full aspect-video min-h-[160px] bg-black' : 'w-full h-[140px]'}
         />
       </div>
 
@@ -385,11 +404,25 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     {upNextTracks.length > 0 ? `${t.upNext} · ${playbackContext?.title || t.queue}` : t.queue}
                   </span>
                 </div>
-                {upNextTracks.length > 0 && (
-                  <span className="text-[10px] font-mono text-[var(--text-dim)] shrink-0">
-                    {upNextTracks.length} · ~{upcomingMinutes}m
-                  </span>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {upNextTracks.length > 0 && (
+                    <span className="text-[10px] font-mono text-[var(--text-dim)]">
+                      {upNextTracks.length} · ~{upcomingMinutes}m
+                    </span>
+                  )}
+                  {(manualQueue.length > 0 || upNextTracks.length > 0) && onSaveQueueAsPlaylist && (
+                    <button
+                      type="button"
+                      data-testid="save-queue-playlist-btn"
+                      onClick={onSaveQueueAsPlaylist}
+                      title={t.saveQueuePlaylist}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[10px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                    >
+                      <Save size={10} />
+                      <span>{t.saveQueuePlaylist}</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {upNextTracks.length === 0 ? (

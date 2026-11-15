@@ -565,6 +565,49 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             </button>
           )}
 
+          <div className="flex md:hidden items-center gap-1 shrink-0">
+            <button
+              type="button"
+              data-testid="mobile-video-toggle"
+              onClick={() =>
+                onSelectStageMode(
+                  isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
+                    ? 'music-only'
+                    : 'video-only'
+                )
+              }
+              aria-label={t.watchMusicVideo}
+              title={t.watchMusicVideo}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
+                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
+              }`}
+            >
+              <Video size={14} />
+            </button>
+            <button
+              type="button"
+              data-testid="mobile-lyrics-toggle"
+              onClick={() =>
+                onSelectStageMode(
+                  isStageOpen && (stageMode === 'lyrics-only' || stageMode === 'music-lyric')
+                    ? 'music-only'
+                    : 'lyrics-only'
+                )
+              }
+              aria-label={t.modeLyricsOnly}
+              title={t.modeLyricsOnly}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                isStageOpen && (stageMode === 'lyrics-only' || stageMode === 'music-lyric')
+                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
+              }`}
+            >
+              <Mic2 size={14} />
+            </button>
+          </div>
+
           {(onSelectEqPreset || onSetSleepTimer || onOpenLyricCard) && (
             <div className="relative" ref={dspContainerRef}>
               <button

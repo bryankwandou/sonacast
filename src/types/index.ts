@@ -4,6 +4,14 @@ export interface LyricLine {
   translation?: string;
 }
 
+export interface MusicVideoCandidate {
+  videoId: string;
+  title: string;
+  author: string;
+  duration: number;
+  thumbnail: string;
+}
+
 export interface Track {
   id: string;
   title: string;
@@ -15,6 +23,8 @@ export interface Track {
   audioUrl?: string; // bundled studio master MP3 or local user upload blob URL
   youtubeId?: string; // primary official full-length YouTube stream ID
   candidateVideoIds?: string[]; // failover official embed-safe stream IDs
+  musicVideoId?: string; // official music video YouTube ID (distinct from - Topic audio stream)
+  musicVideoCandidates?: MusicVideoCandidate[];
   streamSource?: 'studio-master' | 'official-stream' | 'local-upload' | 'synth';
   sourceTag?: string;
   genre: string;

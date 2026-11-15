@@ -1,122 +1,244 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
-import { Video, Maximize2, Minimize2, Radio } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import type { MusicVideoCandidate, Track } from '../../types';
+import { Disc3, Film, Loader2, Maximize2, RefreshCw } from 'lucide-react';
+import { applyCoverFallback } from '../../utils/coverFallback';
+import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 
 interface VideoPlayerProps {
-  videoUrl?: string;
-  coverUrl: string;
-  title: string;
-  artist: string;
+  track: Track;
   isPlaying: boolean;
-  isOfficialStreamActive?: boolean;
-  officialSlotRef?: React.RefObject<HTMLDivElement | null>;
+  currentTime?: number;
+  hasLiveYouTubeStage?: boolean;
+  isResolvingVideo?: boolean;
+  videoCandidates?: MusicVideoCandidate[];
+  activeVideoId?: string;
+  onSelectVideoCandidate?: (videoId: string) => void;
+  onRetryVideo?: () => void;
+  onSwitchToAudioMode?: () => void;
+  onRequestHostFullscreen?: () => void;
+  lowCpuMode?: boolean;
+  videoSlotRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
-  videoUrl,
-  coverUrl,
-  title,
-  artist,
+  track,
   isPlaying,
-  isOfficialStreamActive = false,
-  officialSlotRef
+  currentTime = 0,
+  hasLiveYouTubeStage = false,
+  isResolvingVideo = false,
+  videoCandidates = [],
+  activeVideoId = '',
+  onSelectVideoCandidate,
+  onRetryVideo,
+  onSwitchToAudioMode,
+  onRequestHostFullscreen,
+  lowCpuMode = false,
+  videoSlotRef
 }) => {
+  const { t } = useAppPreferences();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [videoError, setVideoError] = useState(false);
+  const currentVideoKey = `${track.id}:${track.videoUrl || ''}`;
+  const [errorVideoKey, setErrorVideoKey] = useState<string | null>(null);
+  const videoError = errorVideoKey === currentVideoKey;
+
+  const hasMp4Video = Boolean(track.videoUrl && track.videoUrl.trim().length > 0 && !videoError);
+  const currentCandidate =
+    videoCandidates.find((c) => c.videoId === activeVideoId) || videoCandidates[0];
+  const currentIdx = videoCandidates.findIndex((c) => c.videoId === activeVideoId);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || isOfficialStreamActive) return;
-
+    const vid = videoRef.current;
+    if (!vid || hasLiveYouTubeStage || !hasMp4Video) return;
     if (isPlaying) {
-      video.play().catch(() => {
-        video.muted = true;
-        video.play().catch(() => {});
-      });
+      vid.play().catch(() => {});
     } else {
-      video.pause();
+      vid.pause();
     }
-  }, [isPlaying, videoUrl, isOfficialStreamActive]);
+  }, [isPlaying, track.videoUrl, hasLiveYouTubeStage, hasMp4Video]);
 
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || hasLiveYouTubeStage || !hasMp4Video) return;
+    if (typeof vid.duration === 'number' && Number.isFinite(vid.duration) && vid.duration > 0) {
+      const target = currentTime % vid.duration;
+      if (Math.abs(vid.currentTime - target) > 1.5) {
+        vid.currentTime = target;
+      }
     }
+  }, [currentTime, hasLiveYouTubeStage, hasMp4Video]);
+
+  const handleFullscreen = () => {
+    if (hasLiveYouTubeStage && onRequestHostFullscreen) {
+      onRequestHostFullscreen();
+      return;
+    }
+    const target = containerRef.current;
+    if (!target) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      target.requestFullscreen?.().catch(() => {});
+    }
+  };
+
+  const handleCycleCandidate = () => {
+    if (videoCandidates.length <= 1 || !onSelectVideoCandidate) return;
+    const nextIdx = currentIdx >= 0 ? (currentIdx + 1) % videoCandidates.length : 0;
+    onSelectVideoCandidate(videoCandidates[nextIdx].videoId);
   };
 
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full min-h-[260px] sm:min-h-[300px] xl:min-h-[400px] bg-black rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex items-center justify-center select-none group"
+      data-testid="video-player-container"
+      className="relative w-full h-full rounded-2xl overflow-hidden bg-black border border-[var(--border-subtle)] flex flex-col justify-between group"
     >
-      {isOfficialStreamActive ? (
-        <div
-          ref={officialSlotRef}
-          className="w-full h-full min-h-[260px] sm:min-h-[300px] xl:min-h-[400px] bg-black"
-        />
-      ) : videoUrl && !videoError ? (
-        <video
-          ref={videoRef}
-          src={videoUrl}
-          poster={coverUrl}
-          loop
-          playsInline
-          muted
-          onError={() => setVideoError(true)}
-          className="w-full h-full object-cover"
-        />
-      ) : (
-        <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-tr from-[#080B12] via-[#121826] to-[#0A0E17]">
-          <img
-            src={coverUrl || DEFAULT_COVER_DATA_URI}
-            alt={title}
-            onError={(e) => applyCoverFallback(e, title, artist)}
-            className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-110"
+      {/* Main 16:9 Video Viewport (YouTube IFrame Host overlays videoSlotRef when active) */}
+      <div className="relative flex-1 min-h-[210px] w-full flex items-center justify-center overflow-hidden bg-black">
+        {hasLiveYouTubeStage && videoSlotRef ? (
+          <div
+            ref={videoSlotRef}
+            data-testid="video-yt-slot"
+            className="w-full h-full min-h-[210px] bg-black"
           />
-          <div className="relative z-10 text-center p-6 bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 max-w-sm">
-            <Video size={40} className="mx-auto text-emerald-400 mb-3 animate-pulse" />
-            <h3 className="text-white font-bold text-lg">{title}</h3>
-            <p className="text-gray-400 text-xs mt-1">Live Ambient Visual Stream Active</p>
+        ) : hasMp4Video && !lowCpuMode ? (
+          <video
+            ref={videoRef}
+            src={track.videoUrl}
+            poster={track.coverUrl}
+            onError={() => setErrorVideoKey(currentVideoKey)}
+            className="w-full h-full object-cover transition-opacity duration-500 opacity-100"
+            loop
+            muted
+            playsInline
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center select-none overflow-hidden">
+            <img
+              src={track.coverUrl}
+              alt={track.title}
+              onError={applyCoverFallback}
+              className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-35"
+            />
+            <div className="absolute inset-0 bg-black/55" />
+            <div className="relative z-10 flex flex-col items-center gap-3 max-w-sm">
+              <div className="w-24 h-24 rounded-2xl overflow-hidden border border-white/15 shadow-2xl">
+                <img
+                  src={track.coverUrl}
+                  alt={track.title}
+                  onError={applyCoverFallback}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              {isResolvingVideo ? (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-xs font-medium text-white">
+                  <Loader2 size={14} className="animate-spin text-emerald-400" />
+                  <span>{t.findingMusicVideo}</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-white/80">{t.videoUnavailable}</p>
+                  <div className="flex items-center justify-center gap-2">
+                    {onRetryVideo && (
+                      <button
+                        type="button"
+                        data-testid="video-retry-btn"
+                        onClick={onRetryVideo}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-black text-xs font-bold hover:brightness-110 transition cursor-pointer"
+                      >
+                        <RefreshCw size={12} />
+                        <span>Retry</span>
+                      </button>
+                    )}
+                    {onSwitchToAudioMode && (
+                      <button
+                        type="button"
+                        data-testid="video-to-audio-btn"
+                        onClick={onSwitchToAudioMode}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 text-white text-xs font-semibold hover:bg-white/25 transition cursor-pointer"
+                      >
+                        <Disc3 size={12} />
+                        <span>{t.audioMasterMode}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Top Overlay Badge */}
-      <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10 opacity-90 transition-opacity pointer-events-none">
-        <div className="bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2 text-xs">
-          <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-          <span className="text-white font-semibold tracking-wider">LIVE STREAM 1080P</span>
-          <span className="text-gray-400">·</span>
-          <span className="text-gray-300 truncate max-w-[200px]">{title}</span>
-        </div>
-
-        <button
-          onClick={toggleFullscreen}
-          className="p-2 rounded-lg bg-black/70 backdrop-blur-md border border-white/10 text-gray-300 hover:text-white transition-colors pointer-events-auto cursor-pointer"
-          title="Toggle Fullscreen"
-        >
-          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-        </button>
+        )}
       </div>
 
-      {/* Bottom Bar Info (hidden in active official video mode so player controls stay unobstructed) */}
-      {!isOfficialStreamActive && (
-        <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 rounded-xl pointer-events-none">
-          <div>
-            <h3 className="text-white font-bold text-lg leading-tight">{title}</h3>
-            <p className="text-emerald-400 text-xs font-medium">{artist}</p>
-          </div>
-          <div className="flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-1 rounded-full text-emerald-300 text-xs font-semibold">
-            <Radio size={12} />
-            <span>320 kbps Master</span>
+      {/* Slim Non-Overlapping Video Theater Bar */}
+      <div
+        data-testid="video-theater-controls"
+        className="px-3.5 py-2 bg-[#0b0f14]/95 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-white shrink-0"
+      >
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span
+            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
+              hasLiveYouTubeStage
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                : 'bg-white/10 text-white/75 border border-white/15'
+            }`}
+          >
+            <Film size={11} />
+            <span>{t.musicVideoBadge}</span>
+          </span>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-white truncate">
+              {currentCandidate?.title || `${track.artist} - ${track.title}`}
+            </div>
+            {currentCandidate?.author && (
+              <div className="text-[10px] text-white/55 truncate">
+                {currentCandidate.author}
+              </div>
+            )}
           </div>
         </div>
-      )}
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {videoCandidates.length > 1 && onSelectVideoCandidate && (
+            <button
+              type="button"
+              data-testid="video-switch-candidate-btn"
+              onClick={handleCycleCandidate}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-medium text-white transition cursor-pointer"
+              title={t.switchVideoVersion}
+            >
+              <RefreshCw size={11} />
+              <span>
+                {t.switchVideoVersion}{' '}
+                {currentIdx >= 0 ? `${currentIdx + 1}/${videoCandidates.length}` : ''}
+              </span>
+            </button>
+          )}
+
+          {onSwitchToAudioMode && track.audioUrl && (
+            <button
+              type="button"
+              data-testid="video-to-audio-btn"
+              onClick={onSwitchToAudioMode}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-medium text-white transition cursor-pointer"
+              title={t.audioMasterMode}
+            >
+              <Disc3 size={11} />
+              <span className="hidden sm:inline">{t.audioMasterMode}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            data-testid="video-fullscreen-btn"
+            onClick={handleFullscreen}
+            className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition cursor-pointer"
+            aria-label="Fullscreen video"
+          >
+            <Maximize2 size={13} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

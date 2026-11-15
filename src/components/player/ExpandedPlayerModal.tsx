@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronDown,
   Download,
+  Film,
   Gauge,
   Heart,
   ListPlus,
@@ -64,6 +65,7 @@ interface ExpandedPlayerModalProps {
   onAddToPlaylist: (playlistId: string, track: Track) => void;
   onOpenArtist?: (artistName: string) => void;
   onOpenLyricCard?: (lineIndex?: number) => void;
+  onWatchVideo?: () => void;
   normalizationEnabled?: boolean;
   onToggleNormalization?: () => void;
   vocalReductionEnabled?: boolean;
@@ -122,6 +124,7 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   lowCpuMode = false,
   onOpenArtist,
   onOpenLyricCard,
+  onWatchVideo,
   normalizationEnabled = true,
   onToggleNormalization,
   vocalReductionEnabled = false,
@@ -223,6 +226,22 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {onWatchVideo && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onWatchVideo();
+              }}
+              data-testid="expanded-watch-video-btn"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-text)] text-xs font-semibold cursor-pointer hover:brightness-110 transition-colors"
+              title={t.watchMusicVideo}
+            >
+              <Film size={14} />
+              <span className="hidden sm:inline">{t.watchMusicVideo}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleExportCard}

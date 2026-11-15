@@ -34,6 +34,7 @@ interface YTPlayerInstance {
     videoIdOrOptions: string | { videoId: string; startSeconds?: number }
   ) => void;
   setVolume: (volume: number) => void;
+  unMute?: () => void;
   setPlaybackRate?: (rate: number) => void;
   getCurrentTime: () => number;
   getDuration: () => number;
@@ -125,6 +126,8 @@ export class AudioEngine {
   private onTrackEndedCallbacks: Set<() => void> = new Set();
   private onDurationChangeCallbacks: Set<(duration: number) => void> = new Set();
   private onErrorCallbacks: Set<(message: string) => void> = new Set();
+  private onVideoIdCallbacks: Set<(videoId: string) => void> = new Set();
+  private currentYtVideoId = '';
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -651,6 +654,7 @@ export class AudioEngine {
     if (this.candidateIndex < this.candidateIds.length && this.ytPlayer && this.ytReady) {
       const nextId = this.candidateIds[this.candidateIndex];
       try {
+        this.notifyVideoId(nextId);
         this.ytPlayer.loadVideoById(nextId);
         this.ytPlayer.playVideo();
         this.armYouTubeWatchdog(gen);
@@ -679,7 +683,7 @@ export class AudioEngine {
     const deadline = Date.now() + 260;
     while (Date.now() < deadline) {
       const rect = this.ytHostElement.getBoundingClientRect();
-      if (rect.width >= 150 && rect.height >= 150) {
+      if (rect.width >= 150 && rect.height >= 120) {
         return;
       }
       await new Promise<void>((res) => window.setTimeout(res, 24));
@@ -813,6 +817,7 @@ export class AudioEngine {
     if (gen !== this.playGeneration) return;
 
     const firstVideoId = validIds[0];
+    this.notifyVideoId(firstVideoId);
 
     if (this.ytPlayer && this.ytReady) {
       try {
@@ -882,6 +887,7 @@ export class AudioEngine {
         onReady: (event) => {
           if (gen !== this.playGeneration || this.activeBackend !== 'youtube') return;
           this.ytReady = true;
+          event.target.unMute?.();
           event.target.setVolume(Math.round(this.volume * 100));
           try {
             event.target.setPlaybackRate?.(this.playbackRate);
@@ -1399,6 +1405,36 @@ export class AudioEngine {
   public subscribeError(callback: (message: string) => void) {
     this.onErrorCallbacks.add(callback);
     return () => this.onErrorCallbacks.delete(callback);
+  }
+
+  public subscribeVideoIdChange(callback: (videoId: string) => void) {
+    this.onVideoIdCallbacks.add(callback);
+    return () => this.onVideoIdCallbacks.delete(callback);
+  }
+
+  public getCurrentYouTubeVideoId(): string {
+    return this.currentYtVideoId;
+  }
+
+  public async switchYouTubeCandidate(
+    videoId: string,
+    candidateIds: string[],
+    duration: number,
+    bpm = 120,
+    resumeAt?: number
+  ): Promise<void> {
+    if (!videoId) return;
+    const ordered = [videoId, ...candidateIds.filter((id) => id && id !== videoId)];
+    const resumeSec =
+      typeof resumeAt === 'number' && Number.isFinite(resumeAt)
+        ? Math.max(0, Math.floor(resumeAt))
+        : Math.max(0, Math.floor(this.currentTime));
+    await this.playYouTubeTrack(ordered, duration, bpm, resumeSec);
+  }
+
+  private notifyVideoId(videoId: string) {
+    this.currentYtVideoId = videoId;
+    this.onVideoIdCallbacks.forEach((cb) => cb(videoId));
   }
 
   private notifyTime() {

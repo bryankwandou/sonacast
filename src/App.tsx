@@ -31,6 +31,7 @@ import {
   fetchLyricsWithMeta,
   findMasterAudio,
   resolveFullTrackStream,
+  resolveMusicVideoStream,
   searchAlbumsOnline,
   searchPlaylistsOnline,
   searchTracksOnline
@@ -397,11 +398,23 @@ export default function App() {
   // Stream resolution & official backend state
   const [isYouTubeActive, setIsYouTubeActive] = useState(false);
   const [resolvingTrackId, setResolvingTrackId] = useState<string | null>(null);
+  const [resolvingVideoTrackId, setResolvingVideoTrackId] = useState<string | null>(null);
+  const [activeYtVideoId, setActiveYtVideoId] = useState<string>(() =>
+    sharedAudioEngine.getCurrentYouTubeVideoId()
+  );
   const [streamError, setStreamError] = useState<string | null>(null);
 
   const handleNextRef = useRef<(fromEnded?: boolean) => void>(() => { });
   const handleTogglePlayRef = useRef<() => void>(() => { });
   const selectionCounterRef = useRef(0);
+  const mvResolveAbortRef = useRef<AbortController | null>(null);
+  const mvSelectionTokenRef = useRef(0);
+  const stageModeRef = useRef(stageMode);
+  const isStageVisibleRef = useRef(false);
+  useEffect(() => {
+    stageModeRef.current = stageMode;
+    isStageVisibleRef.current = isStageOpen || currentTab === 'visualizer';
+  }, [stageMode, isStageOpen, currentTab]);
   const resolvingTrackIdRef = useRef<string | null>(null);
   const resolvingStartedAtRef = useRef(0);
   const resolveAbortRef = useRef<AbortController | null>(null);
@@ -698,6 +711,7 @@ export default function App() {
 
   useEffect(() => {
     const unsubTime = sharedAudioEngine.subscribeTimeUpdate((t) => setCurrentTime(t));
+    const unsubVid = sharedAudioEngine.subscribeVideoIdChange((vid) => setActiveYtVideoId(vid));
     const unsubState = sharedAudioEngine.subscribeStateChange((p) => {
       setIsPlaying(p);
       if (p) {
@@ -769,6 +783,7 @@ export default function App() {
       unsubEnd();
       unsubDur();
       unsubErr();
+      unsubVid();
       document.removeEventListener('visibilitychange', handleWakeSync);
       document.removeEventListener('resume', handleWakeSync);
       window.removeEventListener('pageshow', handleWakeSync);
@@ -785,13 +800,28 @@ export default function App() {
       const host = ytHostRef.current;
       if (!host) return;
 
+      if (document.fullscreenElement === host) {
+        host.style.position = 'fixed';
+        host.style.left = '0px';
+        host.style.top = '0px';
+        host.style.width = '100vw';
+        host.style.height = '100vh';
+        host.style.opacity = '1';
+        host.style.pointerEvents = 'auto';
+        host.style.borderRadius = '0px';
+        host.style.clipPath = 'none';
+        host.style.zIndex = '9999';
+        return;
+      }
+
       if (!isYouTubeActive) {
         host.style.left = '-9999px';
         host.style.top = '-9999px';
-        host.style.width = '1px';
-        host.style.height = '1px';
+        host.style.width = '320px';
+        host.style.height = '180px';
         host.style.opacity = '0';
         host.style.pointerEvents = 'none';
+        host.style.clipPath = 'none';
         return;
       }
 
@@ -800,15 +830,37 @@ export default function App() {
       if (!target) {
         host.style.left = '-9999px';
         host.style.top = '-9999px';
-        host.style.width = '200px';
-        host.style.height = '200px';
-        host.style.opacity = '0';
+        host.style.width = '320px';
+        host.style.height = '180px';
+        host.style.opacity = '0.001';
         host.style.pointerEvents = 'none';
+        host.style.clipPath = 'none';
         return;
       }
 
       const rect = target.getBoundingClientRect();
-      if (rect.width >= 180 && rect.height >= 180) {
+      if (rect.width >= 150 && rect.height >= 135) {
+        if (isStageVisible && isVideoStage && mainScrollRef.current) {
+          const mainRect = mainScrollRef.current.getBoundingClientRect();
+          if (rect.bottom <= mainRect.top + 8 || rect.top >= mainRect.bottom - 8) {
+            host.style.left = '-9999px';
+            host.style.top = '-9999px';
+            host.style.width = '320px';
+            host.style.height = '180px';
+            host.style.opacity = '0.001';
+            host.style.pointerEvents = 'none';
+            host.style.clipPath = 'none';
+            return;
+          }
+          const clipTop = Math.max(0, mainRect.top - rect.top);
+          const clipBottom = Math.max(0, rect.bottom - mainRect.bottom);
+          host.style.clipPath =
+            clipTop > 0 || clipBottom > 0
+              ? `inset(${clipTop}px 0px ${clipBottom}px 0px round 1rem)`
+              : 'none';
+        } else {
+          host.style.clipPath = 'none';
+        }
         host.style.left = `${rect.left}px`;
         host.style.top = `${rect.top}px`;
         host.style.width = `${rect.width}px`;
@@ -819,14 +871,17 @@ export default function App() {
       } else {
         host.style.left = '-9999px';
         host.style.top = '-9999px';
-        host.style.width = '200px';
-        host.style.height = '200px';
-        host.style.opacity = '0';
+        host.style.width = '320px';
+        host.style.height = '180px';
+        host.style.opacity = '0.001';
         host.style.pointerEvents = 'none';
+        host.style.clipPath = 'none';
       }
     };
 
     syncPosition();
+    const rafId = window.requestAnimationFrame(syncPosition);
+    const snapTimer = window.setTimeout(syncPosition, 120);
 
     const ro = new ResizeObserver(syncPosition);
     if (videoSlotRef.current) ro.observe(videoSlotRef.current);
@@ -834,13 +889,17 @@ export default function App() {
 
     window.addEventListener('resize', syncPosition);
     window.addEventListener('scroll', syncPosition, true);
+    document.addEventListener('fullscreenchange', syncPosition);
 
     return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(snapTimer);
       ro.disconnect();
       window.removeEventListener('resize', syncPosition);
       window.removeEventListener('scroll', syncPosition, true);
+      document.removeEventListener('fullscreenchange', syncPosition);
     };
-  }, [isYouTubeActive, stageMode, currentTab, isStageVisible]);
+  }, [isYouTubeActive, stageMode, currentTab, isStageVisible, resolvingVideoTrackId]);
 
   // Periodically check active Solana cluster balance & sync wallet switches (throttled when idle/hidden)
   useEffect(() => {
@@ -1054,12 +1113,171 @@ export default function App() {
     }
   }, [resolveLyricsForTrack]);
 
+  const activateMusicVideoForTrack = useCallback(
+    async (track: Track, explicitResumeSec?: number) => {
+      if (!track) return;
+      if (track.videoUrl && !track.videoUrl.includes('mixkit.co') && !track.youtubeId) {
+        return;
+      }
+
+      const mvToken = ++mvSelectionTokenRef.current;
+      if (mvResolveAbortRef.current) {
+        mvResolveAbortRef.current.abort();
+      }
+      const ac = new AbortController();
+      mvResolveAbortRef.current = ac;
+
+      const resumeAt =
+        typeof explicitResumeSec === 'number' && Number.isFinite(explicitResumeSec)
+          ? Math.max(0, Math.floor(explicitResumeSec))
+          : Math.max(0, Math.floor(currentTimeRef.current));
+
+      if (track.musicVideoCandidates && track.musicVideoCandidates.length > 0) {
+        const candidateIds = track.musicVideoCandidates.map((c) => c.videoId);
+        const activeId = sharedAudioEngine.getCurrentYouTubeVideoId();
+        if (isYouTubeActive && candidateIds.includes(activeId)) {
+          return;
+        }
+        setResolvingVideoTrackId(null);
+        setIsYouTubeActive(true);
+        await sharedAudioEngine.playYouTubeTrack(
+          candidateIds,
+          track.musicVideoCandidates[0].duration || track.duration,
+          track.bpm,
+          resumeAt
+        );
+        setIsPlaying(true);
+        return;
+      }
+
+      setResolvingVideoTrackId(track.id);
+      try {
+        const resolved = await resolveMusicVideoStream(
+          track.title,
+          track.artist,
+          track.duration,
+          ac.signal
+        );
+        if (
+          ac.signal.aborted ||
+          mvToken !== mvSelectionTokenRef.current ||
+          currentTrackRef.current.id !== track.id
+        ) {
+          return;
+        }
+        if (!resolved || resolved.candidateIds.length === 0) {
+          showToast(t.videoUnavailable, 'warning');
+          return;
+        }
+        setCurrentTrack((prev) =>
+          prev.id === track.id
+            ? {
+                ...prev,
+                musicVideoId: resolved.youtubeId,
+                musicVideoCandidates: resolved.candidates
+              }
+            : prev
+        );
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === track.id
+              ? {
+                  ...q,
+                  musicVideoId: resolved.youtubeId,
+                  musicVideoCandidates: resolved.candidates
+                }
+              : q
+          )
+        );
+        setIsYouTubeActive(true);
+        const liveResume =
+          typeof explicitResumeSec === 'number' && Number.isFinite(explicitResumeSec)
+            ? Math.max(0, Math.floor(explicitResumeSec))
+            : Math.max(0, Math.floor(currentTimeRef.current));
+        await sharedAudioEngine.playYouTubeTrack(
+          resolved.candidateIds,
+          resolved.duration || track.duration,
+          track.bpm,
+          liveResume
+        );
+        setIsPlaying(true);
+      } catch {
+        if (!ac.signal.aborted && mvToken === mvSelectionTokenRef.current) {
+          showToast(t.videoUnavailable, 'warning');
+        }
+      } finally {
+        if (mvToken === mvSelectionTokenRef.current) {
+          setResolvingVideoTrackId(null);
+        }
+      }
+    },
+    [isYouTubeActive, showToast, t.videoUnavailable]
+  );
+
+  const handleSelectVideoCandidate = useCallback((videoId: string) => {
+    const tr = currentTrackRef.current;
+    const candidateIds = (tr.musicVideoCandidates || []).map((c) => c.videoId);
+    if (!videoId) return;
+    setIsYouTubeActive(true);
+    void sharedAudioEngine.switchYouTubeCandidate(
+      videoId,
+      candidateIds.length > 0 ? candidateIds : [videoId],
+      tr.duration,
+      tr.bpm,
+      Math.max(0, Math.floor(currentTimeRef.current))
+    );
+    setIsPlaying(true);
+  }, []);
+
+  const handleSwitchToAudioMaster = useCallback(() => {
+    const tr = currentTrackRef.current;
+    ++mvSelectionTokenRef.current;
+    if (mvResolveAbortRef.current) {
+      mvResolveAbortRef.current.abort();
+      mvResolveAbortRef.current = null;
+    }
+    setResolvingVideoTrackId(null);
+
+    if (tr.audioUrl) {
+      const resumeAt = Math.max(0, Math.floor(currentTimeRef.current));
+      setIsYouTubeActive(false);
+      sharedAudioEngine.playTrack(tr.duration, tr.bpm, tr.audioUrl);
+      if (resumeAt > 0) {
+        sharedAudioEngine.seek(resumeAt);
+      }
+      setStageMode('music-lyric');
+      setIsPlaying(true);
+      return;
+    }
+
+    setStageMode('music-lyric');
+  }, []);
+
+  const handleRequestVideoFullscreen = useCallback(() => {
+    const host = ytHostRef.current;
+    if (!host) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      host.requestFullscreen?.().catch(() => {});
+    }
+  }, []);
+
   const handleSelectTrack = useCallback(
     async (
       track: Track,
       options?: { skipHistoryPush?: boolean; fromEnded?: boolean; fromContextList?: boolean }
     ) => {
       const selectionSeq = ++selectionCounterRef.current;
+      ++mvSelectionTokenRef.current;
+      if (mvResolveAbortRef.current) {
+        mvResolveAbortRef.current.abort();
+        mvResolveAbortRef.current = null;
+      }
+      setResolvingVideoTrackId(null);
+      const isVideoStageActive =
+        isStageVisibleRef.current &&
+        (stageModeRef.current === 'video-only' || stageModeRef.current === 'video-lyric');
       resolveAbortRef.current?.abort();
       resolveAbortRef.current = null;
       resolvingTrackIdRef.current = null;
@@ -1208,6 +1426,9 @@ export default function App() {
         setResolvingTrackId(null);
         setIsYouTubeActive(false);
         sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl);
+        if (isVideoStageActive) {
+          void activateMusicVideoForTrack(track, 0);
+        }
         return;
       }
 
@@ -1226,6 +1447,9 @@ export default function App() {
         setCurrentTrack(updatedTrack);
         setQueue((prevQ) => prevQ.map((t) => (t.id === track.id ? updatedTrack : t)));
         sharedAudioEngine.playTrack(updatedTrack.duration, updatedTrack.bpm, updatedTrack.audioUrl);
+        if (isVideoStageActive) {
+          void activateMusicVideoForTrack(updatedTrack, 0);
+        }
         return;
       }
 
@@ -1240,8 +1464,12 @@ export default function App() {
       if (existingIds.length > 0) {
         resolvingTrackIdRef.current = null;
         setResolvingTrackId(null);
-        setIsYouTubeActive(true);
-        sharedAudioEngine.playYouTubeTrack(existingIds, track.duration, track.bpm);
+        if (isVideoStageActive) {
+          void activateMusicVideoForTrack(track, 0);
+        } else {
+          setIsYouTubeActive(true);
+          sharedAudioEngine.playYouTubeTrack(existingIds, track.duration, track.bpm);
+        }
         if (existingIds.length < 4) {
           const activeGen = sharedAudioEngine.getPlayGeneration();
           resolveFullTrackStream(track.title, track.artist, track.duration)
@@ -1263,12 +1491,22 @@ export default function App() {
       setResolvingTrackId(track.id);
       setIsYouTubeActive(true);
       try {
-        const resolved = await resolveFullTrackStream(
-          track.title,
-          track.artist,
-          track.duration,
-          abortCtrl.signal
-        );
+        const mvResolved = isVideoStageActive
+          ? await resolveMusicVideoStream(
+              track.title,
+              track.artist,
+              track.duration,
+              abortCtrl.signal
+            )
+          : null;
+        const resolved =
+          mvResolved ||
+          (await resolveFullTrackStream(
+            track.title,
+            track.artist,
+            track.duration,
+            abortCtrl.signal
+          ));
         if (selectionSeq !== selectionCounterRef.current || abortCtrl.signal.aborted) return;
 
         resolvingTrackIdRef.current = null;
@@ -1280,7 +1518,13 @@ export default function App() {
             youtubeId: resolved.youtubeId,
             candidateVideoIds: resolved.candidateIds,
             duration: resolved.duration,
-            streamSource: 'official-stream'
+            streamSource: 'official-stream',
+            ...(mvResolved
+              ? {
+                  musicVideoId: mvResolved.youtubeId,
+                  musicVideoCandidates: mvResolved.candidates
+                }
+              : {})
           };
           setCurrentTrack((prev) =>
             prev.id === track.id
@@ -1336,7 +1580,7 @@ export default function App() {
           setResolvingTrackId(null);
         }
       }
-    }, [buildAutoSimilarContext, gatherLocalCandidatePool, refillRadioQueueIfNeeded, resolveLyricsForTrack]);
+    }, [activateMusicVideoForTrack, buildAutoSimilarContext, gatherLocalCandidatePool, refillRadioQueueIfNeeded, resolveLyricsForTrack]);
 
   const handleSelectRadio = (station: RadioStation) => {
     handleSelectTrack(station.currentTrack);
@@ -1376,8 +1620,7 @@ export default function App() {
         'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=800&auto=format&fit=crop',
       audioUrl: objectUrl,
       streamSource: 'local-upload',
-      videoUrl:
-        'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
+
       genre: 'Custom Audio',
       bpm: 120,
       artistSolanaAddress: '',
@@ -2053,6 +2296,44 @@ export default function App() {
     [runCloudMutation]
   );
 
+  const handleSaveQueueAsPlaylist = useCallback(() => {
+    const seen = new Set<string>();
+    const combined: Track[] = [];
+    for (const item of [currentTrack, ...manualQueue, ...queue]) {
+      if (!item?.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      combined.push(item);
+      if (combined.length >= 40) break;
+    }
+    if (combined.length === 0) return;
+    const baseName = playbackContext?.title ? `${playbackContext.title} Mix` : 'Queue Mix';
+    const plId = `alb-q-${Math.random().toString(36).slice(2, 8)}`;
+    setRecState((prev) => {
+      const next: RecommendationState = {
+        ...prev,
+        playlists: [
+          {
+            id: plId,
+            name: baseName,
+            description: `${combined.length} tracks saved from queue`,
+            coverUrl: combined[0]?.coverUrl || '',
+            tracks: combined,
+            createdAt: prev.playlists.length + 1
+          },
+          ...prev.playlists
+        ]
+      };
+      saveRecommendationState(next);
+      return next;
+    });
+    void runCloudMutation('create_album', {
+      name: baseName,
+      description: `${combined.length} tracks saved from queue`,
+      initialTrack: combined[0]
+    });
+    showToast(`${t.queueSavedPlaylist}: ${baseName}`, 'success');
+  }, [currentTrack, manualQueue, queue, playbackContext, runCloudMutation, showToast, t.queueSavedPlaylist]);
+
   const handleAddTrackToPlaylist = useCallback(
     (playlistId: string, track: Track) => {
       setRecState((prev) => {
@@ -2534,12 +2815,16 @@ export default function App() {
     setStageMode(mode);
     setIsStageOpen(true);
     setIsFloatingMinimized(false);
+    mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     if (
       (mode === 'lyrics-only' || mode === 'video-lyric' || mode === 'music-lyric') &&
       currentTrackRef.current.lyrics.length === 0 &&
       lyricsStatus === 'idle'
     ) {
       resolveLyricsForTrack(currentTrackRef.current);
+    }
+    if (mode === 'video-only' || mode === 'video-lyric') {
+      void activateMusicVideoForTrack(currentTrackRef.current);
     }
   };
 
@@ -3327,15 +3612,24 @@ export default function App() {
                     )}
 
                     {stageMode === 'video-only' && (
-                      <div className="lg:col-span-12" data-testid="stage-pane-video-only">
+                      <div
+                        className="lg:col-span-12 h-[300px] sm:h-[360px] xl:h-[430px]"
+                        data-testid="stage-pane-video-only"
+                      >
                         <VideoPlayer
-                          videoUrl={currentTrack.videoUrl}
-                          coverUrl={currentTrack.coverUrl}
-                          title={currentTrack.title}
-                          artist={currentTrack.artist}
+                          track={currentTrack}
                           isPlaying={isPlaying}
-                          isOfficialStreamActive={isYouTubeActive}
-                          officialSlotRef={videoSlotRef}
+                          currentTime={currentTime}
+                          hasLiveYouTubeStage={isYouTubeActive}
+                          isResolvingVideo={resolvingVideoTrackId === currentTrack.id}
+                          videoCandidates={currentTrack.musicVideoCandidates || []}
+                          activeVideoId={activeYtVideoId || currentTrack.musicVideoId || currentTrack.youtubeId || ''}
+                          onSelectVideoCandidate={handleSelectVideoCandidate}
+                          onRetryVideo={() => void activateMusicVideoForTrack(currentTrack)}
+                          onSwitchToAudioMode={handleSwitchToAudioMaster}
+                          onRequestHostFullscreen={handleRequestVideoFullscreen}
+                          lowCpuMode={lowCpuMode}
+                          videoSlotRef={videoSlotRef}
                         />
                       </div>
                     )}
@@ -3368,15 +3662,24 @@ export default function App() {
 
                     {stageMode === 'video-lyric' && (
                       <>
-                        <div className="lg:col-span-7" data-testid="stage-pane-video-lyric-video">
+                        <div
+                          className="lg:col-span-7 h-[280px] sm:h-[340px] xl:h-[400px]"
+                          data-testid="stage-pane-video-lyric-video"
+                        >
                           <VideoPlayer
-                            videoUrl={currentTrack.videoUrl}
-                            coverUrl={currentTrack.coverUrl}
-                            title={currentTrack.title}
-                            artist={currentTrack.artist}
+                            track={currentTrack}
                             isPlaying={isPlaying}
-                            isOfficialStreamActive={isYouTubeActive}
-                            officialSlotRef={videoSlotRef}
+                            currentTime={currentTime}
+                            hasLiveYouTubeStage={isYouTubeActive}
+                            isResolvingVideo={resolvingVideoTrackId === currentTrack.id}
+                            videoCandidates={currentTrack.musicVideoCandidates || []}
+                            activeVideoId={activeYtVideoId || currentTrack.musicVideoId || currentTrack.youtubeId || ''}
+                            onSelectVideoCandidate={handleSelectVideoCandidate}
+                            onRetryVideo={() => void activateMusicVideoForTrack(currentTrack)}
+                            onSwitchToAudioMode={handleSwitchToAudioMaster}
+                            onRequestHostFullscreen={handleRequestVideoFullscreen}
+                            lowCpuMode={lowCpuMode}
+                            videoSlotRef={videoSlotRef}
                           />
                         </div>
                         <div
@@ -3514,6 +3817,10 @@ export default function App() {
                     onShareTrack={handleShareTrack}
                     onOpenLyricCard={handleOpenLyricCard}
                     onOpenArtist={handleOpenArtistSpotlight}
+                    onWatchVideo={() => {
+                      setCurrentTab('discover');
+                      handleSelectStageMode('video-lyric');
+                    }}
                   />
                 )}
 
@@ -3668,6 +3975,8 @@ export default function App() {
                 isYouTubeActive &&
                 (!isStageVisible || (stageMode !== 'video-only' && stageMode !== 'video-lyric'))
               }
+              onExpandVideoStage={() => handleSelectStageMode('video-lyric')}
+              onSaveQueueAsPlaylist={handleSaveQueueAsPlaylist}
               lyricsStatus={lyricsStatus}
               lyricsSource={lyricsSource}
               lyricsSynced={lyricsSynced}
@@ -3831,6 +4140,7 @@ export default function App() {
         isSavedOffline={isTrackSavedOffline(offlineAudioKeys, currentTrack.audioUrl)}
         onToggleSaveOffline={() => void handleToggleSaveOffline(currentTrack)}
         onShareTrack={() => void handleShareTrack(currentTrack)}
+        onWatchVideo={() => handleSelectStageMode('video-lyric')}
       />
 
       {/* Resso / Spotify Style Shareable Lyric Card Studio */}

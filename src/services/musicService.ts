@@ -1,4 +1,4 @@
-import type { Track, LyricLine, CatalogAlbum, CatalogPlaylist } from '../types';
+import type { Track, LyricLine, CatalogAlbum, CatalogPlaylist, MusicVideoCandidate } from '../types';
 import { ARTISTS_DIRECTORY } from '../data/artists800';
 
 export function parseLrc(lrcText: string): LyricLine[] {
@@ -494,12 +494,13 @@ function createLinkedAbortSignal(
 async function searchSinglePipedMirror(
   baseUrl: string,
   query: string,
-  parentSignal?: AbortSignal
+  parentSignal?: AbortSignal,
+  filter: 'music_songs' | 'videos' = 'music_songs'
 ): Promise<StreamCandidate[]> {
   if (parentSignal?.aborted) return [];
   const { signal, cleanup } = createLinkedAbortSignal(3600, parentSignal);
   try {
-    const url = `${baseUrl}/search?q=${encodeURIComponent(query)}&filter=music_songs`;
+    const url = `${baseUrl}/search?q=${encodeURIComponent(query)}&filter=${filter}`;
     const res = await fetch(url, { signal });
     if (!res.ok) return [];
     const data = await res.json();
@@ -527,13 +528,17 @@ async function searchSinglePipedMirror(
   }
 }
 
-async function searchPipedMusic(query: string, parentSignal?: AbortSignal): Promise<StreamCandidate[]> {
+async function searchPipedMusic(
+  query: string,
+  parentSignal?: AbortSignal,
+  filter: 'music_songs' | 'videos' = 'music_songs'
+): Promise<StreamCandidate[]> {
   if (parentSignal?.aborted) return [];
-  const primary = await searchSinglePipedMirror(PIPED_MIRRORS[0], query, parentSignal);
+  const primary = await searchSinglePipedMirror(PIPED_MIRRORS[0], query, parentSignal, filter);
   if (primary.length >= 3 || parentSignal?.aborted) return primary;
 
   const altBatches = await Promise.allSettled(
-    PIPED_MIRRORS.slice(1).map((mirror) => searchSinglePipedMirror(mirror, query, parentSignal))
+    PIPED_MIRRORS.slice(1).map((mirror) => searchSinglePipedMirror(mirror, query, parentSignal, filter))
   );
   const merged = [...primary];
   const seen = new Set(primary.map((item) => item.videoId));
@@ -605,17 +610,229 @@ async function searchAudiusTracks(query: string): Promise<Track[]> {
   }
 }
 
+const MV_CACHE_STORAGE_KEY = 'sonacast_mv_cache_v1';
+const mvStreamCache = new Map<
+  string,
+  {
+    youtubeId: string;
+    candidateIds: string[];
+    candidates: MusicVideoCandidate[];
+    duration: number;
+  }
+>();
+
+function makeMvCacheKey(title: string, artist: string): string {
+  return `${normalizeText(cleanLyricsTitle(title))}::${normalizeText(cleanLyricsArtist(artist))}`;
+}
+
+function readMvCache(key: string) {
+  const mem = mvStreamCache.get(key);
+  if (mem) return mem;
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(MV_CACHE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<
+      string,
+      {
+        youtubeId: string;
+        candidateIds: string[];
+        candidates: MusicVideoCandidate[];
+        duration: number;
+      }
+    >;
+    const entry = parsed[key];
+    if (entry?.youtubeId && Array.isArray(entry.candidates) && entry.candidates.length > 0) {
+      mvStreamCache.set(key, entry);
+      return entry;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return null;
+}
+
+function writeMvCache(
+  key: string,
+  value: {
+    youtubeId: string;
+    candidateIds: string[];
+    candidates: MusicVideoCandidate[];
+    duration: number;
+  }
+) {
+  mvStreamCache.set(key, value);
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = window.localStorage.getItem(MV_CACHE_STORAGE_KEY);
+    const parsed: Record<string, typeof value> = raw ? JSON.parse(raw) : {};
+    const keys = Object.keys(parsed);
+    if (keys.length >= 140) {
+      delete parsed[keys[0]];
+    }
+    parsed[key] = value;
+    window.localStorage.setItem(MV_CACHE_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+const NON_MV_PENALTY_RE =
+  /\b(lyric\s+video|lyrics|lirik|official\s+audio|audio\s+only|karaoke|instrumental|cover|remix|slowed|reverb|nightcore|sped\s+up|8d|reaction|tutorial|lesson|piano\s+version|guitar\s+tab|1\s+hour)\b/i;
+
+function scoreMusicVideoCandidate(
+  item: StreamCandidate,
+  cleanTitle: string,
+  cleanArtist: string,
+  expectedDuration?: number
+): number {
+  const hay = normalizeText(`${item.title} ${item.author}`);
+  const titleNorm = normalizeText(cleanTitle);
+  const artistNorm = normalizeText(cleanArtist);
+  const rawTitle = (item.title || '').toLowerCase();
+  const rawAuthor = (item.author || '').toLowerCase();
+
+  if (NON_MV_PENALTY_RE.test(rawTitle) && !/\bofficial\s+(?:music\s+)?video\b/i.test(rawTitle)) {
+    return -200;
+  }
+
+  let score = 0;
+
+  if (titleNorm && hay.includes(titleNorm)) {
+    score += 40;
+  } else {
+    const words = titleNorm.split(/\s+/).filter((w) => w.length >= 2);
+    const matched = words.filter((w) => hay.includes(w)).length;
+    if (words.length > 0 && matched === 0) return -300;
+    score += Math.round((matched / Math.max(1, words.length)) * 30);
+  }
+
+  if (artistNorm) {
+    const artistTokens = artistNorm.split(/\s+/).filter((w) => w.length >= 2);
+    if (hay.includes(artistNorm) || normalizeText(item.author).includes(artistNorm)) {
+      score += 32;
+    } else if (artistTokens.some((tok) => hay.includes(tok))) {
+      score += 18;
+    } else {
+      score -= 18;
+    }
+  }
+
+  if (/\bofficial\s+music\s+video\b|\bmusic\s+video\b|\bm\s*\/\s*v\b|\bmv\b/i.test(rawTitle)) {
+    score += 65;
+  } else if (/\bofficial\s+video\b|\bvideo\s+clip\b|\bvideo\s+musik\b/i.test(rawTitle)) {
+    score += 50;
+  }
+
+  if (rawAuthor.includes('vevo')) {
+    score += 34;
+  }
+
+  if (rawAuthor.endsWith('- topic') || rawAuthor.includes(' - topic')) {
+    score -= 95;
+  }
+  if (/\bofficial\s+audio\b|\baudio\b|\blyrics?\b/i.test(rawTitle)) {
+    score -= 70;
+  }
+  if (/\blive\b|\bconcert\b|\btour\b|\bfancam\b/i.test(rawTitle)) {
+    score -= 22;
+  }
+
+  if (expectedDuration && expectedDuration > 40 && item.duration > 40) {
+    const diff = Math.abs(item.duration - expectedDuration);
+    if (diff <= 15) score += 20;
+    else if (diff <= 50) score += 12;
+    else if (diff > 180) score -= 35;
+  }
+
+  return score;
+}
+
+export async function resolveMusicVideoStream(
+  title: string,
+  artist: string,
+  expectedDuration?: number,
+  parentSignal?: AbortSignal
+): Promise<{
+  youtubeId: string;
+  candidateIds: string[];
+  candidates: MusicVideoCandidate[];
+  duration: number;
+} | null> {
+  if (parentSignal?.aborted) return null;
+  const cacheKey = makeMvCacheKey(title, artist);
+  const cached = readMvCache(cacheKey);
+  if (cached) return cached;
+
+  const cleanTitle = cleanLyricsTitle(title);
+  const cleanArtist = cleanLyricsArtist(artist);
+  const mvQuery = `${cleanTitle} ${cleanArtist}`.trim();
+
+  const [ytRes, pipedApiRes] = await Promise.allSettled([
+    searchVercelYtApi(`${mvQuery} official music video`, 'yt', parentSignal, 'video'),
+    searchVercelYtApi(mvQuery, undefined, parentSignal, 'video')
+  ]);
+
+  const rawPool: StreamCandidate[] = [];
+  const seenIds = new Set<string>();
+  const pushBatch = (items: StreamCandidate[]) => {
+    for (const item of items) {
+      if (!item.videoId || seenIds.has(item.videoId)) continue;
+      seenIds.add(item.videoId);
+      rawPool.push(item);
+    }
+  };
+
+  if (ytRes.status === 'fulfilled') pushBatch(ytRes.value);
+  if (pipedApiRes.status === 'fulfilled') pushBatch(pipedApiRes.value);
+
+  if (rawPool.length < 3 && !parentSignal?.aborted) {
+    const directPiped = await searchPipedMusic(`${mvQuery} official music video`, parentSignal, 'videos');
+    pushBatch(directPiped);
+  }
+
+  if (rawPool.length === 0) return null;
+
+  const ranked = rawPool
+    .map((item) => ({
+      item,
+      score: scoreMusicVideoCandidate(item, cleanTitle, cleanArtist, expectedDuration)
+    }))
+    .filter((entry) => entry.score > -100)
+    .sort((a, b) => b.score - a.score);
+
+  const usable = (ranked.length > 0 ? ranked.map((r) => r.item) : rawPool).slice(0, 8);
+  if (usable.length === 0) return null;
+
+  const result = {
+    youtubeId: usable[0].videoId,
+    candidateIds: usable.map((c) => c.videoId),
+    candidates: usable.map((c) => ({
+      videoId: c.videoId,
+      title: c.title,
+      author: c.author,
+      duration: c.duration,
+      thumbnail: c.thumbnail
+    })),
+    duration: usable[0].duration || expectedDuration || 0
+  };
+  writeMvCache(cacheKey, result);
+  return result;
+}
+
 async function searchVercelYtApi(
   query: string,
   mode?: 'yt',
-  parentSignal?: AbortSignal
+  parentSignal?: AbortSignal,
+  intent?: 'audio' | 'video'
 ): Promise<StreamCandidate[]> {
   if (parentSignal?.aborted) return [];
   const { signal, cleanup } = createLinkedAbortSignal(5500, parentSignal);
   try {
     const endpoint = getApiEndpoint('/api/yt-search');
     const modeParam = mode ? `&mode=${mode}` : '';
-    const res = await fetch(`${endpoint}?q=${encodeURIComponent(query)}${modeParam}`, {
+    const intentParam = intent ? `&intent=${intent}` : '';
+    const res = await fetch(`${endpoint}?q=${encodeURIComponent(query)}${modeParam}${intentParam}`, {
       signal
     });
     if (!res.ok) return [];
@@ -1099,8 +1316,6 @@ function buildTrackFromUnified(
       coverUrl,
       audioUrl: masterMatch.audioUrl,
       streamSource: 'studio-master',
-      videoUrl:
-        'https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-with-changing-colors-41618-large.mp4',
       genre: item.genre || 'Pop',
       bpm: 120,
       artistSolanaAddress: '',

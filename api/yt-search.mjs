@@ -19,9 +19,10 @@ function isNonOriginalTitle(title, queryLower) {
   return false;
 }
 
-async function queryPipedMusicSongs(q, queryLower) {
+async function queryPipedMusicSongs(q, queryLower, intent = 'audio') {
   try {
-    const pipedUrl = `https://api.piped.private.coffee/search?q=${encodeURIComponent(q)}&filter=music_songs`;
+    const filter = intent === 'video' ? 'videos' : 'music_songs';
+    const pipedUrl = `https://api.piped.private.coffee/search?q=${encodeURIComponent(q)}&filter=${filter}`;
     const pipedRes = await fetch(pipedUrl, { signal: AbortSignal.timeout(5000) });
     if (!pipedRes.ok) return [];
     const pipedData = await pipedRes.json();
@@ -64,6 +65,7 @@ export default async function handler(req, res) {
 
   const q = typeof req.query?.q === 'string' ? req.query.q.trim() : '';
   const mode = typeof req.query?.mode === 'string' ? req.query.mode.trim() : '';
+  const intent = req.query?.intent === 'video' ? 'video' : 'audio';
   if (!q) {
     res.status(400).json({ error: 'Missing query parameter q', items: [] });
     return;
@@ -77,7 +79,7 @@ export default async function handler(req, res) {
   };
 
   if (mode !== 'yt') {
-    const cleaned = await queryPipedMusicSongs(q, queryLower);
+    const cleaned = await queryPipedMusicSongs(q, queryLower, intent);
     if (cleaned.length >= 4) {
       sendCached({ source: 'piped', items: cleaned });
       return;
@@ -85,7 +87,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${q} official audio`)}`;
+    const hasVideoHint = /\b(official\s+(music\s+)?video|music\s+video|mv)\b/i.test(q);
+    const searchQuery =
+      intent === 'video'
+        ? hasVideoHint
+          ? q
+          : `${q} official music video`
+        : `${q} official audio`;
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
     const ytRes = await fetch(searchUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -95,7 +104,7 @@ export default async function handler(req, res) {
     });
 
     if (!ytRes.ok) {
-      const pipedFallback = await queryPipedMusicSongs(q, queryLower);
+      const pipedFallback = await queryPipedMusicSongs(q, queryLower, intent);
       sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
       return;
     }
@@ -117,7 +126,7 @@ export default async function handler(req, res) {
         });
         return;
       }
-      const pipedFallback = await queryPipedMusicSongs(q, queryLower);
+      const pipedFallback = await queryPipedMusicSongs(q, queryLower, intent);
       sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
       return;
     }
@@ -149,7 +158,7 @@ export default async function handler(req, res) {
     }
 
     if (items.length < 2) {
-      const pipedFallback = await queryPipedMusicSongs(q, queryLower);
+      const pipedFallback = await queryPipedMusicSongs(q, queryLower, intent);
       if (pipedFallback.length > items.length) {
         sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
         return;
@@ -158,7 +167,7 @@ export default async function handler(req, res) {
 
     sendCached({ source: 'yt-html', items: items.slice(0, 20) }, items.length > 0 ? 86400 : 1800);
   } catch {
-    const pipedFallback = await queryPipedMusicSongs(q, queryLower);
+    const pipedFallback = await queryPipedMusicSongs(q, queryLower, intent);
     sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
   }
 }

@@ -132,6 +132,16 @@ export interface TranslationKeys {
   searchAlbumsTab: string;
   searchPlaylistsTab: string;
   topDailyAlbums: string;
+  watchMusicVideo: string;
+  musicVideoBadge: string;
+  switchVideoVersion: string;
+  findingMusicVideo: string;
+  videoUnavailable: string;
+  audioMasterMode: string;
+  saveQueuePlaylist: string;
+  queueSavedPlaylist: string;
+  jumpBackIn: string;
+  expandVideoStage: string;
   topDailyPlaylists: string;
   moodChoicesLabel: string;
   instantResults: string;
@@ -379,6 +389,16 @@ const EN_BASE: TranslationKeys = {
   searchAlbumsTab: 'Albums',
   searchPlaylistsTab: 'Playlists',
   topDailyAlbums: 'Top Daily Albums',
+  watchMusicVideo: 'Watch Video',
+  musicVideoBadge: 'Music Video',
+  switchVideoVersion: 'Switch Video',
+  findingMusicVideo: 'Finding Official Music Video...',
+  videoUnavailable: 'Music video embed unavailable for this track',
+  audioMasterMode: 'Studio Audio',
+  saveQueuePlaylist: 'Save Queue',
+  queueSavedPlaylist: 'Queue saved as playlist',
+  jumpBackIn: 'Jump Back In',
+  expandVideoStage: 'Theater Video',
   topDailyPlaylists: 'Top Daily Playlists',
   moodChoicesLabel: 'Mood & Vibe',
   instantResults: 'Instant Matches',
@@ -598,6 +618,16 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     searchAlbumsTab: 'Album',
     searchPlaylistsTab: 'Playlist',
     topDailyAlbums: 'Album Top Harian',
+    watchMusicVideo: 'Tonton Video',
+    musicVideoBadge: 'Video Musik',
+    switchVideoVersion: 'Ganti Versi Video',
+    findingMusicVideo: 'Mencari Video Musik Resmi...',
+    videoUnavailable: 'Video musik tidak tersedia untuk disematkan',
+    audioMasterMode: 'Audio Studio',
+    saveQueuePlaylist: 'Simpan Antrean',
+    queueSavedPlaylist: 'Antrean disimpan sebagai playlist',
+    jumpBackIn: 'Lanjutkan Mendengar',
+    expandVideoStage: 'Mode Teater',
     topDailyPlaylists: 'Playlist Top Harian',
     moodChoicesLabel: 'Pilihan Mood',
     instantResults: 'Hasil Cepat',

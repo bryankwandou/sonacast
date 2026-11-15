@@ -693,6 +693,68 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </section>
           )}
 
+          {/* Jump Back In · Spotify-style Recent Strip */}
+          {recentTracks.length > 0 && (
+            <section data-testid="jump-back-in-section" className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Clock size={15} className="text-[var(--accent-text)]" />
+                  <h3 className="text-sm font-bold text-[var(--text-primary)] tracking-tight">
+                    {t.jumpBackIn}
+                  </h3>
+                </div>
+                {onPlayTrackList && recentTracks.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => onPlayTrackList(recentTracks, false)}
+                    className="text-[11px] font-semibold text-[var(--accent-text)] hover:underline cursor-pointer"
+                  >
+                    Play All
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2.5 overflow-x-auto pb-1.5 no-scrollbar">
+                {recentTracks.slice(0, 10).map((track) => {
+                  const isActive = track.id === currentTrack.id;
+                  return (
+                    <button
+                      key={`jbi-${track.id}`}
+                      type="button"
+                      data-testid="jump-back-in-card"
+                      onClick={() => handlePlayTrackWithLyrics(track)}
+                      className={`group flex items-center gap-2.5 p-1.5 pr-3 rounded-xl border text-left shrink-0 w-[210px] sm:w-[230px] transition cursor-pointer ${
+                        isActive
+                          ? 'bg-[var(--accent-emerald)]/12 border-[var(--accent-emerald)]/40'
+                          : 'bg-[var(--bg-surface)]/80 border-[var(--border-subtle)] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-medium)]'
+                      }`}
+                    >
+                      <div className="w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-black/20">
+                        <img
+                          src={track.coverUrl}
+                          alt={track.title}
+                          onError={applyCoverFallback}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className={`text-xs font-semibold truncate ${
+                            isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {track.title}
+                        </div>
+                        <div className="text-[11px] text-[var(--text-dim)] truncate">
+                          {track.artist}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           {/* Made For You · Recommendation Mixes */}
           {recommendedMixes.length > 0 && (
             <section data-testid="made-for-you-section" className="space-y-3">

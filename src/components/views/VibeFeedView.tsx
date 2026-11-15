@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  Film,
   Heart,
   ListPlus,
   Mic2,
@@ -44,6 +45,7 @@ interface VibeFeedViewProps {
   onShareTrack: (track: Track) => void;
   onOpenLyricCard: (lineIndex?: number) => void;
   onOpenArtist: (artistName: string) => void;
+  onWatchVideo?: () => void;
 }
 
 export const VibeFeedView: React.FC<VibeFeedViewProps> = ({
@@ -71,7 +73,8 @@ export const VibeFeedView: React.FC<VibeFeedViewProps> = ({
   onToggleSaveOffline,
   onShareTrack,
   onOpenLyricCard,
-  onOpenArtist
+  onOpenArtist,
+  onWatchVideo
 }) => {
   const { t } = useAppPreferences();
   const wheelCooldownRef = useRef<number>(0);
@@ -365,6 +368,19 @@ export const VibeFeedView: React.FC<VibeFeedViewProps> = ({
           >
             <Sparkles size={18} />
           </button>
+
+          {onWatchVideo && (
+            <button
+              type="button"
+              onClick={onWatchVideo}
+              data-testid="vibe-watch-video-btn"
+              title={t.watchMusicVideo}
+              aria-label={t.watchMusicVideo}
+              className="w-11 h-11 rounded-2xl bg-[var(--accent-soft)] hover:brightness-110 border border-[var(--accent-border)] text-[var(--accent-text)] flex items-center justify-center cursor-pointer transition-colors"
+            >
+              <Film size={18} />
+            </button>
+          )}
 
           {canSaveOffline && (
             <button
