@@ -160,27 +160,27 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-secondary)] min-w-0 max-w-full">
+        <div className="flex flex-wrap items-center gap-1 text-[11px] text-[var(--text-secondary)] min-w-0 max-w-full">
           {onOpenLyricCard && (
             <button
               type="button"
               onClick={() => onOpenLyricCard(activeIndex >= 0 ? activeIndex : undefined)}
               data-testid="live-lyrics-card-btn"
               title={t.lyricCardStudio}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--accent-soft)] hover:bg-[var(--accent-emerald)] hover:text-[var(--accent-fg)] border border-[var(--accent-border)] text-[11px] font-semibold text-[var(--accent-text)] cursor-pointer transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--accent-soft)] hover:bg-[var(--accent-emerald)] hover:text-[var(--accent-fg)] text-[11px] font-semibold text-[var(--accent-text)] cursor-pointer transition-colors shrink-0"
             >
               <Share2 size={11} />
               <span>{t.exportLyricCard}</span>
             </button>
           )}
           {lyricsStatus === 'loading' ? (
-            <span className="flex items-center gap-1.5 bg-[var(--bg-elevated)] px-2.5 py-1 rounded-full border border-[var(--border-subtle)] text-[var(--accent-text)]">
-              <Loader2 size={12} className="animate-spin" />
+            <span className="inline-flex items-center gap-1 bg-[var(--bg-elevated)] px-2 py-1 rounded-full text-[var(--accent-text)] shrink-0">
+              <Loader2 size={11} className="animate-spin" />
               <span>{t.lyricsLoading}</span>
             </span>
           ) : lyrics.length > 0 ? (
-            <span className="flex items-center gap-1 bg-[var(--bg-elevated)] px-2.5 py-1 rounded-full border border-[var(--border-subtle)]">
-              <Globe size={12} className="text-[var(--accent-text)]" />
+            <span className="inline-flex items-center gap-1 bg-[var(--bg-elevated)] px-2 py-1 rounded-full shrink-0">
+              <Globe size={11} className="text-[var(--accent-text)]" />
               <span>{lyricsSynced ? t.lyricsSyncedLabel : t.lyricsTimedLabel}</span>
               {lyricsSource && <span className="text-[10px] font-mono text-[var(--text-dim)]">&middot; {lyricsSource}</span>}
             </span>
@@ -192,7 +192,7 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
                 type="button"
                 onClick={() => onRetryLyrics()}
                 title={t.lyricsRetry}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors shrink-0"
               >
                 <RefreshCw size={11} className={lyricsStatus === 'loading' ? 'animate-spin' : ''} />
                 <span>{t.lyricsRetry}</span>
@@ -205,10 +205,10 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
                   setShowManualLookup((prev) => !prev);
                 }}
                 title={t.lyricsSearchPlaceholder}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] font-medium cursor-pointer transition-colors ${
+                className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-medium cursor-pointer transition-colors shrink-0 ${
                   showManualLookup
-                    ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
-                    : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 <Search size={11} />
@@ -221,10 +221,10 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
               data-testid="lyrics-sync-toggle"
               onClick={() => setShowSyncCalibrator((prev) => !prev)}
               title={t.syncOffsetLabel}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-semibold cursor-pointer transition-colors ${
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold cursor-pointer transition-colors shrink-0 ${
                 showSyncCalibrator || Math.abs(lyricsOffset) >= 0.05
-                  ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
-                  : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                  : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
               <SlidersHorizontal size={11} />

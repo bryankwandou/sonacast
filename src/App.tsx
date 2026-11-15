@@ -3066,6 +3066,26 @@ export default function App() {
               walletCluster={walletCluster}
               isCloudConnected={cloudConnected}
               listenerHandle={listenerProfile.handle}
+              likedCount={recState.likedTracks.length}
+              playlists={recState.playlists}
+              onSelectPlaylist={(pl) => {
+                if (pl.tracks.length > 0) {
+                  handlePlayTrackList(
+                    pl.tracks,
+                    false,
+                    {
+                      id: pl.id,
+                      type: 'playlist',
+                      title: pl.name,
+                      subtitle: `${pl.tracks.length} tracks`,
+                      coverUrl: pl.coverUrl || pl.tracks[0]?.coverUrl,
+                      ordered: true
+                    },
+                    0
+                  );
+                }
+                setCurrentTab('favorites');
+              }}
               isMobileOpen={isMobileNavOpen}
               onCloseMobile={() => setIsMobileNavOpen(false)}
             />
@@ -3507,9 +3527,9 @@ export default function App() {
                 <div className="space-y-3" data-testid="stage-container">
                   <div
                     data-testid="stage-mode-bar"
-                    className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
+                    className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)]/85 backdrop-blur-md border border-[var(--border-subtle)]"
                   >
-                    <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="inline-flex flex-wrap items-center gap-0.5 p-0.5 rounded-lg bg-[var(--bg-elevated)]/80">
                       {(
                         [
                           { id: 'music-only', label: t.modeMusicOnly, icon: <Disc size={13} /> },
@@ -3527,9 +3547,9 @@ export default function App() {
                             type="button"
                             data-stage-mode={modeOpt.id}
                             onClick={() => handleSelectStageMode(modeOpt.id)}
-                            className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer border ${active
-                                ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
-                                : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer ${active
+                                ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm ring-1 ring-[var(--accent-border)]'
+                                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
                               }`}
                           >
                             {modeOpt.icon}
@@ -3539,15 +3559,15 @@ export default function App() {
                       })}
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
                         data-testid="stage-low-cpu-btn"
                         onClick={handleToggleLowCpu}
                         aria-pressed={lowCpuMode}
-                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1 border cursor-pointer transition-colors ${lowCpuMode
-                            ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
-                            : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        className={`px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors ${lowCpuMode
+                            ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
                           }`}
                       >
                         <Zap size={12} />
@@ -3562,7 +3582,7 @@ export default function App() {
                           setIsStageOpen(false);
                         }}
                         title={t.minimizeFloating}
-                        className="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+                        className="px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer transition-colors"
                       >
                         <Minimize2 size={12} />
                         <span className="hidden sm:inline">{t.minimizeFloating}</span>
@@ -3573,7 +3593,7 @@ export default function App() {
                         data-testid="stage-pip-btn"
                         onClick={handleOpenDesktopPip}
                         title={t.desktopPip}
-                        className="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+                        className="px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer transition-colors"
                       >
                         <PictureInPicture2 size={12} />
                         <span className="hidden sm:inline">{t.desktopPip}</span>

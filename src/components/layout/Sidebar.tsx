@@ -1,6 +1,7 @@
 import React from 'react';
-import type { AuthUser, TabType } from '../../types';
+import type { AuthUser, TabType, UserPlaylist } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { applyCoverFallback } from '../../utils/coverFallback';
 import { ThemeLanguageControls } from './ThemeLanguageControls';
 import {
   Activity,
@@ -10,8 +11,10 @@ import {
   Flame,
   Heart,
   Home,
+  ListMusic,
   LogIn,
   Mic2,
+  Play,
   Presentation,
   Radio,
   Search,
@@ -33,6 +36,9 @@ interface SidebarProps {
   walletCluster?: 'devnet' | 'mainnet-beta';
   isCloudConnected?: boolean;
   listenerHandle?: string;
+  likedCount?: number;
+  playlists?: UserPlaylist[];
+  onSelectPlaylist?: (playlist: UserPlaylist) => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
 }
@@ -47,6 +53,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   walletCluster = 'devnet',
   isCloudConnected = false,
   listenerHandle,
+  likedCount = 0,
+  playlists = [],
+  onSelectPlaylist,
   isMobileOpen = false,
   onCloseMobile,
 }) => {
@@ -127,10 +136,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Grouped Navigation Sections */}
-        <nav className="space-y-4" aria-label="Primary Navigation">
+        <nav className="space-y-2.5" aria-label="Primary Navigation">
           {navGroups.map((group) => (
-            <div key={group.label} className="space-y-1">
-              <div className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+            <div key={group.label} className="space-y-0.5">
+              <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
                 {group.label}
               </div>
               {group.items.map((item) => {
@@ -141,7 +150,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     type="button"
                     onClick={() => handleSelectNav(item.id)}
                     data-nav-tab={item.id}
-                    className={`w-full flex items-center gap-3 px-3.5 min-h-[38px] py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${isActive
+                    className={`w-full flex items-center gap-2.5 px-3 min-h-[33px] py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${isActive
                         ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border border-transparent'
                       }`}
@@ -156,6 +165,83 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           ))}
         </nav>
+
+        {/* Spotify-style Quick Library Shelf: Liked Songs + User Playlists */}
+        <div
+          data-testid="sidebar-quick-library"
+          className="mt-5 pt-4 border-t border-[var(--border-subtle)] space-y-1.5"
+        >
+          <div className="px-3.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+            <span>{t.navFavorites}</span>
+            <span>{playlists.length + (likedCount > 0 ? 1 : 0)}</span>
+          </div>
+
+          <button
+            type="button"
+            data-testid="sidebar-liked-shortcut"
+            onClick={() => handleSelectNav('favorites')}
+            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left hover:bg-[var(--bg-hover)] transition-colors cursor-pointer group"
+          >
+            <span className="w-8 h-8 rounded-md bg-gradient-to-br from-emerald-500/25 to-teal-500/25 border border-[var(--accent-border)] flex items-center justify-center text-[var(--accent-text)] shrink-0">
+              <Heart size={14} className="fill-current" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold text-[var(--text-primary)] truncate group-hover:text-[var(--accent-text)] transition-colors">
+                {t.likedSongs}
+              </span>
+              <span className="block text-[10px] text-[var(--text-dim)] truncate">
+                {likedCount} {t.searchSongsTab.toLowerCase()}
+              </span>
+            </span>
+          </button>
+
+          {playlists.slice(0, 4).map((playlist) => {
+            const cover = playlist.coverUrl || playlist.tracks[0]?.coverUrl;
+            return (
+              <button
+                key={playlist.id}
+                type="button"
+                data-testid={`sidebar-playlist-${playlist.id}`}
+                onClick={() => {
+                  if (onSelectPlaylist) {
+                    onSelectPlaylist(playlist);
+                  } else {
+                    onTabChange('favorites');
+                  }
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left hover:bg-[var(--bg-hover)] transition-colors cursor-pointer group"
+              >
+                {cover ? (
+                  <img
+                    src={cover}
+                    alt={playlist.name}
+                    onError={(e) => applyCoverFallback(e, playlist.name, t.navFavorites)}
+                    className="w-8 h-8 rounded-md object-cover bg-[var(--bg-elevated)] border border-[var(--border-subtle)] shrink-0"
+                  />
+                ) : (
+                  <span className="w-8 h-8 rounded-md bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-dim)] shrink-0">
+                    <ListMusic size={14} />
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-semibold text-[var(--text-primary)] truncate group-hover:text-[var(--accent-text)] transition-colors">
+                    {playlist.name}
+                  </span>
+                  <span className="block text-[10px] text-[var(--text-dim)] truncate">
+                    {playlist.tracks.length} {t.searchSongsTab.toLowerCase()}
+                  </span>
+                </span>
+                {playlist.tracks.length > 0 && (
+                  <Play
+                    size={12}
+                    className="opacity-0 group-hover:opacity-100 text-[var(--accent-text)] fill-current shrink-0 transition-opacity"
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Bottom Controls: Theme/Language (mobile drawer only) & Wallet */}

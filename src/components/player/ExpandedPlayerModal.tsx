@@ -141,6 +141,8 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubPct, setScrubPct] = useState<number | null>(null);
   const lyricsPaneRef = useRef<HTMLDivElement | null>(null);
   const activeLyricRef = useRef<HTMLDivElement | null>(null);
   const accentRgb = useCoverAccentRgb(track.coverUrl, track.title, track.artist, lowCpuMode);
@@ -177,7 +179,35 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
     return `${mins}:${rem < 10 ? '0' : ''}${rem}`;
   };
 
-  const progressPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const rawProgressPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const progressPct = isScrubbing && scrubPct !== null ? scrubPct : rawProgressPct;
+  const displayedTime =
+    isScrubbing && scrubPct !== null && duration > 0 ? (scrubPct / 100) * duration : currentTime;
+
+  const resolveRatio = (clientX: number, rect: DOMRect) =>
+    rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0;
+
+  const handleScrubDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (duration <= 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const ratio = resolveRatio(e.clientX, e.currentTarget.getBoundingClientRect());
+    setIsScrubbing(true);
+    setScrubPct(ratio * 100);
+    onSeek(ratio * duration);
+  };
+
+  const handleScrubMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isScrubbing || duration <= 0) return;
+    const ratio = resolveRatio(e.clientX, e.currentTarget.getBoundingClientRect());
+    setScrubPct(ratio * 100);
+    onSeek(ratio * duration);
+  };
+
+  const handleScrubEnd = () => {
+    if (!isScrubbing) return;
+    setIsScrubbing(false);
+    setScrubPct(null);
+  };
 
   const handleExportCard = async () => {
     if (onOpenLyricCard) {
@@ -198,7 +228,7 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
     <div
       className="fixed inset-0 z-50 bg-[var(--bg-app)]/98 backdrop-blur-2xl flex flex-col overflow-hidden transition-colors"
       style={{
-        backgroundImage: `radial-gradient(circle at 22% 20%, rgba(${accentRgb}, 0.22), transparent 58%)`
+        backgroundImage: `radial-gradient(circle at 22% 20%, rgba(${accentRgb}, 0.25), transparent 56%), radial-gradient(circle at 82% 80%, rgba(${accentRgb}, 0.14), transparent 52%)`
       }}
       role="dialog"
       aria-modal="true"
@@ -420,22 +450,43 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
             )}
 
             {/* Scrubber */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <div
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                  onSeek(pct * duration);
+                role="slider"
+                tabIndex={0}
+                aria-label="Seek audio position"
+                aria-valuemin={0}
+                aria-valuemax={Math.max(1, Math.round(duration))}
+                aria-valuenow={Math.round(displayedTime)}
+                onPointerDown={handleScrubDown}
+                onPointerMove={handleScrubMove}
+                onPointerUp={handleScrubEnd}
+                onPointerCancel={handleScrubEnd}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowRight') onSeek(Math.min(duration, currentTime + 5));
+                  if (e.key === 'ArrowLeft') onSeek(Math.max(0, currentTime - 5));
                 }}
-                className="w-full h-2 rounded-full bg-[var(--bg-tint-hover)] overflow-hidden cursor-pointer"
+                className="group/exp relative w-full h-5 flex items-center cursor-pointer touch-none"
               >
-                <div
-                  className="h-full bg-[var(--accent-emerald)] rounded-full transition-all"
-                  style={{ width: `${progressPct}%` }}
-                />
+                <div className="relative w-full h-1.5 group-hover/exp:h-2 rounded-full bg-[var(--bg-tint-hover)] transition-all">
+                  <div
+                    className={`h-full rounded-full transition-colors ${
+                      isScrubbing
+                        ? 'bg-[var(--accent-emerald)]'
+                        : 'bg-[var(--text-primary)] group-hover/exp:bg-[var(--accent-emerald)]'
+                    }`}
+                    style={{ width: `${progressPct}%` }}
+                  />
+                  <span
+                    className={`pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-[var(--text-primary)] shadow-md ring-2 ring-[var(--bg-app)] transition-opacity ${
+                      isScrubbing ? 'opacity-100 scale-110' : 'opacity-0 group-hover/exp:opacity-100'
+                    }`}
+                    style={{ left: `${progressPct}%` }}
+                  />
+                </div>
               </div>
-              <div className="flex items-center justify-between text-xs font-mono text-[var(--text-dim)]">
-                <span>{formatTime(currentTime)}</span>
+              <div className="flex items-center justify-between text-xs font-mono tabular-nums text-[var(--text-dim)]">
+                <span>{formatTime(displayedTime)}</span>
                 <span>{formatTime(duration)}</span>
               </div>
             </div>
