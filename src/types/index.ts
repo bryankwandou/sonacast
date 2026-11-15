@@ -25,7 +25,19 @@ export interface Track {
 
 export type RepeatMode = 'off' | 'all' | 'one';
 export type EqPreset = 'flat' | 'bass' | 'vocal' | 'club' | 'acoustic';
-export type MoodPreset = 'all' | 'focus' | 'chill' | 'upbeat' | 'workout' | 'classic' | 'indonesian' | 'acoustic';
+export type MoodPreset =
+  | 'all'
+  | 'focus'
+  | 'chill'
+  | 'upbeat'
+  | 'workout'
+  | 'lateNight'
+  | 'party'
+  | 'romance'
+  | 'sleep'
+  | 'classic'
+  | 'indonesian'
+  | 'acoustic';
 
 export interface UserPlaylist {
   id: string;
@@ -99,7 +111,7 @@ export interface BlendRoom {
 export interface SearchHistoryEntry {
   id: string;
   query: string;
-  mode: 'songs' | 'albums';
+  mode: 'songs' | 'albums' | 'playlists';
   matchedTrack?: Track;
   searchedAt: number;
 }
@@ -299,6 +311,15 @@ export interface CatalogAlbum {
   recordType?: string;
   genre?: string;
   fallbackTracks?: Track[];
+}
+
+export interface CatalogPlaylist {
+  id: string;
+  title: string;
+  creator: string;
+  coverUrl: string;
+  nbTracks?: number;
+  description?: string;
 }
 
 export interface RecommendationMix {

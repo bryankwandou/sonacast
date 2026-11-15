@@ -1,16 +1,30 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { CatalogAlbum, Track, LyricLine, PlaybackContextInfo, SearchHistoryEntry } from '../../types';
+import type {
+  CatalogAlbum,
+  CatalogPlaylist,
+  Track,
+  LyricLine,
+  MoodPreset,
+  PlaybackContextInfo,
+  SearchHistoryEntry
+} from '../../types';
 import { ARTISTS_DIRECTORY, ARTIST_GENRE_CATEGORIES } from '../../data/artists800';
 import {
   fetchAlbumTracksOnline,
   fetchLyricsWithMeta,
+  fetchPlaylistTracksOnline,
   searchAlbumsOnline,
+  searchPlaylistsOnline,
   searchTracksOnline
 } from '../../services/musicService';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { usePopularCharts } from '../../hooks/usePopularCharts';
+import { getMoodSearchQuery } from '../../services/recommendationEngine';
+import { MoodStrip } from '../common/MoodStrip';
+import { OrderedTracklistPanel } from '../common/OrderedTracklistPanel';
 import { TrackCard } from '../common/TrackCard';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
-import { Clock, Disc3, Globe, Loader2, Play, Search, Shuffle, Sparkles, Trash2, Users, X } from 'lucide-react';
+import { Clock, Disc3, Globe, ListMusic, Loader2, Play, Search, Shuffle, Sparkles, Trash2, Users, X } from 'lucide-react';
 
 interface SearchViewProps {
   curatedTracks: Track[];
@@ -18,11 +32,16 @@ interface SearchViewProps {
   isPlaying: boolean;
   resolvingTrackId?: string | null;
   externalQuery?: string;
+  externalMode?: 'songs' | 'albums' | 'playlists';
+  externalSelectedAlbum?: CatalogAlbum | null;
+  externalSelectedPlaylist?: CatalogPlaylist | null;
   externalTrigger?: number;
   searchHistory?: SearchHistoryEntry[];
-  onRecordSearch?: (query: string, mode: 'songs' | 'albums', matchedTrack?: Track) => void;
+  onRecordSearch?: (query: string, mode: 'songs' | 'albums' | 'playlists', matchedTrack?: Track) => void;
   onDeleteSearchHistory?: (id: string) => void;
   onClearSearchHistory?: () => void;
+  activeMood?: MoodPreset;
+  onSelectMood?: (mood: MoodPreset) => void;
   onSelectTrack: (track: Track) => void;
   onTogglePlay: () => void;
   onUpdateLyrics?: (lyrics: LyricLine[]) => void;
@@ -48,11 +67,16 @@ export const SearchView: React.FC<SearchViewProps> = ({
   currentTrack,
   resolvingTrackId,
   externalQuery,
+  externalMode,
+  externalSelectedAlbum,
+  externalSelectedPlaylist,
   externalTrigger = 0,
   searchHistory = [],
   onRecordSearch,
   onDeleteSearchHistory,
   onClearSearchHistory,
+  activeMood = 'all',
+  onSelectMood,
   onSelectTrack,
   onTogglePlay,
   onUpdateLyrics,
@@ -66,15 +90,22 @@ export const SearchView: React.FC<SearchViewProps> = ({
   onPlayTrackList
 }) => {
   const { t } = useAppPreferences();
+  const { popularCharts } = usePopularCharts();
   const [searchQuery, setSearchQuery] = useState(
     externalTrigger > 0 && externalQuery?.trim() ? externalQuery.trim() : 'Queen'
   );
-  const [searchMode, setSearchMode] = useState<'songs' | 'albums'>('songs');
+  const [searchMode, setSearchMode] = useState<'songs' | 'albums' | 'playlists'>(
+    externalMode || 'songs'
+  );
   const [results, setResults] = useState<Track[]>([]);
   const [albumResults, setAlbumResults] = useState<CatalogAlbum[]>([]);
+  const [playlistResults, setPlaylistResults] = useState<CatalogPlaylist[]>([]);
   const [selectedAlbum, setSelectedAlbum] = useState<CatalogAlbum | null>(null);
   const [selectedAlbumTracks, setSelectedAlbumTracks] = useState<Track[]>([]);
   const [loadingAlbumId, setLoadingAlbumId] = useState<string | null>(null);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<CatalogPlaylist | null>(null);
+  const [selectedPlaylistTracks, setSelectedPlaylistTracks] = useState<Track[]>([]);
+  const [loadingPlaylistId, setLoadingPlaylistId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeArtistFilter, setActiveArtistFilter] = useState('Queen');
   const [selectedGenre, setSelectedGenre] = useState('All Genres');
@@ -95,16 +126,23 @@ export const SearchView: React.FC<SearchViewProps> = ({
     ? filteredArtists
     : filteredArtists.slice(0, INITIAL_ARTIST_CHIP_LIMIT);
 
-  const executeSearch = async (term: string, modeOverride?: 'songs' | 'albums') => {
+  const executeSearch = async (term: string, modeOverride?: 'songs' | 'albums' | 'playlists') => {
     const requestId = ++searchRequestIdRef.current;
     const trimmed = term.trim();
     if (!trimmed) return;
     const activeMode = modeOverride || searchMode;
     setSelectedAlbum(null);
     setSelectedAlbumTracks([]);
+    setSelectedPlaylist(null);
+    setSelectedPlaylistTracks([]);
     setIsLoading(true);
     try {
-      if (activeMode === 'albums') {
+      if (activeMode === 'playlists') {
+        setPlaylistResults([]);
+        const playlists = await searchPlaylistsOnline(trimmed);
+        if (requestId !== searchRequestIdRef.current) return;
+        setPlaylistResults(playlists);
+      } else if (activeMode === 'albums') {
         setAlbumResults([]);
         const albums = await searchAlbumsOnline(trimmed);
         if (requestId !== searchRequestIdRef.current) return;
@@ -132,7 +170,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
       }
     } catch {
       if (requestId === searchRequestIdRef.current) {
-        if (activeMode === 'albums') setAlbumResults([]);
+        if (activeMode === 'playlists') setPlaylistResults([]);
+        else if (activeMode === 'albums') setAlbumResults([]);
         else setResults([]);
       }
     } finally {
@@ -183,16 +222,67 @@ export const SearchView: React.FC<SearchViewProps> = ({
     }
   };
 
+  const handleOpenSearchPlaylist = async (pl: CatalogPlaylist) => {
+    setSelectedPlaylist(pl);
+    setLoadingPlaylistId(pl.id);
+    try {
+      const res = await fetchPlaylistTracksOnline(pl);
+      setSelectedPlaylist(res.playlist);
+      setSelectedPlaylistTracks(res.tracks);
+    } finally {
+      setLoadingPlaylistId(null);
+    }
+  };
+
+  const handlePlaySearchPlaylist = async (pl: CatalogPlaylist, shuffle = false, startIndex = 0) => {
+    setLoadingPlaylistId(pl.id);
+    try {
+      const res =
+        selectedPlaylist?.id === pl.id && selectedPlaylistTracks.length > 0
+          ? { playlist: selectedPlaylist, tracks: selectedPlaylistTracks }
+          : await fetchPlaylistTracksOnline(pl);
+      setSelectedPlaylist(res.playlist);
+      setSelectedPlaylistTracks(res.tracks);
+      if (res.tracks.length > 0 && onPlayTrackList) {
+        onPlayTrackList(
+          res.tracks,
+          shuffle,
+          {
+            id: `search-playlist-${res.playlist.id}`,
+            type: 'playlist',
+            title: res.playlist.title,
+            subtitle: res.playlist.creator,
+            coverUrl: res.playlist.coverUrl,
+            ordered: !shuffle
+          },
+          startIndex
+        );
+      }
+    } finally {
+      setLoadingPlaylistId(null);
+    }
+  };
+
   useEffect(() => {
+    const nextMode = externalTrigger > 0 && externalMode ? externalMode : searchMode;
+    if (externalTrigger > 0 && externalMode && externalMode !== searchMode) {
+      setSearchMode(externalMode);
+    }
     const q = externalTrigger > 0 && externalQuery?.trim() ? externalQuery.trim() : 'Queen';
     setSearchQuery(q);
     const matchedArtist = ARTISTS_DIRECTORY.find(
       (a) => a.name.toLowerCase() === q.toLowerCase()
     );
     setActiveArtistFilter(matchedArtist ? matchedArtist.name : '');
-    executeSearch(q);
+    executeSearch(q, nextMode);
+    if (externalTrigger > 0 && externalSelectedAlbum) {
+      void handleOpenSearchAlbum(externalSelectedAlbum);
+    }
+    if (externalTrigger > 0 && externalSelectedPlaylist) {
+      void handleOpenSearchPlaylist(externalSelectedPlaylist);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalQuery, externalTrigger]);
+  }, [externalQuery, externalMode, externalSelectedAlbum, externalSelectedPlaylist, externalTrigger]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -324,6 +414,43 @@ export const SearchView: React.FC<SearchViewProps> = ({
               <Disc3 size={12} />
               <span>{t.searchAlbumsTab}</span>
             </button>
+
+            <button
+              type="button"
+              data-testid="search-mode-playlists"
+              onClick={() => {
+                setSearchMode('playlists');
+                if (searchQuery.trim()) executeSearch(searchQuery, 'playlists');
+              }}
+              className={`h-8 px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                searchMode === 'playlists'
+                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
+              }`}
+            >
+              <ListMusic size={12} />
+              <span>{t.searchPlaylistsTab}</span>
+            </button>
+          </div>
+
+          <div data-testid="search-mood-bar" className="mt-3 pt-3 border-t border-[var(--border-subtle)] space-y-1.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+              {t.moodChoicesLabel}
+            </div>
+            <MoodStrip
+              activeMood={activeMood}
+              testIdPrefix="search-mood-pill"
+              onSelectMood={(mood) => {
+                onSelectMood?.(mood);
+                const moodQuery = getMoodSearchQuery(mood);
+                const targetMode = searchMode === 'albums' ? 'songs' : searchMode;
+                if (searchMode === 'albums') setSearchMode('songs');
+                setActiveArtistFilter('');
+                setSearchQuery(moodQuery);
+                onRecordSearch?.(moodQuery, targetMode);
+                executeSearch(moodQuery, targetMode);
+              }}
+            />
           </div>
         </div>
       </div>
@@ -362,7 +489,12 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    const nextMode = item.mode === 'albums' ? 'albums' : 'songs';
+                    const nextMode =
+                      item.mode === 'playlists'
+                        ? 'playlists'
+                        : item.mode === 'albums'
+                          ? 'albums'
+                          : 'songs';
                     setSearchMode(nextMode);
                     setSearchQuery(item.query);
                     setActiveArtistFilter('');
@@ -463,6 +595,87 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 ? 'Searching studio albums & tracklists...'
                 : 'Searching global catalog across multi-region mirrors...'}
             </span>
+          </div>
+        ) : searchMode === 'playlists' ? (
+          <div className="space-y-5">
+            {playlistResults.length === 0 ? (
+              <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-tint)]">
+                <p>No playlists found for &ldquo;{searchQuery}&rdquo;. Pick a mood above or explore Top Daily Playlists below.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
+                {playlistResults.map((pl) => {
+                  const isActive = selectedPlaylist?.id === pl.id;
+                  const isBusy = loadingPlaylistId === pl.id;
+                  return (
+                    <div
+                      key={pl.id}
+                      data-testid={`search-playlist-card-${pl.id}`}
+                      className={`rounded-2xl p-3 border transition-all flex flex-col justify-between gap-2.5 ${
+                        isActive
+                          ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'
+                          : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] hover:border-[var(--border-medium)]'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSearchPlaylist(pl)}
+                        className="text-left space-y-2 cursor-pointer"
+                      >
+                        <div className="aspect-square rounded-xl overflow-hidden bg-[var(--bg-elevated)]">
+                          <img
+                            src={pl.coverUrl || DEFAULT_COVER_DATA_URI}
+                            alt={pl.title}
+                            onError={(e) => applyCoverFallback(e, pl.title, pl.creator)}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-extrabold text-[var(--text-primary)] truncate">
+                            {pl.title}
+                          </div>
+                          <div className="text-[11px] text-[var(--text-dim)] truncate">
+                            {pl.creator}
+                          </div>
+                        </div>
+                      </button>
+
+                      <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
+                        <span className="text-[10px] font-mono text-[var(--text-dim)]">
+                          {pl.nbTracks ? `${pl.nbTracks} tracks` : 'Playlist'}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => handlePlaySearchPlaylist(pl, false, 0)}
+                          className="h-7 px-2.5 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                        >
+                          <Play size={10} className="fill-current" />
+                          <span>{t.playOrdered}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedPlaylist && (
+              <OrderedTracklistPanel
+                testId="search-selected-playlist-tracklist"
+                title={selectedPlaylist.title}
+                subtitle={selectedPlaylist.creator}
+                coverUrl={selectedPlaylist.coverUrl}
+                badgeText={selectedPlaylist.nbTracks ? `${selectedPlaylist.nbTracks} tracks` : 'Playlist'}
+                tracks={selectedPlaylistTracks}
+                currentTrackId={currentTrack.id}
+                isLoading={loadingPlaylistId === selectedPlaylist.id}
+                loadingText="Fetching ordered playlist tracks..."
+                onPlayOrdered={(idx = 0) => handlePlaySearchPlaylist(selectedPlaylist, false, idx)}
+                onPlayShuffle={() => handlePlaySearchPlaylist(selectedPlaylist, true, 0)}
+                onClose={() => setSelectedPlaylist(null)}
+              />
+            )}
           </div>
         ) : searchMode === 'albums' ? (
           <div className="space-y-5">
@@ -649,6 +862,111 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Top Daily Albums & Top Daily Playlists Showcase */}
+      {(popularCharts.albums.length > 0 || popularCharts.playlists.length > 0) && (
+        <div data-testid="search-daily-discovery" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {popularCharts.albums.length > 0 && (
+            <section
+              data-testid="search-daily-albums"
+              className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Disc3 size={15} className="text-[var(--accent-text)] shrink-0" />
+                  <h3 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[var(--text-primary)]">
+                    {t.topDailyAlbums}
+                  </h3>
+                </div>
+                <span className="text-[11px] font-mono text-[var(--text-dim)]">
+                  {popularCharts.albums.slice(0, 6).length} picks
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {popularCharts.albums.slice(0, 6).map((alb) => (
+                  <button
+                    key={`search-daily-alb-${alb.id}`}
+                    type="button"
+                    data-testid={`search-daily-album-${alb.id}`}
+                    onClick={() => {
+                      setSearchMode('albums');
+                      setSearchQuery(alb.title);
+                      setAlbumResults(popularCharts.albums.slice(0, 12));
+                      void handleOpenSearchAlbum(alb);
+                    }}
+                    className="flex items-center gap-2.5 p-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-left transition-colors cursor-pointer min-w-0"
+                  >
+                    <img
+                      src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
+                      alt={alb.title}
+                      onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
+                      className="w-10 h-10 rounded-lg object-cover shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                        {alb.title}
+                      </div>
+                      <div className="text-[10px] text-[var(--text-dim)] truncate">
+                        {alb.artist}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {popularCharts.playlists.length > 0 && (
+            <section
+              data-testid="search-daily-playlists"
+              className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <ListMusic size={15} className="text-[var(--accent-text)] shrink-0" />
+                  <h3 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[var(--text-primary)]">
+                    {t.topDailyPlaylists}
+                  </h3>
+                </div>
+                <span className="text-[11px] font-mono text-[var(--text-dim)]">
+                  {popularCharts.playlists.slice(0, 6).length} picks
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {popularCharts.playlists.slice(0, 6).map((pl) => (
+                  <button
+                    key={`search-daily-pl-${pl.id}`}
+                    type="button"
+                    data-testid={`search-daily-playlist-${pl.id}`}
+                    onClick={() => {
+                      setSearchMode('playlists');
+                      setSearchQuery(pl.title);
+                      setPlaylistResults(popularCharts.playlists.slice(0, 12));
+                      void handleOpenSearchPlaylist(pl);
+                    }}
+                    className="flex items-center gap-2.5 p-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-left transition-colors cursor-pointer min-w-0"
+                  >
+                    <img
+                      src={pl.coverUrl || DEFAULT_COVER_DATA_URI}
+                      alt={pl.title}
+                      onError={(e) => applyCoverFallback(e, pl.title, pl.creator)}
+                      className="w-10 h-10 rounded-lg object-cover shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                        {pl.title}
+                      </div>
+                      <div className="text-[10px] text-[var(--text-dim)] truncate">
+                        {pl.creator}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
 
       {/* Curated Global Artists Directory & Genre Browser */}
       <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3.5">

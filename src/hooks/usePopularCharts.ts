@@ -1,17 +1,27 @@
 import { useEffect, useState } from 'react';
-import type { Track } from '../types';
-import { fetchPopularCharts } from '../services/musicService';
+import {
+  FEATURED_RELEASE_ALBUMS,
+  fetchPopularCharts,
+  type PopularChartsResult
+} from '../services/musicService';
 
-let cachedChartsPromise: Promise<{ global: Track[]; indonesia: Track[] }> | null = null;
-let cachedChartsData: { global: Track[]; indonesia: Track[] } | null = null;
+const EMPTY_CHARTS: PopularChartsResult = {
+  global: [],
+  indonesia: [],
+  albums: FEATURED_RELEASE_ALBUMS,
+  playlists: []
+};
+
+let cachedChartsPromise: Promise<PopularChartsResult> | null = null;
+let cachedChartsData: PopularChartsResult | null = null;
 
 /**
- * Loads and caches Global & Indonesia popular charts across views
- * so navigating between Landing and Music Library avoids redundant requests.
+ * Loads and caches Global & Indonesia popular charts, Top Daily Albums, and
+ * Top Daily Playlists across views so navigating between screens avoids redundant requests.
  */
 export function usePopularCharts() {
-  const [popularCharts, setPopularCharts] = useState<{ global: Track[]; indonesia: Track[] }>(
-    () => cachedChartsData || { global: [], indonesia: [] }
+  const [popularCharts, setPopularCharts] = useState<PopularChartsResult>(
+    () => cachedChartsData || EMPTY_CHARTS
   );
   const [isLoadingCharts, setIsLoadingCharts] = useState(!cachedChartsData);
 

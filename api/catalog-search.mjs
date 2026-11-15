@@ -350,14 +350,90 @@ export default async function handler(req, res) {
     return;
   }
 
+  const mapDeezerPlaylist = (p) => ({
+    id: `dz-pl-${p.id}`,
+    title: String(p.title || '').trim(),
+    creator: String(p.user?.name || p.creator?.name || 'Editorial Charts').trim(),
+    coverUrl: String(p.picture_xl || p.picture_big || p.picture_medium || p.picture || ''),
+    nbTracks: Number(p.nb_tracks) || 0,
+    description: p.creation_date ? `Updated ${String(p.creation_date).slice(0, 10)}` : ''
+  });
+
+  if (mode === 'playlists') {
+    const rawQuery = typeof req.query?.q === 'string' ? req.query.q.trim() : '';
+    if (!rawQuery) {
+      res.status(200).json({ playlists: [] });
+      return;
+    }
+    try {
+      const url = `https://api.deezer.com/search/playlist?q=${encodeURIComponent(rawQuery)}&limit=18`;
+      const dzRes = await fetch(url, { signal: AbortSignal.timeout(4500) });
+      const dzData = dzRes.ok ? await dzRes.json() : null;
+      const seen = new Set();
+      const playlists = [];
+      for (const p of Array.isArray(dzData?.data) ? dzData.data : []) {
+        const mapped = mapDeezerPlaylist(p);
+        const key = `${normalize(mapped.title)}::${normalize(mapped.creator)}`;
+        if (!mapped.title || mapped.nbTracks < 2 || seen.has(key)) continue;
+        seen.add(key);
+        playlists.push(mapped);
+      }
+      res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
+      res.status(200).json({ playlists });
+      return;
+    } catch {
+      res.status(500).json({ playlists: [] });
+      return;
+    }
+  }
+
+  if (mode === 'playlist_tracks') {
+    const rawId = typeof req.query?.playlistId === 'string' ? req.query.playlistId.trim() : '';
+    const cleanId = rawId.replace(/^dz-pl-/, '');
+    if (!/^\d+$/.test(cleanId)) {
+      res.status(400).json({ playlist: null, tracks: [] });
+      return;
+    }
+    try {
+      const dzRes = await fetch(`https://api.deezer.com/playlist/${cleanId}`, {
+        signal: AbortSignal.timeout(4800)
+      });
+      if (!dzRes.ok) {
+        res.status(dzRes.status).json({ playlist: null, tracks: [] });
+        return;
+      }
+      const data = await dzRes.json();
+      const rawTracks = Array.isArray(data?.tracks?.data) ? data.tracks.data : [];
+      const tracks = rawTracks
+        .map((t) => mapDeezerTrack(t, false))
+        .filter((t) => t.title && t.artist && t.duration >= 45 && t.duration <= 1800 && !isNonOriginalTitle(t.title, ''))
+        .slice(0, 45);
+      res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
+      res.status(200).json({
+        playlist: data?.id ? mapDeezerPlaylist(data) : null,
+        tracks
+      });
+      return;
+    } catch {
+      res.status(500).json({ playlist: null, tracks: [] });
+      return;
+    }
+  }
+
   if (mode === 'charts') {
     try {
-      const [dzGlobal, usRss, idRss] = await Promise.all([
+      const [dzGlobal, usRss, idRss, dzChartAlbums, dzChartPlaylists] = await Promise.all([
         fetch('https://api.deezer.com/chart/0/tracks?limit=35', { signal: AbortSignal.timeout(3800) })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
         fetchAppleRssWithDurations('us', 25).catch(() => []),
-        fetchAppleRssWithDurations('id', 25).catch(() => [])
+        fetchAppleRssWithDurations('id', 25).catch(() => []),
+        fetch('https://api.deezer.com/chart/0/albums?limit=16', { signal: AbortSignal.timeout(3800) })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        fetch('https://api.deezer.com/chart/0/playlists?limit=16', { signal: AbortSignal.timeout(3800) })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)
       ]);
 
       const dzItems = Array.isArray(dzGlobal?.data)
@@ -366,15 +442,37 @@ export default async function handler(req, res) {
             .filter((t) => t.title && t.artist && t.duration >= 60 && t.duration <= 1800 && !isNonOriginalTitle(t.title, ''))
         : [];
 
+      const featuredAlbums = Array.isArray(dzChartAlbums?.data)
+        ? dzChartAlbums.data
+            .filter((a) => a?.id && a?.title)
+            .map((a) => ({
+              id: `dz-alb-${a.id}`,
+              title: String(a.title || ''),
+              artist: String(a.artist?.name || 'Various Artists'),
+              coverUrl: String(a.cover_xl || a.cover_big || a.cover_medium || a.cover || ''),
+              nbTracks: Number(a.nb_tracks) || undefined,
+              releaseDate: String(a.release_date || ''),
+              recordType: String(a.record_type || 'album')
+            }))
+        : [];
+
+      const featuredPlaylists = Array.isArray(dzChartPlaylists?.data)
+        ? dzChartPlaylists.data
+            .filter((p) => p?.id && p?.title && (Number(p.nb_tracks) || 0) >= 2)
+            .map(mapDeezerPlaylist)
+        : [];
+
       res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
       res.status(200).json({
         global: dzItems.length > 0 ? dzItems : usRss,
         us: usRss,
-        indonesia: idRss
+        indonesia: idRss,
+        featuredAlbums,
+        featuredPlaylists
       });
       return;
     } catch {
-      res.status(500).json({ global: [], us: [], indonesia: [] });
+      res.status(500).json({ global: [], us: [], indonesia: [], featuredAlbums: [], featuredPlaylists: [] });
       return;
     }
   }

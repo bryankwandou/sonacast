@@ -40,16 +40,52 @@ export const DEFAULT_RECOMMENDATION_STATE: RecommendationState = {
   crossfadeSeconds: 2
 };
 
-export const MOOD_PRESETS: { id: MoodPreset; labelKey: string; bpmRange: [number, number] }[] = [
-  { id: 'all', labelKey: 'moodAll', bpmRange: [60, 180] },
-  { id: 'focus', labelKey: 'moodFocus', bpmRange: [60, 108] },
-  { id: 'chill', labelKey: 'moodChill', bpmRange: [65, 105] },
-  { id: 'upbeat', labelKey: 'moodUpbeat', bpmRange: [110, 145] },
-  { id: 'workout', labelKey: 'moodWorkout', bpmRange: [120, 178] },
-  { id: 'indonesian', labelKey: 'moodIndonesian', bpmRange: [70, 130] },
-  { id: 'classic', labelKey: 'moodClassic', bpmRange: [75, 140] },
-  { id: 'acoustic', labelKey: 'moodAcoustic', bpmRange: [62, 114] }
+export type MoodLabelKey =
+  | 'moodAll'
+  | 'moodFocus'
+  | 'moodChill'
+  | 'moodUpbeat'
+  | 'moodWorkout'
+  | 'moodLateNight'
+  | 'moodParty'
+  | 'moodRomance'
+  | 'moodSleep'
+  | 'moodIndonesian'
+  | 'moodClassic'
+  | 'moodAcoustic';
+
+export const MOOD_PRESETS: {
+  id: MoodPreset;
+  labelKey: MoodLabelKey;
+  bpmRange: [number, number];
+  searchQuery: string;
+}[] = [
+  { id: 'all', labelKey: 'moodAll', bpmRange: [60, 180], searchQuery: 'Top Hits' },
+  { id: 'focus', labelKey: 'moodFocus', bpmRange: [60, 108], searchQuery: 'Deep Focus Instrumental' },
+  { id: 'chill', labelKey: 'moodChill', bpmRange: [65, 105], searchQuery: 'Chill Vibes' },
+  { id: 'upbeat', labelKey: 'moodUpbeat', bpmRange: [110, 145], searchQuery: 'Happy Hits Pop' },
+  { id: 'workout', labelKey: 'moodWorkout', bpmRange: [120, 178], searchQuery: 'Workout Energy' },
+  { id: 'lateNight', labelKey: 'moodLateNight', bpmRange: [62, 108], searchQuery: 'Late Night R&B' },
+  { id: 'party', labelKey: 'moodParty', bpmRange: [118, 165], searchQuery: 'Party Dance Hits' },
+  { id: 'romance', labelKey: 'moodRomance', bpmRange: [65, 110], searchQuery: 'Love Songs Ballads' },
+  { id: 'sleep', labelKey: 'moodSleep', bpmRange: [50, 92], searchQuery: 'Sleep Piano Ambient' },
+  { id: 'indonesian', labelKey: 'moodIndonesian', bpmRange: [70, 130], searchQuery: 'Musik Indonesia Hits' },
+  { id: 'classic', labelKey: 'moodClassic', bpmRange: [75, 140], searchQuery: 'Classic Greatest Hits' },
+  { id: 'acoustic', labelKey: 'moodAcoustic', bpmRange: [62, 114], searchQuery: 'Acoustic Session' }
 ];
+
+export function getMoodLabel(
+  mood: MoodPreset,
+  translations: Record<MoodLabelKey, string>
+): string {
+  const preset = MOOD_PRESETS.find((item) => item.id === mood);
+  return preset ? translations[preset.labelKey] : translations.moodAll;
+}
+
+export function getMoodSearchQuery(mood: MoodPreset): string {
+  const preset = MOOD_PRESETS.find((item) => item.id === mood);
+  return preset ? preset.searchQuery : 'Top Hits';
+}
 
 type GenreFamily =
   | 'pop'
@@ -572,6 +608,18 @@ export function scoreCandidateTrack(
     } else if (mood === 'workout') {
       if (candFamily === 'hiphop' || candFamily === 'electronic' || candFamily === 'rock') score += 28;
       if (candBpm >= 118) score += 16;
+    } else if (mood === 'lateNight') {
+      if (candFamily === 'rnb' || candFamily === 'jazz' || candFamily === 'indonesian') score += 26;
+      if (candBpm <= 108) score += 14;
+    } else if (mood === 'party') {
+      if (candFamily === 'electronic' || candFamily === 'hiphop' || candFamily === 'pop' || candFamily === 'latin') score += 28;
+      if (candBpm >= 118) score += 15;
+    } else if (mood === 'romance') {
+      if (candFamily === 'rnb' || candFamily === 'acoustic' || candFamily === 'indonesian' || candFamily === 'pop') score += 26;
+      if (candBpm >= 60 && candBpm <= 112) score += 12;
+    } else if (mood === 'sleep') {
+      if (candFamily === 'classical' || candFamily === 'acoustic' || candFamily === 'jazz') score += 30;
+      if (candBpm <= 96) score += 16;
     } else if (mood === 'indonesian') {
       if (candFamily === 'indonesian') score += 45;
     } else if (mood === 'classic') {
@@ -833,6 +881,14 @@ export function getMoodSeedQueries(mood: MoodPreset): string[] {
       return ['Dua Lipa', 'The Weeknd', 'Bruno Mars', 'YOASOBI'];
     case 'workout':
       return ['Eminem', 'Kendrick Lamar', 'Imagine Dragons', 'David Guetta'];
+    case 'lateNight':
+      return ['The Weeknd', 'Hindia', 'NIKI', 'Joji'];
+    case 'party':
+      return ['Calvin Harris', 'Dua Lipa', 'BLACKPINK', 'Pitbull'];
+    case 'romance':
+      return ['Tulus', 'Adele', 'Billie Eilish', 'Mahalini'];
+    case 'sleep':
+      return ['Max Richter', 'Yiruma', 'Olafur Arnalds', 'Debussy'];
     case 'indonesian':
       return ['Tulus', 'NOAH', 'Sheila On 7', 'Raisa'];
     case 'classic':

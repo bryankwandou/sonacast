@@ -73,6 +73,10 @@ export interface TranslationKeys {
   moodIndonesian: string;
   moodClassic: string;
   moodAcoustic: string;
+  moodLateNight: string;
+  moodParty: string;
+  moodRomance: string;
+  moodSleep: string;
   likedSongs: string;
   recentlyPlayed: string;
   playlists: string;
@@ -126,6 +130,11 @@ export interface TranslationKeys {
   featuredAlbums: string;
   searchSongsTab: string;
   searchAlbumsTab: string;
+  searchPlaylistsTab: string;
+  topDailyAlbums: string;
+  topDailyPlaylists: string;
+  moodChoicesLabel: string;
+  instantResults: string;
   playingFrom: string;
   queuedByYou: string;
   autoplaySimilar: string;
@@ -311,6 +320,10 @@ const EN_BASE: TranslationKeys = {
   moodIndonesian: 'Indonesian',
   moodClassic: 'Classics',
   moodAcoustic: 'Acoustic',
+  moodLateNight: 'Late Night',
+  moodParty: 'Party',
+  moodRomance: 'Romance',
+  moodSleep: 'Sleep',
   likedSongs: 'Liked Songs',
   recentlyPlayed: 'Recently Played',
   playlists: 'Playlists',
@@ -364,6 +377,11 @@ const EN_BASE: TranslationKeys = {
   featuredAlbums: 'Featured Studio Albums',
   searchSongsTab: 'Songs',
   searchAlbumsTab: 'Albums',
+  searchPlaylistsTab: 'Playlists',
+  topDailyAlbums: 'Top Daily Albums',
+  topDailyPlaylists: 'Top Daily Playlists',
+  moodChoicesLabel: 'Mood & Vibe',
+  instantResults: 'Instant Matches',
   playingFrom: 'Playing From',
   queuedByYou: 'Queued by You',
   autoplaySimilar: 'Autoplay Similar Tracks',
@@ -521,6 +539,10 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     moodIndonesian: 'Indonesia',
     moodClassic: 'Klasik',
     moodAcoustic: 'Akustik',
+    moodLateNight: 'Tengah Malam',
+    moodParty: 'Pesta',
+    moodRomance: 'Romantis',
+    moodSleep: 'Pengantar Tidur',
     likedSongs: 'Lagu Disukai',
     recentlyPlayed: 'Baru Diputar',
     playlists: 'Playlist',
@@ -574,6 +596,11 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     featuredAlbums: 'Album Studio Pilihan',
     searchSongsTab: 'Lagu',
     searchAlbumsTab: 'Album',
+    searchPlaylistsTab: 'Playlist',
+    topDailyAlbums: 'Album Top Harian',
+    topDailyPlaylists: 'Playlist Top Harian',
+    moodChoicesLabel: 'Pilihan Mood',
+    instantResults: 'Hasil Cepat',
     playingFrom: 'Memutar Dari',
     queuedByYou: 'Antrean Kamu',
     autoplaySimilar: 'Autoplay Lagu Serupa',

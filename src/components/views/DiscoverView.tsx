@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import type {
   CatalogAlbum,
+  CatalogPlaylist,
   FollowedArtist,
   LyricLine,
   MoodPreset,
@@ -10,15 +11,16 @@ import type {
 } from '../../types';
 import { ARTISTS_DIRECTORY } from '../../data/artists800';
 import {
-  FEATURED_RELEASE_ALBUMS,
   fetchAlbumTracksOnline,
+  fetchPlaylistTracksOnline,
   fetchSyncedLyrics,
   searchTracksOnline
 } from '../../services/musicService';
 import { buildRecommendationMixes } from '../../services/mixEngine';
-import { MOOD_PRESETS } from '../../services/recommendationEngine';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { usePopularCharts } from '../../hooks/usePopularCharts';
+import { MoodStrip } from '../common/MoodStrip';
+import { OrderedTracklistPanel } from '../common/OrderedTracklistPanel';
 import { TrackCard } from '../common/TrackCard';
 import { PlayingBars } from '../common/PlayingBars';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
@@ -130,6 +132,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const [selectedAlbum, setSelectedAlbum] = useState<CatalogAlbum | null>(null);
   const [selectedAlbumTracks, setSelectedAlbumTracks] = useState<Track[]>([]);
   const [loadingAlbumId, setLoadingAlbumId] = useState<string | null>(null);
+  const [selectedDailyPlaylist, setSelectedDailyPlaylist] = useState<CatalogPlaylist | null>(null);
+  const [selectedDailyPlaylistTracks, setSelectedDailyPlaylistTracks] = useState<Track[]>([]);
+  const [loadingPlaylistId, setLoadingPlaylistId] = useState<string | null>(null);
   const [expandedMixId, setExpandedMixId] = useState<string | null>(null);
 
   const recommendedMixes = useMemo(
@@ -183,6 +188,47 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       }
     } finally {
       setLoadingAlbumId(null);
+    }
+  };
+
+  const handleOpenDailyPlaylist = async (pl: CatalogPlaylist) => {
+    setSelectedDailyPlaylist(pl);
+    setLoadingPlaylistId(pl.id);
+    try {
+      const res = await fetchPlaylistTracksOnline(pl);
+      setSelectedDailyPlaylist(res.playlist);
+      setSelectedDailyPlaylistTracks(res.tracks);
+    } finally {
+      setLoadingPlaylistId(null);
+    }
+  };
+
+  const handlePlayDailyPlaylist = async (pl: CatalogPlaylist, shuffle = false, startIndex = 0) => {
+    setLoadingPlaylistId(pl.id);
+    try {
+      const res =
+        selectedDailyPlaylist?.id === pl.id && selectedDailyPlaylistTracks.length > 0
+          ? { playlist: selectedDailyPlaylist, tracks: selectedDailyPlaylistTracks }
+          : await fetchPlaylistTracksOnline(pl);
+      setSelectedDailyPlaylist(res.playlist);
+      setSelectedDailyPlaylistTracks(res.tracks);
+      if (res.tracks.length > 0 && onPlayTrackList) {
+        onPlayTrackList(
+          res.tracks,
+          shuffle,
+          {
+            id: `daily-playlist-${res.playlist.id}`,
+            type: 'playlist',
+            title: res.playlist.title,
+            subtitle: res.playlist.creator,
+            coverUrl: res.playlist.coverUrl,
+            ordered: !shuffle
+          },
+          startIndex
+        );
+      }
+    } finally {
+      setLoadingPlaylistId(null);
     }
   };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -513,34 +559,11 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           )}
 
           {onSelectMood && (
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-              {MOOD_PRESETS.map((preset) => {
-                const moodLabels: Record<MoodPreset, string> = {
-                  all: t.moodAll,
-                  focus: t.moodFocus,
-                  chill: t.moodChill,
-                  upbeat: t.moodUpbeat,
-                  workout: t.moodWorkout,
-                  indonesian: t.moodIndonesian,
-                  classic: t.moodClassic,
-                  acoustic: t.moodAcoustic
-                };
-                const isSelected = activeMood === preset.id;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    data-testid={`mood-pill-${preset.id}`}
-                    onClick={() => onSelectMood(preset.id)}
-                    className={`min-h-[34px] px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer border transition-colors ${isSelected
-                      ? 'bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] border-transparent'
-                      : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-medium)] hover:text-[var(--text-primary)]'
-                      }`}
-                  >
-                    {moodLabels[preset.id]}
-                  </button>
-                );
-              })}
+            <div data-testid="discover-mood-strip" className="space-y-1.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                {t.moodChoicesLabel}
+              </div>
+              <MoodStrip activeMood={activeMood} onSelectMood={onSelectMood} />
             </div>
           )}
 
@@ -806,13 +829,13 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </section>
           )}
 
-          {/* Featured Studio Albums (Ordered Tracklist Playback) */}
+          {/* Top Daily Albums (Ordered Tracklist Playback) */}
           <section data-testid="featured-albums-section" className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Disc3 size={16} className="text-[var(--accent-text)]" />
                 <h3 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
-                  {t.featuredAlbums}
+                  {t.topDailyAlbums}
                 </h3>
               </div>
               <span className="text-[11px] font-mono text-[var(--text-dim)]">
@@ -821,7 +844,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
-              {FEATURED_RELEASE_ALBUMS.map((alb) => {
+              {popularCharts.albums.slice(0, 8).map((alb) => {
                 const isActiveAlb = selectedAlbum?.id === alb.id;
                 const isLoadingAlb = loadingAlbumId === alb.id;
                 return (
@@ -987,6 +1010,100 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
               </div>
             )}
           </section>
+
+          {/* Top Daily Playlists (Live Editorial & Mood Collections) */}
+          {popularCharts.playlists.length > 0 && (
+            <section data-testid="daily-top-playlists-section" className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <ListMusic size={16} className="text-[var(--accent-text)]" />
+                  <h3 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
+                    {t.topDailyPlaylists}
+                  </h3>
+                </div>
+                <span className="text-[11px] font-mono text-[var(--text-dim)]">
+                  Daily Curated &middot; {popularCharts.playlists.slice(0, 8).length} lists
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+                {popularCharts.playlists.slice(0, 8).map((pl) => {
+                  const isActivePl = selectedDailyPlaylist?.id === pl.id;
+                  const isLoadingPl = loadingPlaylistId === pl.id;
+                  return (
+                    <div
+                      key={pl.id}
+                      data-testid={`daily-playlist-${pl.id}`}
+                      className={`group rounded-2xl p-2.5 border transition-all flex flex-col justify-between gap-2 ${
+                        isActivePl
+                          ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'
+                          : 'bg-[var(--bg-tint)] border-[var(--border-subtle)] hover:border-[var(--border-medium)]'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDailyPlaylist(pl)}
+                        className="text-left space-y-2 cursor-pointer"
+                      >
+                        <div className="relative aspect-square rounded-xl overflow-hidden bg-[var(--bg-elevated)]">
+                          <img
+                            src={pl.coverUrl || DEFAULT_COVER_DATA_URI}
+                            alt={pl.title}
+                            onError={(e) => applyCoverFallback(e, pl.title, pl.creator)}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          {isLoadingPl && (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                              <Loader2 size={18} className="animate-spin text-white" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-extrabold text-[var(--text-primary)] truncate">
+                            {pl.title}
+                          </div>
+                          <div className="text-[10px] text-[var(--text-dim)] truncate">
+                            {pl.creator}
+                          </div>
+                        </div>
+                      </button>
+
+                      <div className="flex items-center justify-between gap-1 pt-1 border-t border-[var(--border-subtle)]">
+                        <span className="text-[10px] font-mono text-[var(--text-dim)] truncate">
+                          {pl.nbTracks ? `${pl.nbTracks}t` : 'Mix'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handlePlayDailyPlaylist(pl, false, 0)}
+                          aria-label={`Play ${pl.title}`}
+                          className="w-7 h-7 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] flex items-center justify-center shrink-0 cursor-pointer"
+                        >
+                          <Play size={11} className="fill-current ml-0.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {selectedDailyPlaylist && (
+                <OrderedTracklistPanel
+                  testId="discover-selected-playlist-tracklist"
+                  title={selectedDailyPlaylist.title}
+                  subtitle={selectedDailyPlaylist.creator}
+                  coverUrl={selectedDailyPlaylist.coverUrl}
+                  badgeText={selectedDailyPlaylist.nbTracks ? `${selectedDailyPlaylist.nbTracks} tracks` : 'Playlist'}
+                  tracks={selectedDailyPlaylistTracks}
+                  currentTrackId={currentTrack.id}
+                  isLoading={loadingPlaylistId === selectedDailyPlaylist.id}
+                  loadingText="Loading ordered playlist tracks..."
+                  onPlayOrdered={(idx = 0) => handlePlayDailyPlaylist(selectedDailyPlaylist, false, idx)}
+                  onPlayShuffle={() => handlePlayDailyPlaylist(selectedDailyPlaylist, true, 0)}
+                  onClose={() => setSelectedDailyPlaylist(null)}
+                />
+              )}
+            </section>
+          )}
 
           {/* Featured Studio Masters */}
           <section className="space-y-3">

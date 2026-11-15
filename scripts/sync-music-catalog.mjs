@@ -154,13 +154,38 @@ async function main() {
     }
   }
 
-  const [dzGlobal, usRss, idRss, featuredAlbums] = await Promise.all([
+  const fetchChartPlaylists = async () => {
+    try {
+      const res = await fetch('https://api.deezer.com/chart/0/playlists?limit=16', {
+        signal: AbortSignal.timeout(5500)
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json?.data)
+        ? json.data
+            .filter((p) => p?.id && p?.title && (Number(p.nb_tracks) || 0) >= 2)
+            .map((p) => ({
+              id: `dz-pl-${p.id}`,
+              title: String(p.title || '').trim(),
+              creator: String(p.user?.name || 'Editorial Charts').trim(),
+              coverUrl: String(p.picture_xl || p.picture_big || p.picture_medium || ''),
+              nbTracks: Number(p.nb_tracks) || 0,
+              description: p.creation_date ? `Updated ${String(p.creation_date).slice(0, 10)}` : ''
+            }))
+        : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const [dzGlobal, usRss, idRss, featuredAlbums, featuredPlaylists] = await Promise.all([
     fetch('https://api.deezer.com/chart/0/tracks?limit=35', { signal: AbortSignal.timeout(5500) })
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null),
     fetchAppleRssWithDurations('us', 25).catch(() => []),
     fetchAppleRssWithDurations('id', 25).catch(() => []),
-    fetchChartAlbums()
+    fetchChartAlbums(),
+    fetchChartPlaylists()
   ]);
 
   const dzItems = Array.isArray(dzGlobal?.data)
@@ -178,20 +203,21 @@ async function main() {
 
   const nowMs = Date.now();
   const payload = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     source: 'github-actions-cicd',
     generatedAt: new Date(nowMs).toISOString(),
     nextEligibleSyncAt: new Date(nowMs + 24 * 60 * 60 * 1000).toISOString(),
     global: globalList,
     us: usRss,
     indonesia: idRss,
-    featuredAlbums
+    featuredAlbums,
+    featuredPlaylists
   };
 
   mkdirSync(path.dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(payload), 'utf8');
   console.log(
-    `Synced catalog -> ${outPath} (global=${globalList.length}, us=${usRss.length}, id=${idRss.length}, albums=${featuredAlbums.length})`
+    `Synced catalog -> ${outPath} (global=${globalList.length}, us=${usRss.length}, id=${idRss.length}, albums=${featuredAlbums.length}, playlists=${featuredPlaylists.length})`
   );
 }
 

@@ -66,6 +66,14 @@ function matchesMoodBpm(track: Track, mood: MoodPreset): boolean {
       return bpm >= 65 && bpm <= 115;
     case 'chill':
       return bpm >= 60 && bpm <= 108;
+    case 'lateNight':
+      return bpm >= 60 && bpm <= 110 || /rnb|soul|indie|lo-fi|lofi|slow/i.test(track.genre || '');
+    case 'party':
+      return bpm >= 118 || /dance|edm|hiphop|house|club|party/i.test(track.genre || '');
+    case 'romance':
+      return bpm >= 62 && bpm <= 112 || /ballad|rnb|soul|pop|love/i.test(track.genre || '');
+    case 'sleep':
+      return bpm >= 50 && bpm <= 95 || /ambient|classical|piano|sleep|acoustic/i.test(track.genre || '');
     case 'upbeat':
       return bpm >= 115 && bpm <= 165;
     case 'workout':

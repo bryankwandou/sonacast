@@ -30,7 +30,11 @@ export function saveLocalSearchHistory(items: SearchHistoryEntry[]): void {
   }
 }
 
-function makeHistoryKey(query: string, mode: 'songs' | 'albums', track?: Track): string {
+function makeHistoryKey(
+  query: string,
+  mode: 'songs' | 'albums' | 'playlists',
+  track?: Track
+): string {
   const normQ = query.trim().toLowerCase();
   if (track?.id) return `trk:${track.id}`;
   return `q:${mode}:${normQ}`;
@@ -39,7 +43,7 @@ function makeHistoryKey(query: string, mode: 'songs' | 'albums', track?: Track):
 export function upsertSearchHistory(
   existing: SearchHistoryEntry[],
   query: string,
-  mode: 'songs' | 'albums',
+  mode: 'songs' | 'albums' | 'playlists',
   matchedTrack?: Track
 ): SearchHistoryEntry[] {
   const cleanQuery = query.trim().slice(0, 120);

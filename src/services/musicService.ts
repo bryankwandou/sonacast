@@ -1,4 +1,4 @@
-import type { Track, LyricLine, CatalogAlbum } from '../types';
+import type { Track, LyricLine, CatalogAlbum, CatalogPlaylist } from '../types';
 import { ARTISTS_DIRECTORY } from '../data/artists800';
 
 export function parseLrc(lrcText: string): LyricLine[] {
@@ -1497,6 +1497,16 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
 export interface PopularChartsResult {
   global: Track[];
   indonesia: Track[];
+  albums: CatalogAlbum[];
+  playlists: CatalogPlaylist[];
+}
+
+interface ChartsApiPayload {
+  global?: CatalogApiItem[];
+  us?: CatalogApiItem[];
+  indonesia?: CatalogApiItem[];
+  featuredAlbums?: CatalogAlbum[];
+  featuredPlaylists?: CatalogPlaylist[];
 }
 
 async function fetchDirectAppleRssFallback(country: 'us' | 'id', limit: number): Promise<CatalogApiItem[]> {
@@ -1542,12 +1552,12 @@ const DAILY_CHARTS_FEED_URLS = [
   'https://cdn.jsdelivr.net/gh/bryankwandou/sonacast@catalog-data/daily-charts.json',
   'https://raw.githubusercontent.com/bryankwandou/sonacast/catalog-data/daily-charts.json'
 ];
-const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v1';
+const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v2';
 const DAILY_CHARTS_TTL_MS = 12 * 60 * 60 * 1000;
 
-export async function fetchPopularCharts(): Promise<PopularChartsResult> {
+function catalogItemsToTracks(items: CatalogApiItem[]): Track[] {
   const emptyIds = new Set<string>();
-  const toTrack = (item: CatalogApiItem): Track =>
+  return items.map((item) =>
     buildTrackFromUnified(
       {
         id: item.id,
@@ -1560,13 +1570,30 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
       },
       [],
       emptyIds
-    );
+    )
+  );
+}
 
-  const mapChartsPayload = (data: {
-    global?: CatalogApiItem[];
-    us?: CatalogApiItem[];
-    indonesia?: CatalogApiItem[];
-  }): PopularChartsResult => {
+function mergeDailyAlbums(liveAlbums?: CatalogAlbum[]): CatalogAlbum[] {
+  const seen = new Set<string>();
+  const merged: CatalogAlbum[] = [];
+  for (const album of [...(Array.isArray(liveAlbums) ? liveAlbums : []), ...FEATURED_RELEASE_ALBUMS]) {
+    if (!album?.id || !album?.title) continue;
+    const key = `${normalizeText(album.title)}::${normalizeText((album.artist || '').split(/[,&]|ft\.?/i)[0])}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push({
+      ...album,
+      coverUrl: album.coverUrl || DEFAULT_FALLBACK_COVER
+    });
+  }
+  return merged;
+}
+
+export async function fetchPopularCharts(): Promise<PopularChartsResult> {
+  const toTrackList = catalogItemsToTracks;
+
+  const mapChartsPayload = (data: ChartsApiPayload): PopularChartsResult => {
     const seenGlobal = new Set<string>();
     const globalItems: CatalogApiItem[] = [];
     for (const item of [...(data.global || []), ...(data.us || [])]) {
@@ -1575,9 +1602,19 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
       seenGlobal.add(key);
       globalItems.push(item);
     }
+    const playlists = Array.isArray(data.featuredPlaylists)
+      ? data.featuredPlaylists
+          .filter((p) => Boolean(p?.id && p?.title))
+          .map((p) => ({
+            ...p,
+            coverUrl: p.coverUrl || DEFAULT_FALLBACK_COVER
+          }))
+      : [];
     return {
-      global: globalItems.slice(0, 30).map(toTrack),
-      indonesia: (data.indonesia || []).slice(0, 24).map(toTrack)
+      global: toTrackList(globalItems.slice(0, 30)),
+      indonesia: toTrackList((data.indonesia || []).slice(0, 24)),
+      albums: mergeDailyAlbums(data.featuredAlbums),
+      playlists
     };
   };
 
@@ -1587,13 +1624,14 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
     if (cachedRaw) {
       const parsed = JSON.parse(cachedRaw) as {
         cachedAt?: number;
-        payload?: { global?: CatalogApiItem[]; us?: CatalogApiItem[]; indonesia?: CatalogApiItem[] };
+        payload?: ChartsApiPayload;
       };
       if (
         parsed?.cachedAt &&
         Date.now() - parsed.cachedAt < DAILY_CHARTS_TTL_MS &&
         parsed.payload &&
-        ((parsed.payload.global?.length || 0) > 0 || (parsed.payload.indonesia?.length || 0) > 0)
+        ((parsed.payload.global?.length || 0) > 0 || (parsed.payload.indonesia?.length || 0) > 0) &&
+        (parsed.payload.featuredPlaylists?.length || 0) > 0
       ) {
         return mapChartsPayload(parsed.payload);
       }
@@ -1607,9 +1645,12 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
     try {
       const feedRes = await fetch(feedUrl, { signal: AbortSignal.timeout(3500) });
       if (feedRes.ok) {
-        const data: { global?: CatalogApiItem[]; us?: CatalogApiItem[]; indonesia?: CatalogApiItem[] } =
-          await feedRes.json();
-        if ((data.global?.length || 0) > 0 || (data.indonesia?.length || 0) > 0) {
+        const data: ChartsApiPayload = await feedRes.json();
+        const hasFullDailyMeta =
+          ((data.global?.length || 0) > 0 || (data.indonesia?.length || 0) > 0) &&
+          (data.featuredAlbums?.length || 0) > 0 &&
+          (data.featuredPlaylists?.length || 0) > 0;
+        if (hasFullDailyMeta) {
           try {
             localStorage.setItem(
               DAILY_CHARTS_CACHE_KEY,
@@ -1632,8 +1673,7 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
       signal: AbortSignal.timeout(4800)
     });
     if (res.ok) {
-      const data: { global?: CatalogApiItem[]; us?: CatalogApiItem[]; indonesia?: CatalogApiItem[] } =
-        await res.json();
+      const data: ChartsApiPayload = await res.json();
       try {
         localStorage.setItem(
           DAILY_CHARTS_CACHE_KEY,
@@ -1654,8 +1694,10 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
   ]);
 
   return {
-    global: usItems.map(toTrack),
-    indonesia: idItems.map(toTrack)
+    global: toTrackList(usItems),
+    indonesia: toTrackList(idItems),
+    albums: mergeDailyAlbums([]),
+    playlists: []
   };
 }
 
@@ -1927,6 +1969,80 @@ export async function fetchAlbumTracksOnline(
   const searchFallback = await searchTracksOnline(`${album.title} ${album.artist}`);
   const filtered = searchFallback.slice(0, Math.min(14, searchFallback.length));
   return { album, tracks: filtered };
+}
+
+const playlistSearchCache = new Map<string, CatalogPlaylist[]>();
+const playlistTracksCache = new Map<string, { playlist: CatalogPlaylist; tracks: Track[] }>();
+
+/** Searches public curated playlists online with in-memory deduplicated caching. */
+export async function searchPlaylistsOnline(query: string): Promise<CatalogPlaylist[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const cacheKey = normalizeText(trimmed);
+  if (playlistSearchCache.has(cacheKey)) {
+    return playlistSearchCache.get(cacheKey)!;
+  }
+
+  try {
+    const res = await fetch(
+      `${getApiEndpoint('/api/catalog-search')}?mode=playlists&q=${encodeURIComponent(trimmed)}`,
+      { signal: AbortSignal.timeout(5200) }
+    );
+    if (res.ok) {
+      const data: { playlists?: CatalogPlaylist[] } = await res.json();
+      if (Array.isArray(data?.playlists) && data.playlists.length > 0) {
+        const cleaned = data.playlists.map((p) => ({
+          ...p,
+          coverUrl: p.coverUrl || DEFAULT_FALLBACK_COVER
+        }));
+        playlistSearchCache.set(cacheKey, cleaned);
+        return cleaned;
+      }
+    }
+  } catch {
+    // Graceful fallback handled below
+  }
+
+  return [];
+}
+
+/** Fetches the ordered tracklist for a public curated playlist. */
+export async function fetchPlaylistTracksOnline(
+  playlist: CatalogPlaylist
+): Promise<{ playlist: CatalogPlaylist; tracks: Track[] }> {
+  const cached = playlistTracksCache.get(playlist.id);
+  if (cached && cached.tracks.length > 0) {
+    return cached;
+  }
+
+  try {
+    const res = await fetch(
+      `${getApiEndpoint('/api/catalog-search')}?mode=playlist_tracks&playlistId=${encodeURIComponent(playlist.id)}`,
+      { signal: AbortSignal.timeout(5200) }
+    );
+    if (res.ok) {
+      const data: { playlist?: CatalogPlaylist | null; tracks?: CatalogApiItem[] } = await res.json();
+      const rawItems = Array.isArray(data?.tracks) ? data.tracks : [];
+      if (rawItems.length > 0) {
+        const resolvedMeta: CatalogPlaylist = {
+          ...playlist,
+          ...(data.playlist || {}),
+          coverUrl: data.playlist?.coverUrl || playlist.coverUrl || DEFAULT_FALLBACK_COVER
+        };
+        const tracks = catalogItemsToTracks(rawItems);
+        const result = { playlist: resolvedMeta, tracks };
+        playlistTracksCache.set(playlist.id, result);
+        return result;
+      }
+    }
+  } catch {
+    // Fall back to keyword search if upstream playlist fetch fails
+  }
+
+  const searchFallback = await searchTracksOnline(playlist.title);
+  const filtered = searchFallback.slice(0, Math.min(18, searchFallback.length));
+  return { playlist, tracks: filtered };
 }
 
 

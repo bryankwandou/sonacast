@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type {
   BlendRoom,
+  CatalogAlbum,
+  CatalogPlaylist,
   CloudLibrarySnapshot,
   Track,
   PodcastEpisode,
@@ -29,6 +31,8 @@ import {
   fetchLyricsWithMeta,
   findMasterAudio,
   resolveFullTrackStream,
+  searchAlbumsOnline,
+  searchPlaylistsOnline,
   searchTracksOnline
 } from './services/musicService';
 import {
@@ -41,6 +45,7 @@ import {
   buildSmartQueueFromPool,
   classifyTrackTier,
   getClassMatchedSeedQueries,
+  getMoodSearchQuery,
   getMoodSeedQueries,
   loadRecommendationState,
   pickNextTrackPure,
@@ -60,6 +65,8 @@ import {
 } from './services/neonSyncService';
 import { fetchAuthSession, logoutFromNeon } from './services/authService';
 import { useAppPreferences } from './contexts/AppPreferencesContext';
+import { usePopularCharts } from './hooks/usePopularCharts';
+import { MoodStrip } from './components/common/MoodStrip';
 
 import { Sidebar } from './components/layout/Sidebar';
 import { RightSidebar } from './components/layout/RightSidebar';
@@ -104,20 +111,24 @@ import { ShortcutsModal } from './components/modals/ShortcutsModal';
 import { SolanaWalletModal } from './components/web3/SolanaWalletModal';
 import { PitchDeckModal } from './components/pitch/PitchDeckModal';
 import { getPrimaryArtistName } from './utils/coverColor';
+import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from './utils/coverFallback';
 import {
   Activity,
   Award,
   Clock,
   Compass,
   Disc,
+  Disc3,
   Heart,
   Home,
   Keyboard,
   ListMusic,
+  Loader2,
   Menu,
   Mic2,
   Minimize2,
   PictureInPicture2,
+  Play,
   Presentation,
   Radio,
   RefreshCw,
@@ -195,7 +206,52 @@ export default function App() {
     loadLocalSearchHistory()
   );
   const [externalSearchQuery, setExternalSearchQuery] = useState('');
+  const [externalSearchMode, setExternalSearchMode] = useState<'songs' | 'albums' | 'playlists'>('songs');
+  const [externalSelectedAlbum, setExternalSelectedAlbum] = useState<CatalogAlbum | null>(null);
+  const [externalSelectedPlaylist, setExternalSelectedPlaylist] = useState<CatalogPlaylist | null>(null);
   const [externalSearchTrigger, setExternalSearchTrigger] = useState(0);
+  const { popularCharts } = usePopularCharts();
+  const [topInstantResults, setTopInstantResults] = useState<{
+    query: string;
+    tracks: Track[];
+    albums: CatalogAlbum[];
+    playlists: CatalogPlaylist[];
+  }>({ query: '', tracks: [], albums: [], playlists: [] });
+  const [isLoadingTopInstant, setIsLoadingTopInstant] = useState(false);
+
+  useEffect(() => {
+    const trimmed = topSearchInput.trim();
+    if (!isTopSearchFocused || trimmed.length < 2) {
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setIsLoadingTopInstant(true);
+      try {
+        const [tracksRes, albumsRes, playlistsRes] = await Promise.all([
+          searchTracksOnline(trimmed).catch(() => [] as Track[]),
+          searchAlbumsOnline(trimmed).catch(() => [] as CatalogAlbum[]),
+          searchPlaylistsOnline(trimmed).catch(() => [] as CatalogPlaylist[])
+        ]);
+        if (!cancelled) {
+          setTopInstantResults({
+            query: trimmed,
+            tracks: tracksRes.slice(0, 4),
+            albums: albumsRes.slice(0, 3),
+            playlists: playlistsRes.slice(0, 3)
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingTopInstant(false);
+        }
+      }
+    }, 260);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isTopSearchFocused, topSearchInput]);
 
   // 24/7 Low-CPU / Battery Saver, Floating Mini Icon & Desktop PiP
   const [lowCpuMode, setLowCpuMode] = useState<boolean>(() => {
@@ -2353,7 +2409,7 @@ export default function App() {
   }, [lowCpuMode, handlePrev]);
 
   const handleRecordSearch = useCallback(
-    (query: string, mode: 'songs' | 'albums' = 'songs', matchedTrack?: Track) => {
+    (query: string, mode: 'songs' | 'albums' | 'playlists' = 'songs', matchedTrack?: Track) => {
       const cleaned = query.trim();
       if (!cleaned) return;
       const nextList = upsertSearchHistory(searchHistoryRef.current, cleaned, mode, matchedTrack);
@@ -2487,13 +2543,23 @@ export default function App() {
     }
   };
 
-  const navigateToSearch = (query?: string) => {
+  const navigateToSearch = (
+    query?: string,
+    mode: 'songs' | 'albums' | 'playlists' = 'songs',
+    selection?: { album?: CatalogAlbum; playlist?: CatalogPlaylist }
+  ) => {
     const trimmed = (query || '').trim();
+    setExternalSearchMode(mode);
+    setExternalSelectedAlbum(selection?.album || null);
+    setExternalSelectedPlaylist(selection?.playlist || null);
     if (trimmed) {
       setExternalSearchQuery(trimmed);
       setExternalSearchTrigger((n) => n + 1);
-      handleRecordSearch(trimmed, 'songs');
+      handleRecordSearch(trimmed, mode);
+    } else if (mode !== externalSearchMode || selection?.album || selection?.playlist) {
+      setExternalSearchTrigger((n) => n + 1);
     }
+    setIsTopSearchFocused(false);
     setCurrentTab('search');
   };
 
@@ -2743,6 +2809,12 @@ export default function App() {
                       value={topSearchInput}
                       onFocus={() => setIsTopSearchFocused(true)}
                       onBlur={() => window.setTimeout(() => setIsTopSearchFocused(false), 160)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setIsTopSearchFocused(false);
+                          e.currentTarget.blur();
+                        }
+                      }}
                       onChange={(e) => setTopSearchInput(e.target.value)}
                       placeholder={t.searchPlaceholder}
                       aria-label={t.searchPlaceholder}
@@ -2782,62 +2854,307 @@ export default function App() {
                   </div>
                 </form>
 
-                {isTopSearchFocused && searchHistory.length > 0 && (
+                {isTopSearchFocused && (
                   <div
                     data-testid="topbar-search-dropdown"
                     onMouseDown={(e) => e.preventDefault()}
-                    className="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-medium)] shadow-2xl p-2.5 space-y-1.5 z-50"
+                    className="absolute left-0 right-0 md:right-auto md:min-w-[460px] top-full mt-1.5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-medium)] shadow-2xl p-3 space-y-3 z-50 max-h-[72vh] overflow-y-auto"
                   >
-                    <div className="flex items-center justify-between px-1.5 pb-1 border-b border-[var(--border-subtle)]">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1">
-                        <Clock size={11} />
-                        <span>{t.recentSearches}</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleClearSearchHistory}
-                        className="text-[10px] font-semibold text-[var(--text-dim)] hover:text-rose-400 inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <Trash2 size={10} />
-                        <span>{t.clearSearchHistory}</span>
-                      </button>
-                    </div>
-                    <div className="max-h-56 overflow-y-auto space-y-1">
-                      {searchHistory.slice(0, 8).map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] transition-colors"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsTopSearchFocused(false);
-                              setTopSearchInput(item.query);
-                              navigateToSearch(item.query);
-                            }}
-                            className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
-                          >
-                            <Clock size={12} className="text-[var(--text-dim)] shrink-0" />
-                            <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                              {item.matchedTrack?.title || item.query}
-                            </span>
-                            {item.matchedTrack?.artist && (
-                              <span className="text-[11px] text-[var(--text-dim)] truncate">
-                                &middot; {item.matchedTrack.artist}
-                              </span>
+                    {topSearchInput.trim().length >= 2 ? (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between px-1 pb-1 border-b border-[var(--border-subtle)]">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1.5">
+                            {isLoadingTopInstant && (
+                              <Loader2 size={11} className="animate-spin text-[var(--accent-text)]" />
                             )}
-                          </button>
+                            <span>{t.instantResults}</span>
+                          </span>
                           <button
                             type="button"
-                            aria-label={t.removeSearchItem}
-                            onClick={() => handleDeleteSearchHistory(item.id)}
-                            className="p-1 rounded text-[var(--text-dim)] hover:text-rose-400 cursor-pointer shrink-0"
+                            onClick={() => navigateToSearch(topSearchInput.trim(), 'songs')}
+                            className="text-[10px] font-bold text-[var(--accent-text)] hover:underline cursor-pointer"
                           >
-                            <X size={12} />
+                            {t.browseCatalog} &rarr;
                           </button>
                         </div>
-                      ))}
-                    </div>
+
+                        {topInstantResults.tracks.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                              {t.searchSongsTab}
+                            </div>
+                            {topInstantResults.tracks.map((tr) => (
+                              <button
+                                key={`top-inst-trk-${tr.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setIsTopSearchFocused(false);
+                                  handleRecordSearch(tr.title, 'songs', tr);
+                                  handleSelectTrack(tr);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[var(--bg-elevated)] text-left transition-colors cursor-pointer"
+                              >
+                                <img
+                                  src={tr.coverUrl || DEFAULT_COVER_DATA_URI}
+                                  alt={tr.title}
+                                  onError={(e) => applyCoverFallback(e, tr.title, tr.artist)}
+                                  className="w-8 h-8 rounded-lg object-cover shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                                    {tr.title}
+                                  </div>
+                                  <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                    {tr.artist}
+                                  </div>
+                                </div>
+                                <Play size={12} className="text-[var(--accent-text)] shrink-0" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {topInstantResults.albums.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                              {t.searchAlbumsTab}
+                            </div>
+                            {topInstantResults.albums.map((alb) => (
+                              <button
+                                key={`top-inst-alb-${alb.id}`}
+                                type="button"
+                                onClick={() => navigateToSearch(alb.title, 'albums', { album: alb })}
+                                className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[var(--bg-elevated)] text-left transition-colors cursor-pointer"
+                              >
+                                <img
+                                  src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
+                                  alt={alb.title}
+                                  onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
+                                  className="w-8 h-8 rounded-lg object-cover shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                                    {alb.title}
+                                  </div>
+                                  <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                    {alb.artist}
+                                  </div>
+                                </div>
+                                <Disc3 size={12} className="text-[var(--text-dim)] shrink-0" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {topInstantResults.playlists.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                              {t.searchPlaylistsTab}
+                            </div>
+                            {topInstantResults.playlists.map((pl) => (
+                              <button
+                                key={`top-inst-pl-${pl.id}`}
+                                type="button"
+                                onClick={() => navigateToSearch(pl.title, 'playlists', { playlist: pl })}
+                                className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[var(--bg-elevated)] text-left transition-colors cursor-pointer"
+                              >
+                                <img
+                                  src={pl.coverUrl || DEFAULT_COVER_DATA_URI}
+                                  alt={pl.title}
+                                  onError={(e) => applyCoverFallback(e, pl.title, pl.creator)}
+                                  className="w-8 h-8 rounded-lg object-cover shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                                    {pl.title}
+                                  </div>
+                                  <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                    {pl.creator}
+                                    {pl.nbTracks ? ` · ${pl.nbTracks}t` : ''}
+                                  </div>
+                                </div>
+                                <ListMusic size={12} className="text-[var(--text-dim)] shrink-0" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        {/* Quick Jump Search Scope */}
+                        <div className="flex flex-wrap items-center gap-1.5 pb-2 border-b border-[var(--border-subtle)]">
+                          <button
+                            type="button"
+                            onClick={() => navigateToSearch(topSearchInput.trim() || 'Queen', 'songs')}
+                            className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Search size={11} />
+                            <span>{t.searchSongsTab}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => navigateToSearch(topSearchInput.trim() || 'Queen', 'albums')}
+                            className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Disc3 size={11} />
+                            <span>{t.searchAlbumsTab}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => navigateToSearch(topSearchInput.trim() || 'Top Hits', 'playlists')}
+                            className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <ListMusic size={11} />
+                            <span>{t.searchPlaylistsTab}</span>
+                          </button>
+                        </div>
+
+                        {/* Mood Choices in Search Bar */}
+                        <div data-testid="topbar-mood-choices" className="space-y-1.5">
+                          <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                            {t.moodChoicesLabel}
+                          </div>
+                          <MoodStrip
+                            wrap
+                            compact
+                            activeMood={activeMood}
+                            testIdPrefix="topbar-mood-pill"
+                            onSelectMood={(mood) => {
+                              const moodQuery = getMoodSearchQuery(mood);
+                              void handleSelectMood(mood);
+                              navigateToSearch(moodQuery, 'playlists');
+                            }}
+                          />
+                        </div>
+
+                        {/* Top Daily Albums in Search Bar */}
+                        {popularCharts.albums.length > 0 && (
+                          <div data-testid="topbar-daily-albums" className="space-y-1.5">
+                            <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1">
+                              <Disc3 size={11} className="text-[var(--accent-text)]" />
+                              <span>{t.topDailyAlbums}</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                              {popularCharts.albums.slice(0, 4).map((alb) => (
+                                <button
+                                  key={`top-alb-${alb.id}`}
+                                  type="button"
+                                  data-testid={`topbar-daily-album-${alb.id}`}
+                                  onClick={() => navigateToSearch(alb.title, 'albums', { album: alb })}
+                                  className="flex items-center gap-2 p-1.5 rounded-xl bg-[var(--bg-elevated)]/70 hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-left transition-colors cursor-pointer min-w-0"
+                                >
+                                  <img
+                                    src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
+                                    alt={alb.title}
+                                    onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
+                                    className="w-9 h-9 rounded-lg object-cover shrink-0"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">
+                                      {alb.title}
+                                    </div>
+                                    <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                      {alb.artist}
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Top Daily Playlists in Search Bar */}
+                        {popularCharts.playlists.length > 0 && (
+                          <div data-testid="topbar-daily-playlists" className="space-y-1.5">
+                            <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1">
+                              <ListMusic size={11} className="text-[var(--accent-text)]" />
+                              <span>{t.topDailyPlaylists}</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                              {popularCharts.playlists.slice(0, 4).map((pl) => (
+                                <button
+                                  key={`top-pl-${pl.id}`}
+                                  type="button"
+                                  data-testid={`topbar-daily-playlist-${pl.id}`}
+                                  onClick={() => navigateToSearch(pl.title, 'playlists', { playlist: pl })}
+                                  className="flex items-center gap-2 p-1.5 rounded-xl bg-[var(--bg-elevated)]/70 hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-left transition-colors cursor-pointer min-w-0"
+                                >
+                                  <img
+                                    src={pl.coverUrl || DEFAULT_COVER_DATA_URI}
+                                    alt={pl.title}
+                                    onError={(e) => applyCoverFallback(e, pl.title, pl.creator)}
+                                    className="w-9 h-9 rounded-lg object-cover shrink-0"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">
+                                      {pl.title}
+                                    </div>
+                                    <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                      {pl.creator}
+                                      {pl.nbTracks ? ` · ${pl.nbTracks}t` : ''}
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {searchHistory.length > 0 && (
+                          <div className="space-y-1.5 pt-1 border-t border-[var(--border-subtle)]">
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1">
+                                <Clock size={11} />
+                                <span>{t.recentSearches}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={handleClearSearchHistory}
+                                className="text-[10px] font-semibold text-[var(--text-dim)] hover:text-rose-400 inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Trash2 size={10} />
+                                <span>{t.clearSearchHistory}</span>
+                              </button>
+                            </div>
+                            <div className="max-h-36 overflow-y-auto space-y-1">
+                              {searchHistory.slice(0, 6).map((item) => (
+                                <div
+                                  key={item.id}
+                                  className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg hover:bg-[var(--bg-elevated)] transition-colors"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setTopSearchInput(item.query);
+                                      navigateToSearch(item.query, item.mode);
+                                    }}
+                                    className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
+                                  >
+                                    <Clock size={11} className="text-[var(--text-dim)] shrink-0" />
+                                    <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                                      {item.matchedTrack?.title || item.query}
+                                    </span>
+                                    {item.matchedTrack?.artist && (
+                                      <span className="text-[11px] text-[var(--text-dim)] truncate">
+                                        &middot; {item.matchedTrack.artist}
+                                      </span>
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label={t.removeSearchItem}
+                                    onClick={() => handleDeleteSearchHistory(item.id)}
+                                    className="p-1 rounded text-[var(--text-dim)] hover:text-rose-400 cursor-pointer shrink-0"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -3224,11 +3541,16 @@ export default function App() {
                     isPlaying={isPlaying}
                     resolvingTrackId={resolvingTrackId}
                     externalQuery={externalSearchQuery}
+                    externalMode={externalSearchMode}
+                    externalSelectedAlbum={externalSelectedAlbum}
+                    externalSelectedPlaylist={externalSelectedPlaylist}
                     externalTrigger={externalSearchTrigger}
                     searchHistory={searchHistory}
                     onRecordSearch={handleRecordSearch}
                     onDeleteSearchHistory={handleDeleteSearchHistory}
                     onClearSearchHistory={handleClearSearchHistory}
+                    activeMood={activeMood}
+                    onSelectMood={handleSelectMood}
                     onSelectTrack={handleSelectTrack}
                     onTogglePlay={handleTogglePlay}
                     onUpdateLyrics={(lyrics) => handleUpdateTrackLyrics(lyrics, currentTrack.id)}
