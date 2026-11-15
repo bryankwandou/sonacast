@@ -41,7 +41,7 @@ interface SearchViewProps {
   ) => void;
 }
 
-const INITIAL_ARTIST_CHIP_LIMIT = 42;
+const INITIAL_ARTIST_CHIP_LIMIT = 12;
 
 export const SearchView: React.FC<SearchViewProps> = ({
   curatedTracks,
@@ -411,103 +411,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </div>
       )}
 
-      {/* 800+ Popular Artists Directory & Genre Filter */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
-            <Users size={15} className="text-[var(--accent-text)]" />
-            <span>
-              Global Artists Directory ({filteredArtists.length} of {ARTISTS_DIRECTORY.length} Artists)
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 sm:flex-initial">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" />
-              <input
-                type="text"
-                value={artistDirectoryFilter}
-                onChange={(e) => {
-                  setArtistDirectoryFilter(e.target.value);
-                  setShowAllArtists(true);
-                }}
-                placeholder="Filter 800+ artists..."
-                className="pl-8 pr-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] w-full sm:w-44"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleRandomArtist}
-              className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--accent-text)] flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <Shuffle size={12} />
-              <span>Random Artist</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Genre Category Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-          {ARTIST_GENRE_CATEGORIES.map((genre) => {
-            const isActive = selectedGenre === genre;
-            return (
-              <button
-                key={genre}
-                type="button"
-                onClick={() => {
-                  setSelectedGenre(genre);
-                  setShowAllArtists(false);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 transition-all cursor-pointer border ${
-                  isActive
-                    ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border-[var(--accent-border)]'
-                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border-[var(--border-subtle)]'
-                }`}
-              >
-                {genre}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Artist Chips */}
-        <div className="flex flex-wrap gap-2">
-          {visibleArtists.map((artist) => {
-            const isSelected = activeArtistFilter.toLowerCase() === artist.name.toLowerCase();
-            return (
-              <button
-                key={artist.name}
-                type="button"
-                onClick={() => handleArtistClick(artist.name)}
-                className={`px-3 py-1.5 rounded-xl border transition-all font-semibold text-xs flex items-center gap-1.5 cursor-pointer ${
-                  isSelected
-                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)] border-[var(--accent-emerald)]'
-                    : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-medium)]'
-                }`}
-              >
-                <span>{artist.name}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {filteredArtists.length > INITIAL_ARTIST_CHIP_LIMIT && (
-          <div className="pt-1 flex justify-center">
-            <button
-              type="button"
-              onClick={() => setShowAllArtists((prev) => !prev)}
-              className="px-4 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--accent-text)] cursor-pointer transition-colors"
-            >
-              {showAllArtists
-                ? `Show Top ${INITIAL_ARTIST_CHIP_LIMIT} Artists`
-                : `Show All ${filteredArtists.length} Artists`}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Search Results Grid */}
+      {/* Search Results Grid (primary content immediately below search bar) */}
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 px-1">
           <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -716,7 +620,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
         ) : results.length === 0 ? (
           <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-tint)]">
-            <p>No tracks found for &ldquo;{searchQuery}&rdquo;. Try another query or pick any artist above.</p>
+            <p>No tracks found for &ldquo;{searchQuery}&rdquo;. Try another query or pick any artist below.</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
@@ -742,6 +646,109 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 onOpenArtist={onOpenArtist}
               />
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Curated Global Artists Directory & Genre Browser */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3.5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+            <Users size={15} className="text-[var(--accent-text)] shrink-0" />
+            <span>
+              Global Artists Directory ({filteredArtists.length} of {ARTISTS_DIRECTORY.length} Indexed)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="relative flex-1 sm:flex-initial">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" />
+              <input
+                type="text"
+                value={artistDirectoryFilter}
+                onChange={(e) => {
+                  setArtistDirectoryFilter(e.target.value);
+                  setShowAllArtists(true);
+                }}
+                placeholder={`Filter ${ARTISTS_DIRECTORY.length} artists...`}
+                className="pl-8 pr-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] w-full sm:w-48"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRandomArtist}
+              className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--accent-text)] flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+            >
+              <Shuffle size={12} />
+              <span>Random Artist</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Genre Category Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          {ARTIST_GENRE_CATEGORIES.map((genre) => {
+            const isActive = selectedGenre === genre;
+            return (
+              <button
+                key={genre}
+                type="button"
+                onClick={() => {
+                  setSelectedGenre(genre);
+                  setShowAllArtists(false);
+                }}
+                className={`px-3 py-1 rounded-full text-[11px] font-semibold shrink-0 transition-all cursor-pointer border ${
+                  isActive
+                    ? 'bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] border-[var(--ink-solid)] shadow-sm'
+                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-medium)] border-[var(--border-subtle)]'
+                }`}
+              >
+                {genre}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Aligned Artist Directory Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2">
+          {visibleArtists.map((artist) => {
+            const isSelected = activeArtistFilter.toLowerCase() === artist.name.toLowerCase();
+            return (
+              <button
+                key={artist.name}
+                type="button"
+                onClick={() => handleArtistClick(artist.name)}
+                className={`px-3 py-2 rounded-xl border text-left transition-all cursor-pointer min-w-0 ${
+                  isSelected
+                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)] border-[var(--accent-emerald)] shadow-sm'
+                    : 'bg-[var(--bg-elevated)]/70 border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--bg-surface)] hover:border-[var(--accent-border)]'
+                }`}
+              >
+                <div className="text-xs font-semibold truncate">{artist.name}</div>
+                <div
+                  className={`text-[10px] truncate ${
+                    isSelected ? 'text-[var(--accent-fg)]/80' : 'text-[var(--text-dim)]'
+                  }`}
+                >
+                  {artist.genre}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {filteredArtists.length > INITIAL_ARTIST_CHIP_LIMIT && (
+          <div className="pt-1 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setShowAllArtists((prev) => !prev)}
+              className="px-4 py-1.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--accent-text)] cursor-pointer transition-colors"
+            >
+              {showAllArtists
+                ? `Show Top ${INITIAL_ARTIST_CHIP_LIMIT} Artists`
+                : `Browse All ${filteredArtists.length} Artists`}
+            </button>
           </div>
         )}
       </div>

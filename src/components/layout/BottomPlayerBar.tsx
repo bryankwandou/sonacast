@@ -221,9 +221,9 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 max-w-full">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(240px,1fr)_auto_minmax(280px,1fr)] items-center gap-2 sm:gap-3 lg:gap-4 max-w-full">
         {/* Left: Track Info + Like / Radio / Open Full Player */}
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 sm:flex-none sm:w-[270px] lg:w-[310px]">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
           <button
             type="button"
             onClick={() => onOpenExpandedPlayer?.()}
@@ -272,7 +272,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             )}
           </div>
 
-          <div className="hidden sm:flex items-center gap-1 shrink-0">
+          <div className="hidden sm:flex items-center gap-0.5 shrink-0">
             {onToggleLike && (
               <button
                 type="button"
@@ -283,7 +283,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                   isLiked
                     ? 'text-[var(--accent-text)] bg-[var(--accent-soft)]'
-                    : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
                 }`}
               >
                 <Heart size={15} className={isLiked ? 'fill-current' : ''} />
@@ -296,7 +296,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                 onClick={onAddToAlbum}
                 aria-label={t.addToAlbum}
                 title={t.addToAlbum}
-                className="p-1.5 rounded-lg transition-colors cursor-pointer text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                className="p-1.5 rounded-lg transition-colors cursor-pointer text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
               >
                 <FolderPlus size={15} />
               </button>
@@ -308,7 +308,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                 data-testid="player-start-radio"
                 aria-label={t.startRadio}
                 title={t.startRadio}
-                className="p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--accent-text)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent-text)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
               >
                 <Radio size={15} />
               </button>
@@ -323,7 +323,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                   isSavedOffline
                     ? 'text-[var(--accent-text)] bg-[var(--accent-soft)]'
-                    : 'text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
                 }`}
               >
                 {isSavedOffline ? <Check size={15} /> : <Download size={15} />}
@@ -336,7 +336,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                 data-testid="player-share-btn"
                 aria-label={t.shareTrackLink}
                 title={t.shareTrackLink}
-                className="hidden md:inline-flex p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
+                className="hidden xl:inline-flex p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
               >
                 <Share2 size={14} />
               </button>
@@ -452,14 +452,14 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                 aria-label={`${t.autoplaySimilar}: ${autoplayEnabled ? 'ON' : 'OFF'}`}
                 aria-pressed={autoplayEnabled}
                 title={`${t.autoplaySimilar} (${autoplayEnabled ? 'ON' : 'OFF'})`}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold transition-colors cursor-pointer border ${
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer border ${
                   autoplayEnabled
                     ? 'text-[var(--accent-text)] bg-[var(--accent-soft)] border-[var(--accent-border)]'
-                    : 'text-[var(--text-dim)] bg-[var(--bg-tint)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] bg-[var(--bg-tint)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 <InfinityIcon size={13} />
-                <span className="hidden lg:inline">{t.autoNextShort}</span>
+                <span className="hidden min-[1440px]:inline whitespace-nowrap">{t.autoNextShort}</span>
               </button>
             )}
           </div>
@@ -472,8 +472,8 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
         </div>
 
         {/* Right: 6 Separated Stage Modes, Low-CPU 24/7, Floating/PiP, Queue & Volume */}
-        <div className="flex items-center justify-end gap-1 sm:gap-2 flex-none sm:w-[300px] lg:w-[360px]">
-          <div className="hidden md:flex items-center bg-[var(--bg-tint)] rounded-lg p-0.5">
+        <div className="flex items-center justify-end gap-1 sm:gap-1.5 min-w-0 justify-self-end">
+          <div className="hidden md:flex items-center bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg p-0.5 shrink-0">
             {(
               [
                 { id: 'music-only', label: t.modeMusicOnly, icon: <Disc size={13} /> },
@@ -493,7 +493,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                   className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                     active
                       ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm'
-                      : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   {item.icon}
@@ -510,14 +510,14 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               aria-pressed={lowCpuMode}
               title={t.lowCpuMode}
               aria-label={t.lowCpuMode}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer border ${
+              className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer border ${
                 lowCpuMode
                   ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border-[var(--accent-border)]'
-                  : 'bg-[var(--bg-tint)] text-[var(--text-dim)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
+                  : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
               }`}
             >
               <Zap size={12} />
-              <span className="hidden xl:inline">{t.lowCpuShort}</span>
+              <span className="hidden min-[1440px]:inline whitespace-nowrap">{t.lowCpuShort}</span>
             </button>
           )}
 
@@ -529,10 +529,10 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               aria-pressed={isFloatingMinimized}
               title={t.minimizeFloating}
               aria-label={t.minimizeFloating}
-              className={`hidden sm:inline-flex p-1.5 rounded-lg transition-colors cursor-pointer ${
+              className={`hidden sm:inline-flex p-1.5 rounded-lg shrink-0 transition-colors cursor-pointer ${
                 isFloatingMinimized
                   ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
-                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
               }`}
             >
               <Minimize2 size={14} />
@@ -546,7 +546,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               data-testid="player-pip-toggle"
               title={t.desktopPip}
               aria-label={t.desktopPip}
-              className="hidden md:inline-flex p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
+              className="hidden md:inline-flex p-1.5 rounded-lg shrink-0 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
             >
               <PictureInPicture2 size={14} />
             </button>
@@ -559,7 +559,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               data-testid="player-expand-toggle"
               title={t.openFullPlayer}
               aria-label={t.openFullPlayer}
-              className="hidden sm:inline-flex p-2 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
+              className="hidden sm:inline-flex p-1.5 rounded-lg shrink-0 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
             >
               <Maximize2 size={15} />
             </button>
@@ -770,17 +770,17 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             onClick={onOpenMobileQueue}
             aria-label={t.queue}
             title={t.queue}
-            className="min-[1380px]:hidden p-2 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
+            className="min-[1380px]:hidden p-1.5 rounded-lg shrink-0 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
           >
-            <ListMusic size={17} />
+            <ListMusic size={16} />
           </button>
 
-          <div className="hidden lg:flex items-center gap-1.5">
+          <div className="hidden lg:flex items-center gap-1 shrink-0">
             <button
               type="button"
               onClick={() => onVolumeChange(volume > 0 ? 0 : 0.85)}
               aria-label={t.volume}
-              className="p-1.5 text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
             >
               {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
             </button>
@@ -792,7 +792,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               value={volume}
               onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
               aria-label={t.volume}
-              className="w-20 accent-[var(--accent-emerald)] cursor-pointer h-1"
+              className="w-16 xl:w-20 accent-[var(--accent-emerald)] cursor-pointer h-1"
             />
           </div>
         </div>

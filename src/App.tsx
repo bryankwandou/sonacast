@@ -258,6 +258,11 @@ export default function App() {
   } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const topSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    mainScrollRef.current?.scrollTo({ top: 0 });
+  }, [currentTab]);
 
   const showToast = useCallback(
     (message: string, tone: 'default' | 'success' | 'warning' = 'default') => {
@@ -2513,7 +2518,10 @@ export default function App() {
             />
 
             {/* Center Main Stage */}
-            <main className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden p-4 sm:p-6 space-y-5 min-w-0">
+            <main
+              ref={mainScrollRef}
+              className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden p-4 sm:p-6 space-y-5 min-w-0"
+            >
               {/* Persistent Top Search Bar + Sound History Dropdown + Stage Toggle */}
               <div className="relative z-30">
                 <form

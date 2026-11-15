@@ -166,14 +166,14 @@ export const VibeFeedView: React.FC<VibeFeedViewProps> = ({
     <div
       data-testid="vibe-feed-stage"
       onWheel={handleWheelSwitch}
-      className="relative max-w-4xl mx-auto rounded-3xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 sm:p-7 select-none"
+      className="relative max-w-4xl mx-auto rounded-3xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 sm:p-6 select-none"
       style={{
         boxShadow: 'var(--card-shadow)',
-        backgroundImage: `radial-gradient(circle at 22% 18%, rgba(${accentRgb}, 0.22), transparent 58%), radial-gradient(circle at 82% 82%, rgba(${accentRgb}, 0.12), transparent 60%)`
+        backgroundImage: `radial-gradient(circle at 22% 18%, rgba(${accentRgb}, 0.16), transparent 58%), radial-gradient(circle at 82% 82%, rgba(${accentRgb}, 0.09), transparent 60%)`
       }}
     >
       {/* Top Feed Header */}
-      <div className="flex items-center justify-between gap-3 mb-5">
+      <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2.5 min-w-0">
           <div
             className="w-8 h-8 rounded-xl flex items-center justify-center border border-[var(--border-medium)] bg-[var(--bg-elevated)] text-[var(--accent-text)] shrink-0"
@@ -216,7 +216,7 @@ export const VibeFeedView: React.FC<VibeFeedViewProps> = ({
 
       {/* Main Single-Focus Card + Right Action Rail */}
       <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-5 items-center">
-        <div className="rounded-2xl bg-[var(--bg-card)]/75 backdrop-blur-md border border-[var(--border-subtle)] p-4 sm:p-5 space-y-5">
+        <div className="rounded-2xl bg-[var(--bg-surface)]/90 backdrop-blur-md border border-[var(--border-subtle)] p-4 sm:p-5 space-y-4 shadow-sm">
           {/* Artwork + Track Identity */}
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
             <div className="relative w-44 h-44 sm:w-48 sm:h-48 rounded-2xl overflow-hidden border border-[var(--border-medium)] shadow-2xl shrink-0 group">
