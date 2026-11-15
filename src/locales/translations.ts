@@ -259,8 +259,8 @@ export const LANGUAGE_OPTIONS: LanguageOption[] = [
 
 const EN_BASE: TranslationKeys = {
   appName: 'Sonacast',
-  tagline: 'Full-Length Music Streaming, Live Lyrics & Real-Time Orbwave Audio Engine',
-  brandSubtitle: 'Full-Length Audio Engine',
+  tagline: 'Music Streaming, Live Lyrics & Real-Time Audio Visualizer',
+  brandSubtitle: 'Music & Live Radio',
   navLanding: 'Home',
   navDiscover: 'Your Library',
   navSearch: 'Search Catalog',
@@ -488,8 +488,8 @@ const loc = (overrides: Partial<TranslationKeys>): TranslationKeys => ({
 export const TRANSLATIONS: Record<Language, TranslationKeys> = {
   en: EN_BASE,
   id: loc({
-    tagline: 'Streaming Musik Penuh Awal-Akhir, Lirik Langsung & Mesin Spektrum Orbwave',
-    brandSubtitle: 'Mesin Audio Penuh',
+    tagline: 'Streaming Musik, Lirik Live & Visualizer Audio Real-Time',
+    brandSubtitle: 'Musik & Radio Live',
     navLanding: 'Beranda',
     navDiscover: 'Pustaka Saya',
     navSearch: 'Cari Katalog',

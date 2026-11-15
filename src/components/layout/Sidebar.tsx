@@ -5,7 +5,6 @@ import { applyCoverFallback } from '../../utils/coverFallback';
 import { ThemeLanguageControls } from './ThemeLanguageControls';
 import {
   Activity,
-  Award,
   Cloud,
   Compass,
   Flame,
@@ -15,14 +14,12 @@ import {
   LogIn,
   Mic2,
   Play,
-  Presentation,
   Radio,
   Search,
   Smartphone,
   Sparkles,
   User,
   Users,
-  Wallet,
   X,
 } from 'lucide-react';
 
@@ -46,11 +43,8 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   currentTab,
   onTabChange,
-  onOpenWallet,
   onOpenAuth,
   authUser = null,
-  walletBalanceSol,
-  walletCluster = 'devnet',
   isCloudConnected = false,
   listenerHandle,
   likedCount = 0,
@@ -84,19 +78,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'radio', label: t.navRadio, icon: <Radio size={16} /> },
         { id: 'podcasts', label: t.navPodcasts, icon: <Mic2 size={16} /> },
         { id: 'visualizer', label: t.navVisualizer, icon: <Sparkles size={16} /> },
-        { id: 'proofOfStream', label: t.navProofOfStream, icon: <Award size={16} /> },
-        { id: 'pitch', label: t.navPitchDeck, icon: <Presentation size={16} /> },
       ],
     },
   ];
 
   const handleSelectNav = (tab: TabType) => {
     onTabChange(tab);
-    if (onCloseMobile) onCloseMobile();
-  };
-
-  const handleSelectWallet = () => {
-    onOpenWallet();
     if (onCloseMobile) onCloseMobile();
   };
 
@@ -285,36 +272,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               size={12}
               className={isCloudConnected ? 'text-[var(--accent-text)] shrink-0' : 'text-[var(--text-dim)] shrink-0'}
             />
-            <span className="truncate">{isCloudConnected ? t.cloudSyncedLabel : 'Local Mode'}</span>
+            <span className="truncate">{isCloudConnected ? t.cloudSyncedLabel : 'Saved Locally'}</span>
           </span>
           {listenerHandle && (
             <span className="font-mono text-[10px] text-[var(--text-dim)] truncate max-w-[82px]">
               {listenerHandle}
             </span>
           )}
-        </button>
-
-        <button
-          type="button"
-          onClick={handleSelectWallet}
-          className="w-full p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--accent-border)] hover:border-[var(--accent-emerald)] transition-all text-left group cursor-pointer"
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-semibold text-[var(--text-secondary)] flex items-center gap-1.5">
-              <Wallet size={12} className="text-[var(--accent-text)]" />
-              {walletCluster === 'mainnet-beta' ? 'Mainnet Wallet' : 'Devnet Wallet'}
-            </span>
-            <span className="w-2 h-2 rounded-full bg-[var(--accent-emerald)] animate-pulse" />
-          </div>
-          <div className="flex items-baseline justify-between">
-            <div className="text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-text)] transition-colors">
-              {walletBalanceSol.toFixed(3)}{' '}
-              <span className="text-[var(--accent-text)] text-xs">SOL</span>
-            </div>
-            <span className="text-[11px] text-[var(--accent-text)] font-semibold group-hover:underline">
-              {t.manageWallet} &rarr;
-            </span>
-          </div>
         </button>
 
         <a

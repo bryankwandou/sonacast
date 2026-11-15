@@ -158,6 +158,8 @@ export interface RadioStation {
   name: string;
   tagline: string;
   genre: string;
+  city?: string;
+  category?: 'Global' | 'Indonesia' | 'Focus' | 'Dance' | 'Talk';
   bitRate: string;
   listenersCount: number;
   color: string;

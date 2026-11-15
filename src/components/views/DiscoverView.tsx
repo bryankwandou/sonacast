@@ -9,7 +9,6 @@ import type {
   Track,
   UserPlaylist
 } from '../../types';
-import { ARTISTS_DIRECTORY } from '../../data/artists800';
 import {
   fetchAlbumTracksOnline,
   fetchPlaylistTracksOnline,
@@ -310,7 +309,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             {t.navDiscover}
           </h2>
           <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-            {ARTISTS_DIRECTORY.length} artists indexed &middot; Local library &amp; playlists stored privately on device
+            Your saved mixes, favorite tracks, and daily recommendations
           </p>
         </div>
 
@@ -765,8 +764,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     {t.madeForYou}
                   </h3>
                 </div>
-                <span className="text-[11px] font-mono text-[var(--text-dim)]">
-                  Deterministic · Ordered Playback
+                <span className="text-[11px] text-[var(--text-dim)]">
+                  Curated Mixes
                 </span>
               </div>
 
@@ -900,8 +899,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   {t.topDailyAlbums}
                 </h3>
               </div>
-              <span className="text-[11px] font-mono text-[var(--text-dim)]">
-                Sequential Tracklist 1 &rarr; N
+              <span className="text-[11px] text-[var(--text-dim)]">
+                Top Albums
               </span>
             </div>
 

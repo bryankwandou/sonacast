@@ -1,15 +1,18 @@
 import React, { useEffect } from 'react';
 import {
+  Award,
   Check,
   Gauge,
   Globe,
   Infinity as InfinityIcon,
   Keyboard,
   Moon,
+  Presentation,
   RefreshCw,
   Settings,
   SlidersHorizontal,
   Sun,
+  Wallet,
   X,
   Zap
 } from 'lucide-react';
@@ -36,6 +39,9 @@ interface SettingsModalProps {
   onChangeLyricsOffset: (offsetSeconds: number) => void;
   onOpenShortcuts: () => void;
   onHardRefresh: () => void;
+  onOpenWallet?: () => void;
+  onOpenProofOfStream?: () => void;
+  onOpenPitchDeck?: () => void;
 }
 
 const EQ_LIST: EqPreset[] = ['flat', 'bass', 'vocal', 'club', 'acoustic'];
@@ -60,7 +66,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   lyricsOffset,
   onChangeLyricsOffset,
   onOpenShortcuts,
-  onHardRefresh
+  onHardRefresh,
+  onOpenWallet,
+  onOpenProofOfStream,
+  onOpenPitchDeck
 }) => {
   const { theme, setTheme, language, setLanguage, t } = useAppPreferences();
 
@@ -378,6 +387,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
           </section>
+
+          {/* Account, Web3 & Creator Tools */}
+          {(onOpenWallet || onOpenProofOfStream || onOpenPitchDeck) && (
+            <section className="space-y-2.5 pt-4 border-t border-[var(--border-subtle)]" data-testid="settings-account-tools">
+              <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                {language === 'id' ? 'Akun & Fitur Tambahan' : 'Account & Tools'}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {onOpenWallet && (
+                  <button
+                    type="button"
+                    data-testid="settings-wallet-btn"
+                    onClick={() => {
+                      onClose();
+                      onOpenWallet();
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <Wallet size={14} className="text-[var(--accent-text)]" />
+                    <span>{language === 'id' ? 'Kelola Dompet' : 'Manage Wallet'}</span>
+                  </button>
+                )}
+                {onOpenProofOfStream && (
+                  <button
+                    type="button"
+                    data-testid="settings-proof-btn"
+                    onClick={() => {
+                      onClose();
+                      onOpenProofOfStream();
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <Award size={14} className="text-[var(--accent-text)]" />
+                    <span>{t.navProofOfStream}</span>
+                  </button>
+                )}
+                {onOpenPitchDeck && (
+                  <button
+                    type="button"
+                    data-testid="settings-pitch-btn"
+                    onClick={() => {
+                      onClose();
+                      onOpenPitchDeck();
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <Presentation size={14} className="text-[var(--accent-text)]" />
+                    <span>{t.navPitchDeck}</span>
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Shortcuts & App Reload */}
           <section className="flex flex-wrap items-center gap-2 pt-4 border-t border-[var(--border-subtle)]">

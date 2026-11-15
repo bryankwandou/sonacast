@@ -2,13 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { LyricLine } from '../../types';
 import {
   Check,
-  Clock,
   Copy,
   Loader2,
   LocateFixed,
   Mic2,
   RefreshCw,
-  Search,
   Share2
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
@@ -93,12 +91,6 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
     scrollLineToCenter('smooth');
   };
 
-  const formatTime = (secs: number) => {
-    const mins = Math.floor(secs / 60);
-    const rem = Math.floor(secs % 60);
-    return `${mins}:${rem < 10 ? '0' : ''}${rem}`;
-  };
-
   return (
     <div
       className="relative w-full h-full min-h-[280px] sm:min-h-[320px] xl:min-h-[400px] bg-[var(--bg-surface)] rounded-2xl overflow-hidden border border-[var(--border-subtle)] flex flex-col p-5 sm:p-6 select-none transition-colors"
@@ -149,37 +141,16 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
             </span>
           )}
 
-          {onRetryLyrics && (
-            <>
-              {lyricsStatus === 'unavailable' && (
-                <button
-                  type="button"
-                  onClick={() => onRetryLyrics()}
-                  title={t.lyricsRetry}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors shrink-0"
-                >
-                  <RefreshCw size={11} />
-                  <span>{t.lyricsRetry}</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  setManualTitle(title);
-                  setManualArtist(artist);
-                  setShowManualLookup((prev) => !prev);
-                }}
-                title={t.lyricsSearchPlaceholder}
-                aria-label={t.lyricsSearchPlaceholder}
-                className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-medium cursor-pointer transition-colors shrink-0 ${
-                  showManualLookup
-                    ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
-                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                <Search size={12} />
-              </button>
-            </>
+          {onRetryLyrics && lyricsStatus === 'unavailable' && (
+            <button
+              type="button"
+              onClick={() => onRetryLyrics()}
+              title={t.lyricsRetry}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors shrink-0"
+            >
+              <RefreshCw size={11} />
+              <span>{t.lyricsRetry}</span>
+            </button>
           )}
         </div>
       </div>
@@ -302,16 +273,6 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
                       style={{ width: `${Math.round(activeProgress * 100)}%` }}
                     />
                   )}
-                  <span
-                    className={`text-[11px] font-mono mt-1 px-1.5 py-0.5 rounded transition-colors shrink-0 ${
-                      isActive
-                        ? 'text-[var(--accent-text)] bg-[var(--bg-surface)] border border-[var(--accent-border)] font-semibold'
-                        : 'text-[var(--text-dim)]'
-                    }`}
-                  >
-                    {formatTime(line.time)}
-                  </span>
-
                   <div className="flex-1 min-w-0">
                     <p
                       className={`${fullWidth ? 'text-base sm:text-xl' : 'text-sm sm:text-base'} font-semibold tracking-wide transition-all ${
@@ -322,7 +283,15 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
                             : 'text-[var(--text-primary)]'
                       }`}
                     >
-                      {line.text}
+                      {/^[\s♪♫♬•·.…-]+$/.test(line.text) ? (
+                        <span className="inline-flex items-center gap-1.5 py-0.5 text-sm tracking-widest opacity-60">
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
+                        </span>
+                      ) : (
+                        line.text
+                      )}
                     </p>
                     {line.translation && (
                       <p className="text-xs text-[var(--text-dim)] mt-0.5 font-normal">
@@ -360,9 +329,6 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
                         <Share2 size={12} />
                       </button>
                     )}
-                    <span className="p-1 text-[var(--text-dim)]">
-                      <Clock size={14} />
-                    </span>
                   </div>
                 </div>
               );
@@ -384,11 +350,6 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
           </button>
         </div>
       )}
-
-      {/* Footer hint */}
-      <div className="pt-3 border-t border-[var(--border-subtle)] mt-3 text-center text-[11px] text-[var(--text-dim)]">
-        Click any lyric line to jump playback directly to that moment.
-      </div>
     </div>
   );
 };

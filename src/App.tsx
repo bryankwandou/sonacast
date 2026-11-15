@@ -115,7 +115,6 @@ import { getPrimaryArtistName } from './utils/coverColor';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from './utils/coverFallback';
 import {
   Activity,
-  Award,
   Clock,
   Compass,
   Disc,
@@ -127,7 +126,6 @@ import {
   Menu,
   Mic2,
   Play,
-  Presentation,
   Radio,
   Search,
   Settings,
@@ -396,6 +394,9 @@ export default function App() {
   const [resolvingVideoTrackId, setResolvingVideoTrackId] = useState<string | null>(null);
   const [activeYtVideoId, setActiveYtVideoId] = useState<string>(() =>
     sharedAudioEngine.getCurrentYouTubeVideoId()
+  );
+  const [isYtVisualReady, setIsYtVisualReady] = useState<boolean>(() =>
+    sharedAudioEngine.getYouTubeVisualReady()
   );
   const [streamError, setStreamError] = useState<string | null>(null);
 
@@ -707,6 +708,9 @@ export default function App() {
   useEffect(() => {
     const unsubTime = sharedAudioEngine.subscribeTimeUpdate((t) => setCurrentTime(t));
     const unsubVid = sharedAudioEngine.subscribeVideoIdChange((vid) => setActiveYtVideoId(vid));
+    const unsubYtVis = sharedAudioEngine.subscribeYouTubeVisualReady((ready) =>
+      setIsYtVisualReady(ready)
+    );
     const unsubState = sharedAudioEngine.subscribeStateChange((p) => {
       setIsPlaying(p);
       if (p) {
@@ -783,6 +787,7 @@ export default function App() {
       unsubDur();
       unsubErr();
       unsubVid();
+      unsubYtVis();
       document.removeEventListener('visibilitychange', handleWakeSync);
       document.removeEventListener('resume', handleWakeSync);
       window.removeEventListener('pageshow', handleWakeSync);
@@ -872,9 +877,10 @@ export default function App() {
         host.style.top = `${rect.top}px`;
         host.style.width = `${rect.width}px`;
         host.style.height = `${rect.height}px`;
-        host.style.opacity = '1';
-        host.style.pointerEvents = 'auto';
-        host.style.zIndex = '25';
+        const visualAllowed = isYtVisualReady && !streamError;
+        host.style.opacity = visualAllowed ? '1' : '0.005';
+        host.style.pointerEvents = visualAllowed ? 'auto' : 'none';
+        host.style.zIndex = visualAllowed ? '25' : '1';
         host.style.borderRadius = isVideoStage ? '1rem' : '0.75rem';
       } else {
         host.style.left = 'auto';
@@ -910,7 +916,7 @@ export default function App() {
       window.removeEventListener('scroll', syncPosition, true);
       document.removeEventListener('fullscreenchange', syncPosition);
     };
-  }, [isYouTubeActive, stageMode, currentTab, isStageVisible, resolvingVideoTrackId]);
+  }, [isYouTubeActive, isYtVisualReady, streamError, stageMode, currentTab, isStageVisible, resolvingVideoTrackId]);
 
   // Periodically check active Solana cluster balance & sync wallet switches (throttled when idle/hidden)
   useEffect(() => {
@@ -1435,6 +1441,14 @@ export default function App() {
         sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl, fallbackYtIds);
         if (isVideoStageActive) {
           void activateMusicVideoForTrack(track, 0);
+        } else if (
+          track.genre !== 'Podcast' &&
+          !(track.musicVideoCandidates && track.musicVideoCandidates.length > 0)
+        ) {
+          window.setTimeout(() => {
+            if (selectionSeq !== selectionCounterRef.current) return;
+            void resolveMusicVideoStream(track.title, track.artist, track.duration).catch(() => { });
+          }, 650);
         }
         return;
       }
@@ -1461,6 +1475,17 @@ export default function App() {
         );
         if (isVideoStageActive) {
           void activateMusicVideoForTrack(updatedTrack, 0);
+        } else if (
+          !(updatedTrack.musicVideoCandidates && updatedTrack.musicVideoCandidates.length > 0)
+        ) {
+          window.setTimeout(() => {
+            if (selectionSeq !== selectionCounterRef.current) return;
+            void resolveMusicVideoStream(
+              updatedTrack.title,
+              updatedTrack.artist,
+              updatedTrack.duration
+            ).catch(() => { });
+          }, 650);
         }
         return;
       }
@@ -1635,7 +1660,11 @@ export default function App() {
     }, [activateMusicVideoForTrack, buildAutoSimilarContext, gatherLocalCandidatePool, refillRadioQueueIfNeeded, resolveLyricsForTrack]);
 
   const handleSelectRadio = (station: RadioStation) => {
-    handleSelectTrack(station.currentTrack);
+    handleStartRadio(station.currentTrack, {
+      id: station.id,
+      title: station.name,
+      subtitle: station.city ? `${station.city} · ${station.genre}` : station.genre
+    });
   };
 
   const handleSelectPodcast = (episode: PodcastEpisode) => {
@@ -2058,12 +2087,15 @@ export default function App() {
   }, []);
 
   const handleStartRadio = useCallback(
-    (seedTrack: Track) => {
+    (
+      seedTrack: Track,
+      stationMeta?: { id?: string; title?: string; subtitle?: string }
+    ) => {
       const radioCtx: PlaybackContextInfo = {
-        id: `radio-${seedTrack.id}`,
+        id: stationMeta?.id || `radio-${seedTrack.id}`,
         type: 'radio',
-        title: `Radio · ${seedTrack.title}`,
-        subtitle: seedTrack.artist,
+        title: stationMeta?.title || `Radio · ${seedTrack.title}`,
+        subtitle: stationMeta?.subtitle || seedTrack.artist,
         coverUrl: seedTrack.coverUrl,
         ordered: false
       };
@@ -2957,7 +2989,7 @@ export default function App() {
       setCurrentTab(tab);
       if (tab === 'visualizer') {
         setIsStageOpen(true);
-      } else if (tab === 'landing' || tab === 'vibe') {
+      } else {
         setIsStageOpen(false);
       }
     }
@@ -2998,6 +3030,7 @@ export default function App() {
     }
     setIsTopSearchFocused(false);
     topSearchInputRef.current?.blur();
+    setIsStageOpen(false);
     setCurrentTab('search');
   };
 
@@ -3052,8 +3085,6 @@ export default function App() {
     { id: 'radio', label: t.navRadio, icon: <Radio size={13} /> },
     { id: 'podcasts', label: t.navPodcasts, icon: <Mic2 size={13} /> },
     { id: 'visualizer', label: t.navVisualizer, icon: <Sparkles size={13} /> },
-    { id: 'proofOfStream', label: t.navProofOfStream, icon: <Award size={13} /> },
-    { id: 'pitch', label: t.navPitchDeck, icon: <Presentation size={13} /> },
   ];
 
   return (
@@ -3078,7 +3109,7 @@ export default function App() {
           pointerEvents: 'none',
           overflow: 'hidden',
           zIndex: 25,
-          backgroundColor: '#000000'
+          backgroundColor: 'transparent'
         }}
       />
 
@@ -3660,11 +3691,10 @@ export default function App() {
                 <div className="space-y-3" data-testid="stage-container">
                   <div
                     data-testid="stage-mode-bar"
-                    className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)]/85 backdrop-blur-md border border-[var(--border-subtle)] overflow-hidden"
+                    className="flex items-start sm:items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)]/85 backdrop-blur-md border border-[var(--border-subtle)]"
                   >
                     <div
-                      className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-[var(--bg-elevated)]/80 overflow-x-auto no-scrollbar min-w-0 flex-1"
-                      style={{ scrollbarWidth: 'none' }}
+                      className="flex flex-wrap sm:inline-flex items-center gap-1 sm:gap-0.5 p-1 sm:p-0.5 rounded-lg bg-[var(--bg-elevated)]/80 min-w-0 flex-1"
                     >
                       {(
                         [
@@ -3683,7 +3713,7 @@ export default function App() {
                             type="button"
                             data-stage-mode={modeOpt.id}
                             onClick={() => handleSelectStageMode(modeOpt.id)}
-                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all cursor-pointer ${active
+                            className={`px-2.5 py-1.5 sm:py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all cursor-pointer ${active
                                 ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm ring-1 ring-[var(--accent-border)]'
                                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
                               }`}
@@ -3747,6 +3777,8 @@ export default function App() {
                           isPlaying={isPlaying}
                           currentTime={currentTime}
                           hasLiveYouTubeStage={isYouTubeActive}
+                          isYtVisualReady={isYtVisualReady}
+                          ytStreamError={streamError}
                           isResolvingVideo={resolvingVideoTrackId === currentTrack.id}
                           videoCandidates={currentTrack.musicVideoCandidates || []}
                           activeVideoId={activeYtVideoId || currentTrack.musicVideoId || currentTrack.youtubeId || ''}
@@ -3794,6 +3826,8 @@ export default function App() {
                             isPlaying={isPlaying}
                             currentTime={currentTime}
                             hasLiveYouTubeStage={isYouTubeActive}
+                            isYtVisualReady={isYtVisualReady}
+                            ytStreamError={streamError}
                             isResolvingVideo={resolvingVideoTrackId === currentTrack.id}
                             videoCandidates={currentTrack.musicVideoCandidates || []}
                             activeVideoId={activeYtVideoId || currentTrack.musicVideoId || currentTrack.youtubeId || ''}
@@ -4090,6 +4124,8 @@ export default function App() {
               ytMonitorRef={ytMonitorRef}
               showYtMonitor={
                 isYouTubeActive &&
+                isYtVisualReady &&
+                !streamError &&
                 (!isStageVisible || (stageMode !== 'video-only' && stageMode !== 'video-lyric'))
               }
               onExpandVideoStage={() => handleSelectStageMode('video-lyric')}
@@ -4223,6 +4259,9 @@ export default function App() {
         onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onHardRefresh={handleHardRefresh}
+        onOpenWallet={() => setIsWalletModalOpen(true)}
+        onOpenProofOfStream={() => handleTabChange('proofOfStream')}
+        onOpenPitchDeck={() => setIsPitchModalOpen(true)}
       />
 
       {/* Keyboard Shortcuts Reference Modal */}

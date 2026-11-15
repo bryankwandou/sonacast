@@ -132,7 +132,10 @@ export class AudioEngine {
   private onDurationChangeCallbacks: Set<(duration: number) => void> = new Set();
   private onErrorCallbacks: Set<(message: string) => void> = new Set();
   private onVideoIdCallbacks: Set<(videoId: string) => void> = new Set();
+  private onYtVisualReadyCallbacks: Set<(ready: boolean) => void> = new Set();
   private currentYtVideoId = '';
+  private ytVisualReady = false;
+  private ytVisualGraceTimer: number | null = null;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -665,6 +668,8 @@ export class AudioEngine {
       try {
         this.ytPlayerGen = gen;
         this.ytTrackTransitionUntil = performance.now() + 2600;
+        this.setYtVisualReady(false);
+        this.armYtVisualGraceTimer(gen);
         this.notifyVideoId(nextId);
         this.ytPlayer.loadVideoById(nextId);
         this.ytPlayer.playVideo();
@@ -676,6 +681,8 @@ export class AudioEngine {
     }
     this.clearYouTubeWatchdog();
     this.clearYouTubeResumeCheck();
+    this.clearYtVisualGraceTimer();
+    this.setYtVisualReady(false);
     this.isPlaying = false;
     this.wasPlayingBeforeSleep = false;
     this.stopYouTubePoll();
@@ -766,6 +773,7 @@ export class AudioEngine {
     this.clearYouTubeResumeCheck();
     this.clearYouTubeFade();
     this.stopYouTubePoll();
+    this.setYtVisualReady(false);
     if (this.ytPlayer && this.ytReady) {
       try {
         this.ytPlayer.pauseVideo();
@@ -802,7 +810,21 @@ export class AudioEngine {
       if (!this.isPlaying || this.audioElement.paused) {
         return;
       }
-      this.currentTime = this.audioElement.currentTime;
+      if (this.audioElement.duration && isFinite(this.audioElement.duration) && this.audioElement.duration > 0) {
+        const realDur = Math.round(this.audioElement.duration);
+        if (Math.abs(realDur - this.duration) >= 1) {
+          this.duration = realDur;
+          this.notifyDurationChange();
+        }
+        if (this.audioElement.duration >= 10 && this.audioElement.currentTime >= this.audioElement.duration - 0.18) {
+          this.completeCurrentTrack(pollGen);
+          return;
+        }
+      }
+      this.currentTime =
+        this.duration > 0
+          ? Math.min(this.audioElement.currentTime, this.duration)
+          : this.audioElement.currentTime;
       if (this.duration >= 30 && this.currentTime >= this.duration - 0.35 && this.audioElement.ended) {
         this.completeCurrentTrack(pollGen);
         return;
@@ -837,9 +859,17 @@ export class AudioEngine {
           this.completeCurrentTrack(pollGen);
           return;
         }
+        const realDur = this.ytPlayer.getDuration?.();
+        if (typeof realDur === 'number' && isFinite(realDur) && realDur >= 30) {
+          const rounded = Math.round(realDur);
+          if (Math.abs(rounded - this.duration) >= 1) {
+            this.duration = rounded;
+            this.notifyDurationChange();
+          }
+        }
         const pos = this.ytPlayer.getCurrentTime();
         if (typeof pos === 'number' && isFinite(pos) && pos >= 0) {
-          this.currentTime = pos;
+          this.currentTime = this.duration > 0 ? Math.min(pos, this.duration) : pos;
           this.notifyTime();
           if (pos >= 0.3) {
             this.clearYouTubeWatchdog();
@@ -848,7 +878,7 @@ export class AudioEngine {
             this.isPlaying &&
             this.duration >= 30 &&
             (pos >= this.duration - 0.5 ||
-              ((ytState === 2 || ytState === 5) && pos >= this.duration - 1.2))
+              ((ytState === 2 || ytState === 5 || ytState === -1) && pos >= this.duration - 2.0))
           ) {
             this.completeCurrentTrack(pollGen);
             return;
@@ -856,14 +886,6 @@ export class AudioEngine {
         }
         if (!this.isPlaying) {
           return;
-        }
-        const realDur = this.ytPlayer.getDuration();
-        if (typeof realDur === 'number' && isFinite(realDur) && realDur >= 30) {
-          const rounded = Math.round(realDur);
-          if (Math.abs(rounded - this.duration) >= 2) {
-            this.duration = rounded;
-            this.notifyDurationChange();
-          }
         }
       } catch {
         // Safe poll fallback
@@ -926,6 +948,8 @@ export class AudioEngine {
 
     const firstVideoId = validIds[0];
     this.notifyVideoId(firstVideoId);
+    this.setYtVisualReady(false);
+    this.armYtVisualGraceTimer(gen);
 
     if (this.ytPlayer && this.ytReady) {
       try {
@@ -1036,6 +1060,7 @@ export class AudioEngine {
             this.isPlaying = true;
             this.wasPlayingBeforeSleep = true;
             this.ytTrackTransitionUntil = 0;
+            this.setYtVisualReady(true);
             this.clearYouTubeResumeCheck();
             this.notifyState();
             this.startYouTubePoll();
@@ -1090,6 +1115,7 @@ export class AudioEngine {
             this.clearYouTubeWatchdog();
             this.clearYouTubeResumeCheck();
             this.clearYouTubeFade();
+            this.setYtVisualReady(true);
             this.isPlaying = false;
             this.stopYouTubePoll();
             this.notifyState();
@@ -1550,6 +1576,52 @@ export class AudioEngine {
   public subscribeError(callback: (message: string) => void) {
     this.onErrorCallbacks.add(callback);
     return () => this.onErrorCallbacks.delete(callback);
+  }
+
+  private clearYtVisualGraceTimer() {
+    if (this.ytVisualGraceTimer !== null) {
+      clearTimeout(this.ytVisualGraceTimer);
+      this.ytVisualGraceTimer = null;
+    }
+  }
+
+  private setYtVisualReady(ready: boolean) {
+    if (ready) this.clearYtVisualGraceTimer();
+    if (this.ytVisualReady === ready) return;
+    this.ytVisualReady = ready;
+    this.onYtVisualReadyCallbacks.forEach((cb) => cb(ready));
+  }
+
+  private armYtVisualGraceTimer(gen: number) {
+    this.clearYtVisualGraceTimer();
+    // Reveal iframe after handshake only when YouTube player has a valid loaded state (never expose unplayable error frames)
+    this.ytVisualGraceTimer = window.setTimeout(() => {
+      this.ytVisualGraceTimer = null;
+      if (
+        gen === this.playGeneration &&
+        this.activeBackend === 'youtube' &&
+        this.ytPlayer &&
+        this.ytReady
+      ) {
+        try {
+          const st = this.ytPlayer.getPlayerState?.();
+          if (st === 1 || st === 2 || st === 5) {
+            this.setYtVisualReady(true);
+          }
+        } catch {
+          // Keep artwork placeholder visible if iframe state is unreadable
+        }
+      }
+    }, 2400);
+  }
+
+  public getYouTubeVisualReady(): boolean {
+    return this.ytVisualReady;
+  }
+
+  public subscribeYouTubeVisualReady(callback: (ready: boolean) => void) {
+    this.onYtVisualReadyCallbacks.add(callback);
+    return () => this.onYtVisualReadyCallbacks.delete(callback);
   }
 
   public subscribeVideoIdChange(callback: (videoId: string) => void) {

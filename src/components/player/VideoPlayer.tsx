@@ -9,6 +9,8 @@ interface VideoPlayerProps {
   isPlaying: boolean;
   currentTime?: number;
   hasLiveYouTubeStage?: boolean;
+  isYtVisualReady?: boolean;
+  ytStreamError?: string | null;
   isResolvingVideo?: boolean;
   videoCandidates?: MusicVideoCandidate[];
   activeVideoId?: string;
@@ -25,6 +27,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   isPlaying,
   currentTime = 0,
   hasLiveYouTubeStage = false,
+  isYtVisualReady = true,
+  ytStreamError = null,
   isResolvingVideo = false,
   videoCandidates = [],
   activeVideoId = '',
@@ -97,11 +101,68 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Main 16:9 Video Viewport (YouTube IFrame Host overlays videoSlotRef when active) */}
       <div className="relative flex-1 min-h-[210px] w-full flex items-center justify-center overflow-hidden bg-black">
         {hasLiveYouTubeStage && videoSlotRef ? (
-          <div
-            ref={videoSlotRef}
-            data-testid="video-yt-slot"
-            className="w-full h-full min-h-[210px] bg-black"
-          />
+          <div className="relative w-full h-full min-h-[210px] bg-transparent">
+            {/* Crisp cover-art poster shown transparently underneath until YT frame renders */}
+            <div
+              className={`absolute inset-0 flex flex-col items-center justify-center p-4 text-center select-none overflow-hidden ${
+                !isYtVisualReady && ytStreamError ? 'z-20' : 'pointer-events-none'
+              }`}
+            >
+              <img
+                src={track.coverUrl}
+                alt={track.title}
+                onError={applyCoverFallback}
+                className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-35"
+              />
+              <div className="absolute inset-0 bg-[#0a0d12]/90" />
+              {!isYtVisualReady && ytStreamError ? (
+                <div className="relative z-10 flex flex-col items-center gap-3 max-w-sm">
+                  <div className="w-20 h-20 rounded-2xl overflow-hidden border border-white/15 shadow-2xl">
+                    <img
+                      src={track.coverUrl}
+                      alt={track.title}
+                      onError={applyCoverFallback}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <p className="text-xs font-medium text-white/85">{t.videoUnavailable}</p>
+                  <div className="flex items-center justify-center gap-2">
+                    {onRetryVideo && (
+                      <button
+                        type="button"
+                        data-testid="video-retry-btn"
+                        onClick={onRetryVideo}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold cursor-pointer transition-colors"
+                      >
+                        <RefreshCw size={12} />
+                        <span>Retry</span>
+                      </button>
+                    )}
+                    {onSwitchToAudioMode && (
+                      <button
+                        type="button"
+                        onClick={onSwitchToAudioMode}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-semibold cursor-pointer transition-colors"
+                      >
+                        <Disc3 size={12} />
+                        <span>{t.audioMasterMode}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="relative z-10 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-xs font-medium text-white">
+                  <Loader2 size={14} className="animate-spin text-emerald-400" />
+                  <span>{t.findingMusicVideo}</span>
+                </div>
+              )}
+            </div>
+            <div
+              ref={videoSlotRef}
+              data-testid="video-yt-slot"
+              className="relative z-10 w-full h-full min-h-[210px] bg-transparent"
+            />
+          </div>
         ) : hasMp4Video && !lowCpuMode ? (
           <video
             ref={videoRef}
@@ -175,7 +236,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         data-testid="video-theater-controls"
         className="px-3.5 py-2 bg-[#0b0f14]/95 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-white shrink-0"
       >
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+        <div className="flex items-center gap-2 min-w-0 w-full sm:w-auto sm:flex-1">
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
               hasLiveYouTubeStage

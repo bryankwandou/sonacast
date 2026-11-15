@@ -4,7 +4,6 @@ import {
   ChevronUp,
   Film,
   Heart,
-  Infinity as InfinityIcon,
   ListMusic,
   ListPlus,
   Maximize2,
@@ -15,13 +14,11 @@ import {
   Save,
   Send,
   Share2,
-  Shuffle,
   Trash2,
   X
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { applyCoverFallback } from '../../utils/coverFallback';
-import { classifyTrackTier } from '../../services/recommendationEngine';
 import { solanaService } from '../../services/solanaService';
 import { PlayingBars } from '../common/PlayingBars';
 
@@ -77,9 +74,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onRefreshRadioMix,
   playbackContext,
   autoplayEnabled = true,
-  onToggleAutoplay,
-  isShuffled = false,
-  onToggleShuffle,
   likedTrackIds,
   onToggleLike,
   onSeek,
@@ -266,12 +260,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   {currentQueueIdx >= 0 && (
                     <div className="text-[10px] font-mono text-[var(--text-dim)] mt-0.5">
                       Track {currentQueueIdx + 1} of {queue.length}
-                      {playbackContext?.ordered && !isShuffled ? ' · Ordered' : ''}
                     </div>
                   )}
-                  <div className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-[var(--bg-tint)] text-[10px] font-semibold text-[var(--text-secondary)]">
-                    <span>{t.similarClassLabel}: {classifyTrackTier(currentTrack).classLabel}</span>
-                  </div>
                 </div>
 
                 {onRefreshRadioMix && (
@@ -283,42 +273,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   >
                     <RefreshCw size={10} />
                     <span>{t.switchToRadio}</span>
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--border-subtle)]">
-                {onToggleShuffle && (
-                  <button
-                    type="button"
-                    onClick={onToggleShuffle}
-                    data-testid="queue-shuffle-toggle"
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
-                      isShuffled
-                        ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
-                        : 'bg-[var(--bg-surface)] text-[var(--text-dim)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
-                    }`}
-                  >
-                    <Shuffle size={10} />
-                    <span>{isShuffled ? `${t.shuffleLabel}: ON` : `${t.shuffleLabel}: OFF`}</span>
-                  </button>
-                )}
-
-                {onToggleAutoplay && (
-                  <button
-                    type="button"
-                    onClick={onToggleAutoplay}
-                    data-testid="queue-autoplay-toggle"
-                    aria-pressed={autoplayEnabled}
-                    title={t.autoplaySimilar}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
-                      autoplayEnabled
-                        ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
-                        : 'bg-[var(--bg-surface)] text-[var(--text-dim)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
-                    }`}
-                  >
-                    <InfinityIcon size={11} />
-                    <span>Autoplay: {autoplayEnabled ? 'ON' : 'OFF'}</span>
                   </button>
                 )}
               </div>

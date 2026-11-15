@@ -97,51 +97,17 @@ export const ThemeLanguageControls: React.FC<ThemeLanguageControlsProps> = ({
     );
   }
 
-  const isLanding = variant === 'landing';
-
   return (
     <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-      {/* Unified Language Capsule (Quick ID | EN + 24-Language Selector) */}
+      {/* Unified Single Language Selector (24 Languages) */}
       <div
         className="inline-flex items-center rounded-full p-0.5 border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border-medium)] transition-colors"
         role="group"
         aria-label="Language switcher"
       >
-        <div
-          className={`${
-            isLanding ? 'hidden sm:inline-flex' : 'inline-flex'
-          } items-center`}
-        >
-          <button
-            type="button"
-            onClick={() => setLanguage('id')}
-            data-testid="lang-quick-id"
-            className={`px-2 py-1 rounded-full text-[11px] font-bold transition-colors cursor-pointer ${
-              language === 'id'
-                ? 'bg-[var(--ink-solid)] text-[var(--ink-solid-fg)]'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            ID
-          </button>
-          <button
-            type="button"
-            onClick={() => setLanguage('en')}
-            data-testid="lang-quick-en"
-            className={`px-2 py-1 rounded-full text-[11px] font-bold transition-colors cursor-pointer ${
-              language === 'en'
-                ? 'bg-[var(--ink-solid)] text-[var(--ink-solid-fg)]'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            EN
-          </button>
-        </div>
-
         <label
-          className={`${
-            isLanding ? 'flex' : 'hidden sm:flex'
-          } items-center gap-1 pl-1.5 pr-2 py-1 sm:border-l sm:border-[var(--border-subtle)] sm:ml-0.5`}
+          className="flex items-center gap-1.5 pl-2.5 pr-2 py-1"
+          title={t.languageLabel}
         >
           <Globe size={12} className="text-[var(--text-secondary)] shrink-0" />
           <select
@@ -149,7 +115,7 @@ export const ThemeLanguageControls: React.FC<ThemeLanguageControlsProps> = ({
             onChange={(e) => setLanguage(e.target.value as Language)}
             data-testid="language-select-topbar"
             aria-label={t.languageLabel}
-            className="bg-transparent text-[11px] font-semibold text-[var(--text-primary)] outline-none cursor-pointer max-w-[68px] sm:max-w-[104px]"
+            className="bg-transparent text-[11px] font-semibold text-[var(--text-primary)] outline-none cursor-pointer max-w-[78px] sm:max-w-[108px]"
           >
             {LANGUAGE_OPTIONS.map((opt) => (
               <option

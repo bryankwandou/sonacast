@@ -176,8 +176,9 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
 
   const rawProgress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const progress = isScrubbing && scrubPct !== null ? scrubPct : rawProgress;
-  const displayedTime =
+  const rawDisplayedTime =
     isScrubbing && scrubPct !== null && duration > 0 ? (scrubPct / 100) * duration : currentTime;
+  const displayedTime = duration > 0 ? Math.min(rawDisplayedTime, duration) : rawDisplayedTime;
 
   const resolveRatioFromPointer = (clientX: number, rect: DOMRect) =>
     rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0;

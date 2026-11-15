@@ -5,7 +5,6 @@ import {
   Film,
   Gauge,
   Heart,
-  Infinity as InfinityIcon,
   ListPlus,
   Loader2,
   Mic2,
@@ -22,7 +21,6 @@ import {
   SkipBack,
   SkipForward,
   Sliders,
-  Sparkles,
   Check,
   Share2
 } from 'lucide-react';
@@ -102,7 +100,6 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   isLiked,
   shuffle,
   repeatMode,
-  autoplayEnabled = true,
   eqPreset,
   playbackRate,
   crossfadeSeconds,
@@ -117,7 +114,6 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   onToggleLike,
   onToggleShuffle,
   onCycleRepeat,
-  onToggleAutoplay,
   onSelectEqPreset,
   onSelectPlaybackRate,
   onSelectCrossfade,
@@ -287,24 +283,6 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
             </span>
           </button>
 
-          {onToggleAutoplay && (
-            <button
-              type="button"
-              onClick={onToggleAutoplay}
-              data-testid="expanded-autoplay-toggle"
-              aria-pressed={autoplayEnabled}
-              title={`${t.autoplaySimilar} (${autoplayEnabled ? 'ON' : 'OFF'})`}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
-                autoplayEnabled
-                  ? 'bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[var(--accent-text)]'
-                  : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:bg-[var(--bg-tint-hover)]'
-              }`}
-            >
-              <InfinityIcon size={14} />
-              <span className="hidden sm:inline">{t.autoNextShort}</span>
-            </button>
-          )}
-
           <button
             type="button"
             onClick={() => setShowDsp((v) => !v)}
@@ -355,14 +333,12 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                     {track.artist}
                   </p>
                 )}
-                <div className="flex items-center gap-2 mt-2 text-[11px] font-mono text-[var(--text-dim)]">
+                <div className="flex items-center gap-2 mt-2 text-[11px] text-[var(--text-dim)]">
                   <span>{track.genre}</span>
-                  <span>&middot;</span>
-                  <span>{track.bpm} BPM</span>
-                  {track.sourceTag && (
+                  {track.album && (
                     <>
                       <span>&middot;</span>
-                      <span className="text-[var(--accent-text)] uppercase">{track.sourceTag}</span>
+                      <span className="truncate">{track.album}</span>
                     </>
                   )}
                 </div>
@@ -749,14 +725,11 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                   {lyricsStatus === 'loading' ? (
                     <Loader2 size={14} className="animate-spin" />
                   ) : (
-                    <Sparkles size={14} />
+                    <Mic2 size={14} />
                   )}
                   <span>{t.lyrics}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] font-mono text-[var(--text-dim)] hidden sm:inline">
-                    Tap line to seek
-                  </span>
                   {lyricsStatus === 'unavailable' && onRetryLyrics && (
                     <button
                       type="button"

@@ -24,7 +24,7 @@ import { MoodStrip } from '../common/MoodStrip';
 import { OrderedTracklistPanel } from '../common/OrderedTracklistPanel';
 import { TrackCard } from '../common/TrackCard';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
-import { Clock, Disc3, Globe, ListMusic, Loader2, Play, Search, Sparkles, Trash2, Users, X } from 'lucide-react';
+import { Clock, Disc3, Globe, ListMusic, Loader2, Play, Search, Trash2, Users, X } from 'lucide-react';
 
 interface SearchViewProps {
   curatedTracks: Track[];
@@ -326,12 +326,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
         style={{ background: 'var(--hero-gradient)', boxShadow: 'var(--card-shadow)' }}
       >
         <div className="relative z-10 max-w-3xl">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)] text-xs font-bold border border-[var(--accent-border)] mb-4">
-            <Sparkles size={13} />
-            <span>
-              GLOBAL SEARCH ENGINE &middot; 85,000,000+ CATALOG &amp; {ARTISTS_DIRECTORY.length} INDEXED ARTISTS
-            </span>
-          </div>
+          <p className="text-xs font-semibold text-[var(--accent-text)] uppercase tracking-wider mb-2">
+            Songs &middot; Albums &middot; Playlists &middot; Artists
+          </p>
 
           <h2 className="text-2xl sm:text-3xl font-extrabold text-[var(--text-primary)] tracking-tight leading-tight">
             {t.navSearch}
@@ -568,13 +565,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 <span>{t.playOrdered}</span>
               </button>
             )}
-            <span className="text-[11px] text-[var(--accent-text)] font-mono bg-[var(--accent-soft)] px-2 py-0.5 rounded-md border border-[var(--accent-border)]">
-              100% Full-Length
-            </span>
-            <span className="text-xs text-[var(--accent-text)] font-mono">
+            <span className="text-xs text-[var(--text-secondary)]">
               {searchMode === 'albums'
                 ? `${albumResults.length} albums found`
-                : `${results.length} releases found`}
+                : `${results.length} tracks`}
             </span>
           </div>
         </div>

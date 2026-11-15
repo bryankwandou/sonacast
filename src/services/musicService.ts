@@ -715,11 +715,12 @@ function scoreMusicVideoCandidate(
   let score = 0;
 
   if (titleNorm && hay.includes(titleNorm)) {
-    score += 40;
+    score += 48;
   } else {
     const words = titleNorm.split(/\s+/).filter((w) => w.length >= 2);
     const matched = words.filter((w) => hay.includes(w)).length;
-    if (words.length > 0 && matched === 0) return -300;
+    const minNeeded = words.length >= 2 ? Math.max(2, Math.ceil(words.length * 0.7)) : 1;
+    if (words.length > 0 && matched < minNeeded) return -300;
     score += Math.round((matched / Math.max(1, words.length)) * 30);
   }
 
@@ -814,10 +815,10 @@ export async function resolveMusicVideoStream(
       item,
       score: scoreMusicVideoCandidate(item, cleanTitle, cleanArtist, expectedDuration)
     }))
-    .filter((entry) => entry.score > -100)
+    .filter((entry) => entry.score > -120)
     .sort((a, b) => b.score - a.score);
 
-  const usable = (ranked.length > 0 ? ranked.map((r) => r.item) : rawPool).slice(0, 8);
+  const usable = ranked.map((r) => r.item).slice(0, 6);
   if (usable.length === 0) return null;
 
   const result = {

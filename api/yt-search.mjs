@@ -53,6 +53,47 @@ function parseLengthSeconds(text) {
   return parts[0] || 0;
 }
 
+function extractYtInitialData(html) {
+  if (!html) return null;
+  const markers = ['var ytInitialData = ', 'window["ytInitialData"] = ', 'ytInitialData = '];
+  for (const marker of markers) {
+    const idx = html.indexOf(marker);
+    if (idx < 0) continue;
+    const start = html.indexOf('{', idx + marker.length);
+    if (start < 0) continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < html.length; i++) {
+      const ch = html[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (inString) {
+        if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+      } else if (ch === '{') {
+        depth += 1;
+      } else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            return JSON.parse(html.slice(start, i + 1));
+          } catch {
+            break;
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -110,28 +151,13 @@ export default async function handler(req, res) {
     }
 
     const html = await ytRes.text();
-    const match = html.match(/var ytInitialData\s*=\s*(\{.+?\});<\/script>/s);
-    if (!match) {
-      const fallbackIds = [...new Set([...html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)].map((m) => m[1]))].slice(0, 10);
-      if (fallbackIds.length >= 2) {
-        sendCached({
-          source: 'yt-ids',
-          items: fallbackIds.map((videoId) => ({
-            videoId,
-            title: q,
-            author: '',
-            duration: 210,
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
-          }))
-        });
-        return;
-      }
+    const data = extractYtInitialData(html);
+    if (!data) {
       const pipedFallback = await queryPipedMusicSongs(q, queryLower, intent);
       sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
       return;
     }
 
-    const data = JSON.parse(match[1]);
     const sections = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
     const items = [];
 
