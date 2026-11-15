@@ -144,6 +144,26 @@ export interface TranslationKeys {
   authGoogleCta: string;
   authGoogleComingSoon: string;
   authGoogleDesc: string;
+  modeMusicOnly: string;
+  modeOrbwaveOnly: string;
+  modeVideoOnly: string;
+  modeLyricsOnly: string;
+  modeVideoLyric: string;
+  modeMusicLyric: string;
+  recentSearches: string;
+  clearSearchHistory: string;
+  removeSearchItem: string;
+  lyricsLoading: string;
+  lyricsUnavailable: string;
+  lyricsRetry: string;
+  lyricsSearchPlaceholder: string;
+  lyricsSyncedLabel: string;
+  lyricsTimedLabel: string;
+  lowCpuMode: string;
+  lowCpuShort: string;
+  minimizeFloating: string;
+  desktopPip: string;
+  downloadApk: string;
 }
 
 export interface LanguageOption {
@@ -323,7 +343,27 @@ const EN_BASE: TranslationKeys = {
   authNameLabel: 'Display Name',
   authGoogleCta: 'Continue with Google',
   authGoogleComingSoon: 'Coming Soon',
-  authGoogleDesc: 'Google OAuth sign-in is coming soon. Use email login backed by Neon Postgres.'
+  authGoogleDesc: 'Google OAuth sign-in is coming soon. Use email login backed by Neon Postgres.',
+  modeMusicOnly: 'Music Only',
+  modeOrbwaveOnly: 'Orbwave Only',
+  modeVideoOnly: 'Video Only',
+  modeLyricsOnly: 'Lyrics Only',
+  modeVideoLyric: 'Video + Lyrics',
+  modeMusicLyric: 'Music + Lyrics',
+  recentSearches: 'Recent Sound Searches',
+  clearSearchHistory: 'Clear History',
+  removeSearchItem: 'Remove search item',
+  lyricsLoading: 'Searching synchronized lyrics across LRCLIB, NetEase & lyrics.ovh...',
+  lyricsUnavailable: 'No synced or plain lyrics matched this metadata automatically.',
+  lyricsRetry: 'Retry Lyrics',
+  lyricsSearchPlaceholder: 'Refine title or artist to search lyrics...',
+  lyricsSyncedLabel: 'Synced LRC',
+  lyricsTimedLabel: 'Timed Lyrics',
+  lowCpuMode: '24/7 Low-CPU Eco',
+  lowCpuShort: 'Low CPU',
+  minimizeFloating: 'Floating Mini',
+  desktopPip: 'Desktop PiP',
+  downloadApk: 'Android APK (24/7)'
 };
 
 const loc = (overrides: Partial<TranslationKeys>): TranslationKeys => ({
@@ -475,7 +515,27 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     authNameLabel: 'Nama Tampilan',
     authGoogleCta: 'Lanjutkan dengan Google',
     authGoogleComingSoon: 'Segera Hadir',
-    authGoogleDesc: 'Login Google OAuth segera hadir. Gunakan login email yang tersinkron di Neon Postgres.'
+    authGoogleDesc: 'Login Google OAuth segera hadir. Gunakan login email yang tersinkron di Neon Postgres.',
+    modeMusicOnly: 'Musik Saja',
+    modeOrbwaveOnly: 'Orbwave Saja',
+    modeVideoOnly: 'Video Saja',
+    modeLyricsOnly: 'Lirik Saja',
+    modeVideoLyric: 'Video + Lirik',
+    modeMusicLyric: 'Musik + Lirik',
+    recentSearches: 'Riwayat Pencarian Suara',
+    clearSearchHistory: 'Hapus Riwayat',
+    removeSearchItem: 'Hapus item pencarian',
+    lyricsLoading: 'Mencari lirik tersinkronisasi dari LRCLIB, NetEase & lyrics.ovh...',
+    lyricsUnavailable: 'Lirik tidak cocok otomatis untuk metadata ini.',
+    lyricsRetry: 'Cari Ulang Lirik',
+    lyricsSearchPlaceholder: 'Sesuaikan judul atau artis untuk cari lirik...',
+    lyricsSyncedLabel: 'LRC Tersinkron',
+    lyricsTimedLabel: 'Lirik Bertempo',
+    lowCpuMode: 'Hemat CPU 24/7',
+    lowCpuShort: 'Hemat CPU',
+    minimizeFloating: 'Ikon Mengambang',
+    desktopPip: 'PiP Desktop',
+    downloadApk: 'APK Android (24/7)'
   }),
   ms: loc({
     navLanding: 'Halaman Utama',

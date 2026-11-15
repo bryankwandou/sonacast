@@ -10,6 +10,7 @@ interface VinylCoverProps {
   album: string;
   genre: string;
   isPlaying: boolean;
+  lowCpuMode?: boolean;
 }
 
 export const VinylCover: React.FC<VinylCoverProps> = ({
@@ -18,11 +19,15 @@ export const VinylCover: React.FC<VinylCoverProps> = ({
   artist,
   album,
   genre,
-  isPlaying
+  isPlaying,
+  lowCpuMode = false
 }) => {
   const [bassLevel, setBassLevel] = useState(0);
 
   useEffect(() => {
+    if (!isPlaying || lowCpuMode) {
+      return;
+    }
     let animId: number;
     const poll = () => {
       const spectrum = sharedAudioEngine.getSpectrum();
@@ -30,8 +35,11 @@ export const VinylCover: React.FC<VinylCoverProps> = ({
       animId = requestAnimationFrame(poll);
     };
     animId = requestAnimationFrame(poll);
-    return () => cancelAnimationFrame(animId);
-  }, []);
+    return () => {
+      cancelAnimationFrame(animId);
+      setBassLevel(0);
+    };
+  }, [isPlaying, lowCpuMode]);
 
   return (
     <div

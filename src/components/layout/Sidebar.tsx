@@ -14,6 +14,7 @@ import {
   Presentation,
   Radio,
   Search,
+  Smartphone,
   Sparkles,
   User,
   Users,
@@ -205,6 +206,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </span>
           </div>
         </button>
+
+        <a
+          href="./downloads/sonacast.apk"
+          download="sonacast.apk"
+          data-testid="sidebar-download-apk"
+          className="w-full px-3 py-2 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent-emerald)] transition-colors flex items-center justify-between gap-2 text-left text-[11px] font-semibold text-[var(--text-primary)]"
+        >
+          <span className="inline-flex items-center gap-1.5 truncate">
+            <Smartphone size={13} className="text-[var(--accent-text)] shrink-0" />
+            <span className="truncate">{t.downloadApk}</span>
+          </span>
+          <span className="text-[9px] font-mono text-[var(--text-dim)] uppercase shrink-0">APK</span>
+        </a>
       </div>
     </div>
   );

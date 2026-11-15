@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { CatalogAlbum, Track, LyricLine, PlaybackContextInfo } from '../../types';
+import type { CatalogAlbum, Track, LyricLine, PlaybackContextInfo, SearchHistoryEntry } from '../../types';
 import { ARTISTS_DIRECTORY, ARTIST_GENRE_CATEGORIES } from '../../data/artists800';
 import {
   fetchAlbumTracksOnline,
-  fetchSyncedLyrics,
+  fetchLyricsWithMeta,
   searchAlbumsOnline,
   searchTracksOnline
 } from '../../services/musicService';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { TrackCard } from '../common/TrackCard';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
-import { Disc3, Globe, Loader2, Play, Search, Shuffle, Sparkles, Users, X } from 'lucide-react';
+import { Clock, Disc3, Globe, Loader2, Play, Search, Shuffle, Sparkles, Trash2, Users, X } from 'lucide-react';
 
 interface SearchViewProps {
   curatedTracks: Track[];
@@ -19,6 +19,10 @@ interface SearchViewProps {
   resolvingTrackId?: string | null;
   externalQuery?: string;
   externalTrigger?: number;
+  searchHistory?: SearchHistoryEntry[];
+  onRecordSearch?: (query: string, mode: 'songs' | 'albums', matchedTrack?: Track) => void;
+  onDeleteSearchHistory?: (id: string) => void;
+  onClearSearchHistory?: () => void;
   onSelectTrack: (track: Track) => void;
   onTogglePlay: () => void;
   onUpdateLyrics?: (lyrics: LyricLine[]) => void;
@@ -43,6 +47,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
   resolvingTrackId,
   externalQuery,
   externalTrigger = 0,
+  searchHistory = [],
+  onRecordSearch,
+  onDeleteSearchHistory,
+  onClearSearchHistory,
   onSelectTrack,
   onTogglePlay,
   onUpdateLyrics,
@@ -191,6 +199,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
     }
     if (rawValue.trim()) {
       setActiveArtistFilter('');
+      onRecordSearch?.(rawValue.trim(), searchMode);
       executeSearch(rawValue);
     }
   };
@@ -198,6 +207,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const handleArtistClick = (artistName: string) => {
     setActiveArtistFilter(artistName);
     setSearchQuery(artistName);
+    onRecordSearch?.(artistName, searchMode);
     executeSearch(artistName);
   };
 
@@ -210,14 +220,15 @@ export const SearchView: React.FC<SearchViewProps> = ({
   };
 
   const handlePlayTrackWithLyrics = async (track: Track) => {
+    onRecordSearch?.(searchQuery.trim() || track.title, 'songs', track);
     onSelectTrack(track);
     try {
-      const syncedLyrics = await fetchSyncedLyrics(track.title, track.artist, track.duration);
-      if (syncedLyrics.length > 0 && onUpdateLyrics) {
-        onUpdateLyrics(syncedLyrics);
+      const res = await fetchLyricsWithMeta(track.title, track.artist, track.duration, track.album);
+      if (res.lyrics.length > 0 && onUpdateLyrics) {
+        onUpdateLyrics(res.lyrics);
       }
     } catch {
-      // Keep default lyrics if LRCLIB does not have timestamped LRC
+      // App controller maintains lyrics status and fallback retry
     }
   };
 
@@ -312,6 +323,89 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Sound Search History */}
+      {searchHistory.length > 0 && (
+        <div
+          data-testid="search-history-section"
+          className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+              <Clock size={14} className="text-[var(--accent-text)]" />
+              <span>{t.recentSearches} ({searchHistory.length})</span>
+            </div>
+            {onClearSearchHistory && (
+              <button
+                type="button"
+                data-testid="search-history-clear"
+                onClick={onClearSearchHistory}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-[var(--text-dim)] hover:text-rose-400 hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
+              >
+                <Trash2 size={11} />
+                <span>{t.clearSearchHistory}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {searchHistory.slice(0, 14).map((item) => (
+              <div
+                key={item.id}
+                data-testid="search-history-chip"
+                className="group inline-flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent-emerald)] transition-colors max-w-full"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMode = item.mode === 'albums' ? 'albums' : 'songs';
+                    setSearchMode(nextMode);
+                    setSearchQuery(item.query);
+                    setActiveArtistFilter('');
+                    executeSearch(item.query, nextMode);
+                  }}
+                  className="inline-flex items-center gap-2 min-w-0 text-left cursor-pointer"
+                >
+                  {item.matchedTrack?.coverUrl ? (
+                    <img
+                      src={item.matchedTrack.coverUrl}
+                      alt=""
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                      className="w-5 h-5 rounded-full object-cover shrink-0"
+                    />
+                  ) : (
+                    <Clock size={12} className="text-[var(--text-dim)] shrink-0" />
+                  )}
+                  <span className="text-xs font-semibold text-[var(--text-primary)] truncate max-w-[180px]">
+                    {item.matchedTrack?.title || item.query}
+                  </span>
+                  {item.matchedTrack?.artist && (
+                    <span className="text-[10px] text-[var(--text-dim)] truncate max-w-[110px] hidden sm:inline">
+                      &middot; {item.matchedTrack.artist}
+                    </span>
+                  )}
+                </button>
+                {onDeleteSearchHistory && (
+                  <button
+                    type="button"
+                    aria-label={t.removeSearchItem}
+                    title={t.removeSearchItem}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteSearchHistory(item.id);
+                    }}
+                    className="p-0.5 rounded-full text-[var(--text-dim)] hover:text-rose-400 cursor-pointer shrink-0"
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 800+ Popular Artists Directory & Genre Filter */}
       <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-4">

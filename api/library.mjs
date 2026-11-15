@@ -245,6 +245,40 @@ export default async function handler(req, res) {
       `;
     } else if (action === 'clear_history') {
       await sql`DELETE FROM play_history WHERE listener_id = ${listenerId}`;
+    } else if (action === 'record_search') {
+      const q = sanitizeText(body.query, 120);
+      const mode = body.mode === 'albums' ? 'albums' : 'songs';
+      const matchedTrack = body.track ? normalizeTrackPayload(body.track) : null;
+      if (!q && !matchedTrack) {
+        res.status(400).json({ error: 'Search query or track required' });
+        return;
+      }
+      const finalQuery = q || `${matchedTrack.title} ${matchedTrack.artist}`.slice(0, 120);
+      if (matchedTrack) {
+        await sql`
+          DELETE FROM search_history
+          WHERE listener_id = ${listenerId} AND track_json->>'id' = ${matchedTrack.id}
+        `;
+      } else {
+        await sql`
+          DELETE FROM search_history
+          WHERE listener_id = ${listenerId} AND LOWER(query) = LOWER(${finalQuery}) AND mode = ${mode} AND track_json IS NULL
+        `;
+      }
+      await sql`
+        INSERT INTO search_history (listener_id, query, mode, track_json)
+        VALUES (${listenerId}, ${finalQuery}, ${mode}, ${matchedTrack ? JSON.stringify(matchedTrack) : null}::jsonb)
+      `;
+    } else if (action === 'delete_search_item') {
+      const itemId = sanitizeId(body.id, '', 48);
+      const query = sanitizeText(body.query, 120, '');
+      if (itemId && /^\d+$/.test(itemId)) {
+        await sql`DELETE FROM search_history WHERE listener_id = ${listenerId} AND id = ${Number(itemId)}`;
+      } else if (query) {
+        await sql`DELETE FROM search_history WHERE listener_id = ${listenerId} AND LOWER(query) = LOWER(${query})`;
+      }
+    } else if (action === 'clear_search_history') {
+      await sql`DELETE FROM search_history WHERE listener_id = ${listenerId}`;
     } else if (action === 'sync_local_state') {
       const localFavs = Array.isArray(body.favorites) ? body.favorites.slice(0, 60) : [];
       for (const rawTrack of localFavs) {

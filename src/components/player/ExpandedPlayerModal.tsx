@@ -4,10 +4,12 @@ import {
   Download,
   Heart,
   ListPlus,
+  Loader2,
   Moon,
   Pause,
   Play,
   Radio,
+  RefreshCw,
   Repeat,
   Repeat1,
   Shuffle,
@@ -37,6 +39,9 @@ interface ExpandedPlayerModalProps {
   crossfadeSeconds: number;
   sleepTimerMinutesRemaining: number | null;
   playlists: UserPlaylist[];
+  lyricsStatus?: 'idle' | 'loading' | 'loaded' | 'unavailable';
+  lyricsSource?: string;
+  onRetryLyrics?: () => void;
   onTogglePlay: () => void;
   onNext: () => void;
   onPrev: () => void;
@@ -79,6 +84,9 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   crossfadeSeconds,
   sleepTimerMinutesRemaining,
   playlists,
+  lyricsStatus = 'idle',
+  lyricsSource,
+  onRetryLyrics,
   onTogglePlay,
   onNext,
   onPrev,
@@ -496,19 +504,57 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
           {/* Right: Resso-style Interactive Synced Lyrics */}
           <div className="lg:col-span-7">
             <div className="rounded-2xl bg-[var(--bg-tint)] p-5 sm:p-8 min-h-[380px] max-h-[68vh] overflow-y-auto space-y-4">
-              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--accent-text)]">
-                  <Sparkles size={14} />
+                  {lyricsStatus === 'loading' ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={14} />
+                  )}
                   <span>{t.lyrics}</span>
+                  {lyricsSource && lyrics.length > 0 && (
+                    <span className="text-[10px] font-mono text-[var(--text-dim)] lowercase">
+                      ({lyricsSource})
+                    </span>
+                  )}
                 </div>
-                <span className="text-[11px] font-mono text-[var(--text-dim)]">
-                  Tap line to seek
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-[var(--text-dim)]">
+                    Tap line to seek
+                  </span>
+                  {onRetryLyrics && (
+                    <button
+                      type="button"
+                      onClick={onRetryLyrics}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                    >
+                      <RefreshCw size={11} className={lyricsStatus === 'loading' ? 'animate-spin' : ''} />
+                      <span>{t.lyricsRetry}</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {lyrics.length === 0 ? (
-                <div className="py-16 text-center text-sm text-[var(--text-dim)]">
-                  Instrumental or live lyrics syncing in background.
+              {lyricsStatus === 'loading' && lyrics.length === 0 ? (
+                <div className="py-12 space-y-3 animate-pulse">
+                  <div className="h-5 w-3/4 rounded bg-[var(--bg-surface)]" />
+                  <div className="h-5 w-2/3 rounded bg-[var(--bg-surface)]" />
+                  <div className="h-5 w-4/5 rounded bg-[var(--bg-surface)]" />
+                  <div className="h-5 w-1/2 rounded bg-[var(--bg-surface)]" />
+                </div>
+              ) : lyrics.length === 0 ? (
+                <div className="py-16 text-center space-y-3">
+                  <p className="text-sm text-[var(--text-dim)]">{t.lyricsUnavailable}</p>
+                  {onRetryLyrics && (
+                    <button
+                      type="button"
+                      onClick={onRetryLyrics}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer"
+                    >
+                      <RefreshCw size={12} />
+                      <span>{t.lyricsRetry}</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3 py-4">

@@ -4,11 +4,19 @@ import './index.css'
 import App from './App.tsx'
 import { AppPreferencesProvider } from './contexts/AppPreferencesContext.tsx'
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker
-    .getRegistrations()
-    .then((regs) => regs.forEach((reg) => reg.unregister()))
-    .catch(() => {});
+if (
+  typeof window !== 'undefined' &&
+  'serviceWorker' in navigator &&
+  window.location.protocol.startsWith('http')
+) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        reg.update().catch(() => {});
+      })
+      .catch(() => {});
+  });
 }
 
 createRoot(document.getElementById('root')!).render(

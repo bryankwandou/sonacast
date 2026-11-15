@@ -1,5 +1,5 @@
 import React from 'react';
-import type { PlayerMode, RepeatMode, Track } from '../../types';
+import type { RepeatMode, StageExperienceMode, Track } from '../../types';
 import {
   Activity,
   Disc,
@@ -10,7 +10,9 @@ import {
   Loader2,
   Maximize2,
   Mic2,
+  Minimize2,
   Pause,
+  PictureInPicture2,
   Play,
   Radio,
   Repeat,
@@ -20,7 +22,8 @@ import {
   SkipForward,
   Video,
   Volume2,
-  VolumeX
+  VolumeX,
+  Zap
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { applyCoverFallback } from '../../utils/coverFallback';
@@ -38,10 +41,9 @@ interface BottomPlayerBarProps {
   onSeek: (time: number) => void;
   volume: number;
   onVolumeChange: (vol: number) => void;
-  playerMode: PlayerMode;
-  onPlayerModeChange: (mode: PlayerMode) => void;
-  isLyricsOpen: boolean;
-  onToggleLyrics: () => void;
+  stageMode: StageExperienceMode;
+  isStageOpen: boolean;
+  onSelectStageMode: (mode: StageExperienceMode) => void;
   onOpenMobileQueue: () => void;
   shuffle?: boolean;
   onToggleShuffle?: () => void;
@@ -49,6 +51,11 @@ interface BottomPlayerBarProps {
   onCycleRepeat?: () => void;
   autoplayEnabled?: boolean;
   onToggleAutoplay?: () => void;
+  lowCpuMode?: boolean;
+  onToggleLowCpu?: () => void;
+  isFloatingMinimized?: boolean;
+  onToggleFloating?: () => void;
+  onTriggerDesktopPip?: () => void;
   isLiked?: boolean;
   onToggleLike?: () => void;
   onAddToAlbum?: () => void;
@@ -69,10 +76,9 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   onSeek,
   volume,
   onVolumeChange,
-  playerMode,
-  onPlayerModeChange,
-  isLyricsOpen,
-  onToggleLyrics,
+  stageMode,
+  isStageOpen,
+  onSelectStageMode,
   onOpenMobileQueue,
   shuffle = false,
   onToggleShuffle,
@@ -80,6 +86,11 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   onCycleRepeat,
   autoplayEnabled = true,
   onToggleAutoplay,
+  lowCpuMode = false,
+  onToggleLowCpu,
+  isFloatingMinimized = false,
+  onToggleFloating,
+  onTriggerDesktopPip,
   isLiked = false,
   onToggleLike,
   onAddToAlbum,
@@ -306,59 +317,86 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
           </div>
         </div>
 
-        {/* Right: Mode Switcher, Lyrics, Queue & Volume */}
-        <div className="flex items-center justify-end gap-1.5 sm:gap-2.5 flex-none sm:w-[270px] lg:w-[310px]">
+        {/* Right: 6 Separated Stage Modes, Low-CPU 24/7, Floating/PiP, Queue & Volume */}
+        <div className="flex items-center justify-end gap-1 sm:gap-2 flex-none sm:w-[300px] lg:w-[360px]">
           <div className="hidden md:flex items-center bg-[var(--bg-tint)] rounded-lg p-0.5">
-            <button
-              type="button"
-              onClick={() => onPlayerModeChange('cover')}
-              title={t.modeCover}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                playerMode === 'cover'
-                  ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm'
-                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Disc size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => onPlayerModeChange('video')}
-              title={t.modeVideo}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                playerMode === 'video'
-                  ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm'
-                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Video size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => onPlayerModeChange('orbwave')}
-              title={t.modeOrbwave}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                playerMode === 'orbwave'
-                  ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm'
-                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Activity size={14} />
-            </button>
+            {(
+              [
+                { id: 'music-only', label: t.modeMusicOnly, icon: <Disc size={13} /> },
+                { id: 'orbwave-only', label: t.modeOrbwaveOnly, icon: <Activity size={13} /> },
+                { id: 'video-only', label: t.modeVideoOnly, icon: <Video size={13} /> },
+                { id: 'lyrics-only', label: t.modeLyricsOnly, icon: <Mic2 size={13} /> }
+              ] as const
+            ).map((item) => {
+              const active = isStageOpen && stageMode === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelectStageMode(item.id)}
+                  title={item.label}
+                  aria-label={item.label}
+                  className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm'
+                      : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {item.icon}
+                </button>
+              );
+            })}
           </div>
 
-          <button
-            type="button"
-            onClick={onToggleLyrics}
-            title={t.lyrics}
-            className={`hidden sm:inline-flex p-2 rounded-lg transition-colors cursor-pointer ${
-              isLyricsOpen
-                ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
-                : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            <Mic2 size={16} />
-          </button>
+          {onToggleLowCpu && (
+            <button
+              type="button"
+              onClick={onToggleLowCpu}
+              data-testid="player-low-cpu-toggle"
+              aria-pressed={lowCpuMode}
+              title={t.lowCpuMode}
+              aria-label={t.lowCpuMode}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer border ${
+                lowCpuMode
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border-[var(--accent-border)]'
+                  : 'bg-[var(--bg-tint)] text-[var(--text-dim)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <Zap size={12} />
+              <span className="hidden xl:inline">{t.lowCpuShort}</span>
+            </button>
+          )}
+
+          {onToggleFloating && (
+            <button
+              type="button"
+              onClick={onToggleFloating}
+              data-testid="player-floating-toggle"
+              aria-pressed={isFloatingMinimized}
+              title={t.minimizeFloating}
+              aria-label={t.minimizeFloating}
+              className={`hidden sm:inline-flex p-1.5 rounded-lg transition-colors cursor-pointer ${
+                isFloatingMinimized
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
+              }`}
+            >
+              <Minimize2 size={14} />
+            </button>
+          )}
+
+          {onTriggerDesktopPip && (
+            <button
+              type="button"
+              onClick={onTriggerDesktopPip}
+              data-testid="player-pip-toggle"
+              title={t.desktopPip}
+              aria-label={t.desktopPip}
+              className="hidden md:inline-flex p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
+            >
+              <PictureInPicture2 size={14} />
+            </button>
+          )}
 
           {onOpenExpandedPlayer && (
             <button

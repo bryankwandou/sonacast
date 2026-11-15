@@ -96,6 +96,14 @@ export interface BlendRoom {
   updatedAt: number;
 }
 
+export interface SearchHistoryEntry {
+  id: string;
+  query: string;
+  mode: 'songs' | 'albums';
+  matchedTrack?: Track;
+  searchedAt: number;
+}
+
 export interface CloudLibrarySnapshot {
   connected: boolean;
   database: string;
@@ -104,6 +112,7 @@ export interface CloudLibrarySnapshot {
   albums: UserPlaylist[];
   followedArtists: FollowedArtist[];
   recentHistory: (Track & { playedAt?: number })[];
+  searchHistory?: SearchHistoryEntry[];
   stats: ListeningStats;
 }
 
@@ -134,6 +143,13 @@ export interface RadioStation {
 }
 
 export type PlayerMode = 'cover' | 'video' | 'orbwave';
+export type StageExperienceMode =
+  | 'music-only'
+  | 'orbwave-only'
+  | 'video-only'
+  | 'lyrics-only'
+  | 'video-lyric'
+  | 'music-lyric';
 export type TabType =
   | 'landing'
   | 'discover'

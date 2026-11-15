@@ -71,6 +71,7 @@ interface DiscoverViewProps {
   onDeletePlaylist?: (playlistId: string) => void;
   activeMood?: MoodPreset;
   onSelectMood?: (mood: MoodPreset) => void;
+  onRecordSearch?: (query: string, mode: 'songs' | 'albums', matchedTrack?: Track) => void;
 }
 
 const FEATURED_ARTISTS = [
@@ -105,7 +106,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onRemoveTrackFromPlaylist,
   onDeletePlaylist,
   activeMood = 'all',
-  onSelectMood
+  onSelectMood,
+  onRecordSearch
 }) => {
   const { t } = useAppPreferences();
   const { popularCharts, isLoadingCharts } = usePopularCharts();
@@ -193,6 +195,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       );
 
   const handlePlayTrackWithLyrics = (track: Track) => {
+    if (inlineQuery.trim()) {
+      onRecordSearch?.(inlineQuery.trim(), 'songs', track);
+    }
     onSelectTrack(track);
     if (!track.lyrics || track.lyrics.length <= 2) {
       fetchSyncedLyrics(track.title, track.artist, track.duration).then((synced) => {
@@ -207,6 +212,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     e.preventDefault();
     const q = inlineQuery.trim();
     if (!q) return;
+    onRecordSearch?.(q, 'songs');
     setIsSearchingInline(true);
     try {
       const results = await searchTracksOnline(q);

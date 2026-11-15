@@ -39,6 +39,10 @@ interface RightSidebarProps {
   onOpenTipModal: () => void;
   ytMonitorRef: React.RefObject<HTMLDivElement | null>;
   showYtMonitor: boolean;
+  lyricsStatus?: 'idle' | 'loading' | 'loaded' | 'unavailable';
+  lyricsSource?: string;
+  lyricsSynced?: boolean;
+  onRetryLyrics?: (customTitle?: string, customArtist?: string) => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
 }
@@ -64,6 +68,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onOpenTipModal,
   ytMonitorRef,
   showYtMonitor,
+  lyricsStatus = 'idle',
+  lyricsSource,
+  lyricsSynced,
+  onRetryLyrics,
   isMobileOpen = false,
   onCloseMobile
 }) => {
@@ -435,10 +443,46 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         )}
 
         {activePanelTab === 'lyrics' && (
-          <div className="space-y-2 py-1">
-            {lyrics.length === 0 ? (
-              <div className="py-12 text-center text-xs text-[var(--text-dim)]">
-                Lyrics not available for instrumental tracks.
+          <div className="space-y-2 py-1" data-testid="sidebar-lyrics-panel">
+            <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-[var(--border-subtle)]">
+              <span className="text-[10px] font-mono text-[var(--text-dim)] truncate">
+                {lyricsStatus === 'loading'
+                  ? t.lyricsLoading
+                  : lyrics.length > 0
+                    ? `${lyricsSynced ? t.lyricsSyncedLabel : t.lyricsTimedLabel}${lyricsSource ? ` - ${lyricsSource}` : ''}`
+                    : t.lyricsUnavailable}
+              </span>
+              {onRetryLyrics && (
+                <button
+                  type="button"
+                  onClick={() => onRetryLyrics()}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[10px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer shrink-0"
+                >
+                  <RefreshCw size={10} className={lyricsStatus === 'loading' ? 'animate-spin' : ''} />
+                  <span>{t.lyricsRetry}</span>
+                </button>
+              )}
+            </div>
+
+            {lyricsStatus === 'loading' && lyrics.length === 0 ? (
+              <div className="py-6 space-y-2 animate-pulse px-1">
+                <div className="h-3 w-3/4 rounded bg-[var(--bg-tint)]" />
+                <div className="h-3 w-2/3 rounded bg-[var(--bg-tint)]" />
+                <div className="h-3 w-4/5 rounded bg-[var(--bg-tint)]" />
+              </div>
+            ) : lyrics.length === 0 ? (
+              <div className="py-10 text-center space-y-2">
+                <p className="text-xs text-[var(--text-dim)]">{t.lyricsUnavailable}</p>
+                {onRetryLyrics && (
+                  <button
+                    type="button"
+                    onClick={() => onRetryLyrics()}
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer"
+                  >
+                    <RefreshCw size={11} />
+                    <span>{t.lyricsRetry}</span>
+                  </button>
+                )}
               </div>
             ) : (
               lyrics.map((line, idx) => {

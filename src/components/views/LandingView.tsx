@@ -816,6 +816,15 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 >
                   {t.connectWallet}
                 </button>
+                <a
+                  href="./downloads/sonacast.apk"
+                  download="sonacast.apk"
+                  data-testid="footer-apk-link"
+                  className="py-1 text-[var(--accent-text)] hover:underline inline-flex items-center gap-1"
+                >
+                  <span>{t.downloadApk}</span>
+                  <ArrowUpRight size={12} />
+                </a>
               </div>
             </div>
           </div>

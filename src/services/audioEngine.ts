@@ -99,6 +99,9 @@ export class AudioEngine {
   private currentTime = 0;
   private duration = 210;
   private volume = 0.85;
+  private lowCpuMode = false;
+  private isDocumentHidden = false;
+  private lastHtml5NotifyAt = 0;
 
   private freqArray: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
   private waveArray: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
@@ -110,7 +113,29 @@ export class AudioEngine {
   private onErrorCallbacks: Set<(message: string) => void> = new Set();
 
   constructor() {
-    // Lazily initialized on user gesture
+    if (typeof document !== 'undefined') {
+      this.isDocumentHidden = document.visibilityState === 'hidden';
+      document.addEventListener('visibilitychange', () => {
+        this.isDocumentHidden = document.visibilityState === 'hidden';
+        if (this.isPlaying && this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {});
+        }
+        if (this.activeBackend === 'youtube' && this.isPlaying) {
+          this.startYouTubePoll();
+        }
+      });
+    }
+  }
+
+  public setLowCpuMode(enabled: boolean) {
+    this.lowCpuMode = Boolean(enabled);
+    if (this.activeBackend === 'youtube' && this.isPlaying) {
+      this.startYouTubePoll();
+    }
+  }
+
+  public isLowCpuModeEnabled(): boolean {
+    return this.lowCpuMode;
   }
 
   public mountYouTubeHost(el: HTMLElement | null) {
@@ -195,7 +220,12 @@ export class AudioEngine {
       this.audioElement.addEventListener('timeupdate', () => {
         if (this.activeBackend !== 'html5' || !this.audioElement || !this.isPlaying) return;
         this.currentTime = this.audioElement.currentTime;
-        this.notifyTime();
+        const now = performance.now();
+        const minInterval = this.lowCpuMode || this.isDocumentHidden ? 1000 : 200;
+        if (now - this.lastHtml5NotifyAt >= minInterval) {
+          this.lastHtml5NotifyAt = now;
+          this.notifyTime();
+        }
       });
 
       const syncHtml5Duration = () => {
@@ -351,6 +381,7 @@ export class AudioEngine {
 
   private startYouTubePoll() {
     this.stopYouTubePoll();
+    const intervalMs = this.lowCpuMode || this.isDocumentHidden ? 1200 : 250;
     this.ytPollInterval = window.setInterval(() => {
       if (this.activeBackend !== 'youtube' || !this.ytPlayer || !this.ytReady || !this.isPlaying) {
         return;
@@ -375,7 +406,7 @@ export class AudioEngine {
       } catch {
         // Safe poll fallback
       }
-    }, 250);
+    }, intervalMs);
   }
 
   private stopYouTubePoll() {
@@ -805,6 +836,19 @@ export class AudioEngine {
 
   public getSpectrum(): SpectrumData {
     const len = this.freqArray.length;
+
+    if (this.lowCpuMode || this.isDocumentHidden || !this.isPlaying) {
+      this.freqArray.fill(0);
+      this.waveArray.fill(128);
+      return {
+        frequencies: this.freqArray,
+        waveformData: this.waveArray,
+        bass: 0,
+        mid: 0,
+        treble: 0,
+        level: 0
+      };
+    }
 
     if (this.activeBackend === 'html5' && this.analyser && this.isPlaying) {
       this.analyser.getByteFrequencyData(this.freqArray);

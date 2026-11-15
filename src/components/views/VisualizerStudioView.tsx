@@ -7,31 +7,43 @@ import { Sparkles } from 'lucide-react';
 interface VisualizerStudioViewProps {
   currentTrack: Track;
   currentTime: number;
+  lowCpuMode?: boolean;
+  isPlaying?: boolean;
   onCustomAudioLoaded?: (title: string, artist: string, audioUrl: string) => void;
 }
 
 export const VisualizerStudioView: React.FC<VisualizerStudioViewProps> = ({
   currentTrack,
-  currentTime
+  currentTime,
+  lowCpuMode = false,
+  isPlaying = true
 }) => {
   const [telemetry, setTelemetry] = useState({ bass: 0, mid: 0, treble: 0, level: 0 });
   const [palette, setPalette] = useState<'emerald' | 'cyber' | 'amber' | 'ice'>('emerald');
 
   useEffect(() => {
-    let animId: number;
-    const update = () => {
-      const spec = sharedAudioEngine.getSpectrum();
-      setTelemetry({
-        bass: spec.bass,
-        mid: spec.mid,
-        treble: spec.treble,
-        level: spec.level
-      });
+    if (lowCpuMode || !isPlaying) {
+      setTelemetry({ bass: 0, mid: 0, treble: 0, level: 0 });
+      return;
+    }
+    let animId = 0;
+    let lastUpdate = 0;
+    const update = (ts: number) => {
+      if (ts - lastUpdate >= 120) {
+        lastUpdate = ts;
+        const spec = sharedAudioEngine.getSpectrum();
+        setTelemetry({
+          bass: spec.bass,
+          mid: spec.mid,
+          treble: spec.treble,
+          level: spec.level
+        });
+      }
       animId = requestAnimationFrame(update);
     };
     animId = requestAnimationFrame(update);
     return () => cancelAnimationFrame(animId);
-  }, []);
+  }, [lowCpuMode, isPlaying]);
 
   return (
     <div className="space-y-6 select-none">
@@ -78,6 +90,8 @@ export const VisualizerStudioView: React.FC<VisualizerStudioViewProps> = ({
           lyrics={currentTrack.lyrics}
           currentTime={currentTime}
           palette={palette}
+          lowCpuMode={lowCpuMode}
+          isPlaying={isPlaying}
         />
       </div>
 

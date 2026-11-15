@@ -12,6 +12,9 @@ interface OrbwaveCanvasProps {
   lyrics: LyricLine[];
   currentTime: number;
   palette?: 'emerald' | 'cyber' | 'amber' | 'ice';
+  showLyricsOverlay?: boolean;
+  lowCpuMode?: boolean;
+  isPlaying?: boolean;
 }
 
 const PALETTES = {
@@ -47,7 +50,10 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
   artist,
   lyrics,
   currentTime,
-  palette = 'emerald'
+  palette = 'emerald',
+  showLyricsOverlay = true,
+  lowCpuMode = false,
+  isPlaying = true
 }) => {
   const { theme } = useAppPreferences();
   const isLight = theme === 'light';
@@ -97,9 +103,23 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
     };
   }, [coverUrl, title, artist]);
 
-  // Find currently active lyric line
+  // Find currently active lyric line without rebuilding the canvas loop on every time tick
   const activeLyric = lyrics.slice().reverse().find((l) => currentTime >= l.time) || lyrics[0];
   const nextLyric = lyrics.find((l) => l.time > currentTime);
+  const activeLyricRef = useRef<LyricLine | undefined>(activeLyric);
+  const nextLyricRef = useRef<LyricLine | undefined>(nextLyric);
+  const showLyricsOverlayRef = useRef<boolean>(showLyricsOverlay);
+  const drawOnceRef = useRef<(() => void) | null>(null);
+
+  // Sync latest lyrics & overlay flags outside render and repaint once when idle/paused
+  useEffect(() => {
+    activeLyricRef.current = activeLyric;
+    nextLyricRef.current = nextLyric;
+    showLyricsOverlayRef.current = showLyricsOverlay;
+    if (lowCpuMode || !isPlaying) {
+      drawOnceRef.current?.();
+    }
+  }, [activeLyric, nextLyric, showLyricsOverlay, lowCpuMode, isPlaying]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -108,7 +128,7 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
-    let animId: number;
+    let animId = 0;
     let rotationAngle = 0;
 
     // Deterministic particle set
@@ -120,15 +140,18 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
       opacity: (i % 7) * 0.1 + 0.3
     }));
 
-    const render = () => {
+    const drawFrame = () => {
       const width = canvas.width;
       const height = canvas.height;
+      if (width <= 0 || height <= 0) return;
       const centerX = width / 2;
       const centerY = height / 2;
       const minDimension = Math.min(width, height);
       const baseRadius = minDimension * 0.22;
 
-      const spectrum = sharedAudioEngine.getSpectrum();
+      const spectrum = lowCpuMode
+        ? { frequencies: new Uint8Array(64), bass: 0, mid: 0, treble: 0, level: 0 }
+        : sharedAudioEngine.getSpectrum();
       const bassEnergy = spectrum.bass;
       const levelEnergy = spectrum.level;
       const colors = PALETTES[selectedPalette];
@@ -188,7 +211,9 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
       // 4. Circular Frequency Spectrum Bars
       const numBars = 72;
       const angleStep = (Math.PI * 2) / numBars;
-      rotationAngle += 0.003 + bassEnergy * 0.004;
+      if (isPlaying && !lowCpuMode) {
+        rotationAngle += 0.003 + bassEnergy * 0.004;
+      }
 
       ctx.save();
       ctx.translate(centerX, centerY);
@@ -288,52 +313,95 @@ export const OrbwaveCanvas: React.FC<OrbwaveCanvasProps> = ({
       ctx.restore();
 
       // 6. Real-Time In-Canvas Live Lyrics / Transcript Overlay
-      // Renders directly over visualizer without needing pre-rendered video!
-      const hudY = height - 74;
-      ctx.save();
-      ctx.textAlign = 'center';
+      if (showLyricsOverlayRef.current) {
+        const hudY = height - 74;
+        const curLyric = activeLyricRef.current;
+        const nxtLyric = nextLyricRef.current;
+        ctx.save();
+        ctx.textAlign = 'center';
 
-      // Current active lyric line
-      if (activeLyric) {
-        ctx.font = '600 20px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.fillStyle = isLight ? 'rgba(255, 255, 255, 0.85)' : 'rgba(0, 0, 0, 0.75)';
-        ctx.fillText(activeLyric.text, centerX + 1, hudY + 1);
+        if (curLyric) {
+          ctx.font = '600 20px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          ctx.fillStyle = isLight ? 'rgba(255, 255, 255, 0.85)' : 'rgba(0, 0, 0, 0.75)';
+          ctx.fillText(curLyric.text, centerX + 1, hudY + 1);
 
-        ctx.fillStyle = isLight ? '#047857' : colors.accent;
-        ctx.fillText(activeLyric.text, centerX, hudY);
+          ctx.fillStyle = isLight ? '#047857' : colors.accent;
+          ctx.fillText(curLyric.text, centerX, hudY);
+        }
+
+        if (nxtLyric) {
+          ctx.font = '400 13px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          ctx.fillStyle = isLight ? 'rgba(15, 23, 42, 0.65)' : 'rgba(255, 255, 255, 0.45)';
+          ctx.fillText(nxtLyric.text, centerX, hudY + 26);
+        }
+
+        ctx.restore();
       }
-
-      // Next lyric line preview
-      if (nextLyric) {
-        ctx.font = '400 13px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.fillStyle = isLight ? 'rgba(15, 23, 42, 0.65)' : 'rgba(255, 255, 255, 0.45)';
-        ctx.fillText(nextLyric.text, centerX, hudY + 26);
-      }
-
-      ctx.restore();
-
-      animId = requestAnimationFrame(render);
     };
+
+    const renderLoop = () => {
+      if (document.hidden || lowCpuMode || !isPlaying) {
+        drawFrame();
+        animId = 0;
+        return;
+      }
+      drawFrame();
+      animId = requestAnimationFrame(renderLoop);
+    };
+
+    drawOnceRef.current = drawFrame;
 
     const handleResize = () => {
       if (!canvas || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const dpr = lowCpuMode ? Math.min(window.devicePixelRatio || 1, 1.5) : window.devicePixelRatio || 1;
       canvas.width = Math.floor(rect.width * dpr);
       canvas.height = Math.floor(rect.height * dpr);
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
+      if (lowCpuMode || !isPlaying || document.hidden) {
+        drawFrame();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animId) {
+          cancelAnimationFrame(animId);
+          animId = 0;
+        }
+      } else if (!lowCpuMode && isPlaying && !animId) {
+        animId = requestAnimationFrame(renderLoop);
+      } else {
+        drawFrame();
+      }
     };
 
     handleResize();
     window.addEventListener('resize', handleResize);
-    animId = requestAnimationFrame(render);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' && containerRef.current
+        ? new ResizeObserver(() => handleResize())
+        : null;
+    if (resizeObserver && containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    drawFrame();
+    if (!lowCpuMode && isPlaying && !document.hidden) {
+      animId = requestAnimationFrame(renderLoop);
+    }
 
     return () => {
-      cancelAnimationFrame(animId);
+      drawOnceRef.current = null;
+      if (animId) cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      resizeObserver?.disconnect();
     };
-  }, [coverUrl, selectedPalette, barStyle, activeLyric, nextLyric, isLight]);
+  }, [coverUrl, selectedPalette, barStyle, isLight, lowCpuMode, isPlaying]);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;

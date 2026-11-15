@@ -252,6 +252,17 @@ export async function ensureSchema(sql) {
         )
       `;
 
+      await sql`
+        CREATE TABLE IF NOT EXISTS search_history (
+          id BIGSERIAL PRIMARY KEY,
+          listener_id TEXT NOT NULL,
+          query TEXT NOT NULL,
+          mode TEXT NOT NULL DEFAULT 'songs',
+          track_json JSONB,
+          searched_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+
       await sql`CREATE INDEX IF NOT EXISTS idx_favorites_listener ON favorites (listener_id, pinned DESC, created_at DESC)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_albums_listener ON albums (listener_id, updated_at DESC)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_history_listener ON play_history (listener_id, played_at DESC)`;
@@ -263,6 +274,7 @@ export async function ensureSchema(sql) {
       await sql`CREATE INDEX IF NOT EXISTS idx_auth_users_listener ON auth_users (listener_id)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_auth_users_privy_did ON auth_users (privy_did)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions (user_id, expires_at DESC)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_search_history_listener ON search_history (listener_id, searched_at DESC)`;
       return true;
     })().catch((err) => {
       schemaReadyPromise = null;
@@ -285,7 +297,7 @@ export async function ensureListenerRow(sql, listenerId, displayName = 'Listener
 export async function fetchLibrarySnapshot(sql, listenerId) {
   await ensureListenerRow(sql, listenerId);
 
-  const [profiles, favRows, albumRows, albumTrackRows, followRows, historyRows, statRows] =
+  const [profiles, favRows, albumRows, albumTrackRows, followRows, historyRows, statRows, searchRows] =
     await Promise.all([
       sql`
         SELECT listener_id, display_name, handle, bio, created_at, updated_at
@@ -334,6 +346,13 @@ export async function fetchLibrarySnapshot(sql, listenerId) {
           COALESCE(SUM(duration), 0)::int AS total_seconds
         FROM play_history
         WHERE listener_id = ${listenerId}
+      `,
+      sql`
+        SELECT id, query, mode, track_json, searched_at
+        FROM search_history
+        WHERE listener_id = ${listenerId}
+        ORDER BY searched_at DESC
+        LIMIT 40
       `
     ]);
 
@@ -420,6 +439,23 @@ export async function fetchLibrarySnapshot(sql, listenerId) {
     bio: ''
   };
 
+  const searchHistory = [];
+  const seenSearchKeys = new Set();
+  for (const sr of searchRows || []) {
+    const m = sr.mode === 'albums' ? 'albums' : 'songs';
+    const key = sr.track_json?.id ? `trk:${sr.track_json.id}` : `q:${m}:${String(sr.query || '').toLowerCase()}`;
+    if (!sr.query || seenSearchKeys.has(key)) continue;
+    seenSearchKeys.add(key);
+    searchHistory.push({
+      id: String(sr.id),
+      query: sr.query,
+      mode: m,
+      matchedTrack: sr.track_json || undefined,
+      searchedAt: new Date(sr.searched_at).getTime()
+    });
+    if (searchHistory.length >= 24) break;
+  }
+
   return {
     connected: true,
     database: 'neon-postgres',
@@ -437,6 +473,7 @@ export async function fetchLibrarySnapshot(sql, listenerId) {
       followedAt: new Date(r.created_at).getTime()
     })),
     recentHistory,
+    searchHistory,
     stats: {
       totalPlays: Number(statRows[0]?.total_plays || 0),
       totalMinutes: Math.round(Number(statRows[0]?.total_seconds || 0) / 60),

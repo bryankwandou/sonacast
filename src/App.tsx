@@ -5,7 +5,8 @@ import type {
   Track,
   PodcastEpisode,
   RadioStation,
-  PlayerMode,
+  StageExperienceMode,
+  SearchHistoryEntry,
   TabType,
   LyricLine,
   EqPreset,
@@ -24,11 +25,17 @@ import { ARTISTS_DIRECTORY } from './data/artists800';
 import { sharedAudioEngine } from './services/audioEngine';
 import { solanaService } from './services/solanaService';
 import {
-  fetchSyncedLyrics,
+  fetchLyricsWithMeta,
   findMasterAudio,
   resolveFullTrackStream,
   searchTracksOnline
 } from './services/musicService';
+import {
+  loadLocalSearchHistory,
+  mergeSearchHistory,
+  saveLocalSearchHistory,
+  upsertSearchHistory
+} from './services/searchHistoryService';
 import {
   buildSmartQueueFromPool,
   classifyTrackTier,
@@ -58,6 +65,11 @@ import { RightSidebar } from './components/layout/RightSidebar';
 import { BottomPlayerBar } from './components/layout/BottomPlayerBar';
 import { ThemeLanguageControls } from './components/layout/ThemeLanguageControls';
 import { ExpandedPlayerModal } from './components/player/ExpandedPlayerModal';
+import {
+  FloatingMiniPlayer,
+  openDesktopPipWindow,
+  type DesktopPipController
+} from './components/player/FloatingMiniPlayer';
 
 import { VinylCover } from './components/player/VinylCover';
 import { VideoPlayer } from './components/player/VideoPlayer';
@@ -82,20 +94,28 @@ import { PitchDeckModal } from './components/pitch/PitchDeckModal';
 import {
   Activity,
   Award,
+  Clock,
   Compass,
+  Disc,
   Heart,
   Home,
   Keyboard,
   ListMusic,
   Menu,
   Mic2,
+  Minimize2,
+  PictureInPicture2,
   Presentation,
   Radio,
   RefreshCw,
   Search,
   Sparkles,
+  Trash2,
   User,
-  Users
+  Users,
+  Video,
+  X,
+  Zap
 } from 'lucide-react';
 
 export default function App() {
@@ -103,14 +123,16 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<TabType>('landing');
   const [currentTrack, setCurrentTrack] = useState<Track>(TRACK_CATALOG[0]);
   const [queue, setQueue] = useState<Track[]>(TRACK_CATALOG);
-  const [playerMode, setPlayerMode] = useState<PlayerMode>('orbwave');
+  const [stageMode, setStageMode] = useState<StageExperienceMode>('orbwave-only');
   const [isStageOpen, setIsStageOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isMobileQueueOpen, setIsMobileQueueOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(0.85);
-  const [isLyricsOpen, setIsLyricsOpen] = useState(false);
+  const [lyricsStatus, setLyricsStatus] = useState<'idle' | 'loading' | 'loaded' | 'unavailable'>('idle');
+  const [lyricsSource, setLyricsSource] = useState<string>('');
+  const [lyricsSynced, setLyricsSynced] = useState<boolean>(false);
 
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
@@ -122,10 +144,29 @@ export default function App() {
     solanaService.getCluster()
   );
 
-  // Top persistent search bar & SearchView handoff
+  // Top persistent search bar, search history & SearchView handoff
   const [topSearchInput, setTopSearchInput] = useState('');
+  const [isTopSearchFocused, setIsTopSearchFocused] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryEntry[]>(() =>
+    loadLocalSearchHistory()
+  );
   const [externalSearchQuery, setExternalSearchQuery] = useState('');
   const [externalSearchTrigger, setExternalSearchTrigger] = useState(0);
+
+  // 24/7 Low-CPU / Battery Saver, Floating Mini Icon & Desktop PiP
+  const [lowCpuMode, setLowCpuMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('sonacast_low_cpu_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isFloatingMinimized, setIsFloatingMinimized] = useState(false);
+  const pipControllerRef = useRef<DesktopPipController | null>(null);
+  const searchHistoryRef = useRef<SearchHistoryEntry[]>(searchHistory);
+  useEffect(() => {
+    searchHistoryRef.current = searchHistory;
+  }, [searchHistory]);
 
   const [recState, setRecState] = useState<RecommendationState>(() => loadRecommendationState());
   const [manualQueue, setManualQueue] = useState<Track[]>([]);
@@ -304,6 +345,13 @@ export default function App() {
     setFavoritesMeta(snapshot.favorites);
     setFollowedArtists(snapshot.followedArtists);
     setCloudStats(snapshot.stats);
+
+    if (Array.isArray(snapshot.searchHistory)) {
+      const mergedHistory = mergeSearchHistory(searchHistoryRef.current, snapshot.searchHistory);
+      searchHistoryRef.current = mergedHistory;
+      saveLocalSearchHistory(mergedHistory);
+      setSearchHistory(mergedHistory);
+    }
 
     setRecState((prev) => {
       const recentMap = new Map<string, Track>();
@@ -532,8 +580,8 @@ export default function App() {
         return;
       }
 
-      const target =
-        isStageVisible && playerMode === 'video' ? videoSlotRef.current : ytMonitorRef.current;
+      const isVideoStage = stageMode === 'video-only' || stageMode === 'video-lyric';
+      const target = isStageVisible && isVideoStage ? videoSlotRef.current : ytMonitorRef.current;
       if (!target) {
         host.style.left = '-9999px';
         host.style.top = '-9999px';
@@ -552,7 +600,7 @@ export default function App() {
         host.style.height = `${rect.height}px`;
         host.style.opacity = '1';
         host.style.pointerEvents = 'auto';
-        host.style.borderRadius = playerMode === 'video' ? '1rem' : '0.75rem';
+        host.style.borderRadius = isVideoStage ? '1rem' : '0.75rem';
       } else {
         host.style.left = '-9999px';
         host.style.top = '-9999px';
@@ -577,7 +625,7 @@ export default function App() {
       window.removeEventListener('resize', syncPosition);
       window.removeEventListener('scroll', syncPosition, true);
     };
-  }, [isYouTubeActive, playerMode, currentTab, isLyricsOpen, isStageVisible]);
+  }, [isYouTubeActive, stageMode, currentTab, isStageVisible]);
 
   // Periodically check active Solana cluster balance & sync wallet switches
   useEffect(() => {
@@ -688,9 +736,77 @@ export default function App() {
     }
   }, []);
 
-  const handleUpdateTrackLyrics = (lyrics: LyricLine[]) => {
-    setCurrentTrack((prev) => ({ ...prev, lyrics }));
+  const handleUpdateTrackLyrics = (lyrics: LyricLine[], targetTrackId?: string) => {
+    setCurrentTrack((prev) => {
+      if (targetTrackId && prev.id !== targetTrackId) return prev;
+      return { ...prev, lyrics };
+    });
+    if (targetTrackId) {
+      setQueue((prevQ) => prevQ.map((t) => (t.id === targetTrackId ? { ...t, lyrics } : t)));
+    }
+    if (lyrics.length > 0) {
+      setLyricsStatus('loaded');
+    }
   };
+
+  const resolveLyricsForTrack = useCallback(
+    async (
+      targetTrack: Track,
+      opts?: { customTitle?: string; customArtist?: string; forceRefresh?: boolean }
+    ) => {
+      setLyricsStatus('loading');
+      setLyricsSource('');
+      try {
+        const res = await fetchLyricsWithMeta(
+          opts?.customTitle || targetTrack.title,
+          opts?.customArtist || targetTrack.artist,
+          targetTrack.duration,
+          targetTrack.album,
+          opts?.forceRefresh
+        );
+        if (currentTrackRef.current.id !== targetTrack.id) return;
+        if (res.lyrics.length > 0) {
+          setLyricsSynced(res.synced);
+          setLyricsSource(res.source);
+          setLyricsStatus('loaded');
+          setCurrentTrack((prev) =>
+            prev.id === targetTrack.id ? { ...prev, lyrics: res.lyrics } : prev
+          );
+          setQueue((prevQ) =>
+            prevQ.map((item) => (item.id === targetTrack.id ? { ...item, lyrics: res.lyrics } : item))
+          );
+        } else {
+          setLyricsSynced(false);
+          setLyricsSource('');
+          setLyricsStatus('unavailable');
+        }
+      } catch {
+        if (currentTrackRef.current.id === targetTrack.id) {
+          setLyricsStatus('unavailable');
+        }
+      }
+    },
+    []
+  );
+
+  const handleRetryCurrentLyrics = useCallback(
+    (customTitle?: string, customArtist?: string) => {
+      const tr = currentTrackRef.current;
+      resolveLyricsForTrack(tr, {
+        customTitle,
+        customArtist,
+        forceRefresh: true
+      });
+    },
+    [resolveLyricsForTrack]
+  );
+
+  // Hydrate initial track lyrics quietly if initial catalog entry has sparse/no lines
+  useEffect(() => {
+    if (currentTrackRef.current.lyrics.length <= 2) {
+      resolveLyricsForTrack(currentTrackRef.current);
+    }
+  }, [resolveLyricsForTrack]);
 
   const handleSelectTrack = useCallback(
     async (
@@ -795,12 +911,37 @@ export default function App() {
         }
       }
 
-      if (track.lyrics.length <= 4) {
-        fetchSyncedLyrics(track.title, track.artist, track.duration).then((synced) => {
-          if (synced && synced.length > 0) {
-            setCurrentTrack((prev) => (prev.id === track.id ? { ...prev, lyrics: synced } : prev));
-          }
-        });
+      if (track.lyrics.length <= 2) {
+        resolveLyricsForTrack(track);
+      } else {
+        setLyricsStatus('loaded');
+        setLyricsSynced(track.lyrics.length > 4);
+        setLyricsSource('catalog');
+      }
+
+      // Silently pre-fetch lyrics for next track in queue so Up Next starts instantaneously
+      const qAfter = queueRef.current;
+      const curIdxInQ = qAfter.findIndex((item) => item.id === track.id);
+      const nextPreviewTrack = curIdxInQ >= 0 ? qAfter[curIdxInQ + 1] : qAfter[0];
+      if (nextPreviewTrack && nextPreviewTrack.id !== track.id && nextPreviewTrack.lyrics.length <= 2) {
+        fetchLyricsWithMeta(
+          nextPreviewTrack.title,
+          nextPreviewTrack.artist,
+          nextPreviewTrack.duration,
+          nextPreviewTrack.album
+        )
+          .then((prefetched) => {
+            if (prefetched.lyrics.length > 0) {
+              setQueue((prevQ) =>
+                prevQ.map((item) =>
+                  item.id === nextPreviewTrack.id && item.lyrics.length <= 2
+                    ? { ...item, lyrics: prefetched.lyrics }
+                    : item
+                )
+              );
+            }
+          })
+          .catch(() => {});
       }
 
       // 1. Direct Studio Master MP3 or local user file
@@ -893,7 +1034,7 @@ export default function App() {
           window.setTimeout(() => handleNextRef.current(true), 350);
         }
       }
-    }, [buildAutoSimilarContext, gatherLocalCandidatePool, refillRadioQueueIfNeeded]);
+    }, [buildAutoSimilarContext, gatherLocalCandidatePool, refillRadioQueueIfNeeded, resolveLyricsForTrack]);
 
   const handleSelectRadio = (station: RadioStation) => {
     handleSelectTrack(station.currentTrack);
@@ -945,9 +1086,9 @@ export default function App() {
       ]
     };
 
-    fetchSyncedLyrics(title, artist, 210).then((synced) => {
-      if (synced && synced.length > 0) {
-        setCurrentTrack((prev) => (prev.id === newTrack.id ? { ...prev, lyrics: synced } : prev));
+    fetchLyricsWithMeta(title, artist, 210).then((res) => {
+      if (res.lyrics.length > 0) {
+        setCurrentTrack((prev) => (prev.id === newTrack.id ? { ...prev, lyrics: res.lyrics } : prev));
       }
     });
 
@@ -1602,6 +1743,154 @@ export default function App() {
     }
   }, [currentTrack, handlePrev]);
 
+  // Low-CPU 24/7 mode, Android Native Foreground Service bridge, WakeLock & Desktop PiP sync
+  useEffect(() => {
+    sharedAudioEngine.setLowCpuMode(lowCpuMode);
+    try {
+      localStorage.setItem('sonacast_low_cpu_mode', String(lowCpuMode));
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [lowCpuMode]);
+
+  useEffect(() => {
+    let sentinel: { release?: () => Promise<void> } | null = null;
+    let released = false;
+    const navWithWakeLock = navigator as unknown as {
+      wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> };
+    };
+    if (isPlaying && !lowCpuMode && !document.hidden && navWithWakeLock.wakeLock?.request) {
+      navWithWakeLock.wakeLock
+        .request('screen')
+        .then((s) => {
+          if (released) {
+            s.release?.().catch(() => {});
+          } else {
+            sentinel = s;
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      released = true;
+      sentinel?.release?.().catch(() => {});
+    };
+  }, [isPlaying, lowCpuMode]);
+
+  useEffect(() => {
+    const win = window as unknown as {
+      SonacastAndroid?: {
+        syncPlaybackState?: (title: string, artist: string, isPlaying: boolean, lowCpuMode: boolean) => void;
+      };
+      __sonacastNativeMediaAction?: (action: string) => void;
+    };
+
+    win.SonacastAndroid?.syncPlaybackState?.(
+      currentTrack.title,
+      currentTrack.artist,
+      isPlaying,
+      lowCpuMode
+    );
+
+    win.__sonacastNativeMediaAction = (action: string) => {
+      if (action === 'play') sharedAudioEngine.resume();
+      else if (action === 'pause') sharedAudioEngine.pause();
+      else if (action === 'toggle') {
+        if (sharedAudioEngine.getIsPlaying()) sharedAudioEngine.pause();
+        else sharedAudioEngine.resume();
+      } else if (action === 'next') {
+        handleNextRef.current(false);
+      } else if (action === 'prev') {
+        handlePrev();
+      }
+    };
+
+    const activeLine =
+      currentTrack.lyrics.slice().reverse().find((l) => currentTime >= l.time)?.text || '';
+    if (pipControllerRef.current?.isOpen()) {
+      pipControllerRef.current.update({
+        track: currentTrack,
+        isPlaying,
+        activeLyricText: activeLine,
+        lowCpuMode
+      });
+    }
+  }, [currentTrack, isPlaying, lowCpuMode, currentTime, handlePrev]);
+
+  const handleToggleLowCpu = useCallback(() => {
+    setLowCpuMode((prev) => !prev);
+  }, []);
+
+  const handleOpenDesktopPip = useCallback(async () => {
+    if (pipControllerRef.current?.isOpen()) {
+      pipControllerRef.current.close();
+      pipControllerRef.current = null;
+      return;
+    }
+    const activeLine =
+      currentTrackRef.current.lyrics
+        .slice()
+        .reverse()
+        .find((l) => currentTimeRef.current >= l.time)?.text || '';
+    const ctrl = await openDesktopPipWindow({
+      track: currentTrackRef.current,
+      isPlaying: sharedAudioEngine.getIsPlaying(),
+      activeLyricText: activeLine,
+      lowCpuMode,
+      onTogglePlay: () => {
+        if (sharedAudioEngine.getIsPlaying()) sharedAudioEngine.pause();
+        else sharedAudioEngine.resume();
+      },
+      onNext: () => handleNextRef.current(false),
+      onPrev: () => handlePrev(),
+      onClosed: () => {
+        pipControllerRef.current = null;
+      }
+    });
+    if (ctrl) {
+      pipControllerRef.current = ctrl;
+    } else {
+      setIsFloatingMinimized(true);
+    }
+  }, [lowCpuMode, handlePrev]);
+
+  const handleRecordSearch = useCallback(
+    (query: string, mode: 'songs' | 'albums' = 'songs', matchedTrack?: Track) => {
+      const cleaned = query.trim();
+      if (!cleaned) return;
+      const nextList = upsertSearchHistory(searchHistoryRef.current, cleaned, mode, matchedTrack);
+      searchHistoryRef.current = nextList;
+      saveLocalSearchHistory(nextList);
+      setSearchHistory(nextList);
+
+      runCloudMutation('record_search', {
+        query: cleaned,
+        mode,
+        track: matchedTrack || null
+      });
+    },
+    [runCloudMutation]
+  );
+
+  const handleDeleteSearchHistory = useCallback(
+    (id: string) => {
+      const target = searchHistoryRef.current.find((item) => item.id === id);
+      const filtered = searchHistoryRef.current.filter((item) => item.id !== id);
+      searchHistoryRef.current = filtered;
+      saveLocalSearchHistory(filtered);
+      setSearchHistory(filtered);
+      runCloudMutation('delete_search_item', { id, query: target?.query || '' });
+    },
+    [runCloudMutation]
+  );
+
+  const handleClearSearchHistory = useCallback(() => {
+    searchHistoryRef.current = [];
+    saveLocalSearchHistory([]);
+    setSearchHistory([]);
+    runCloudMutation('clear_search_history', {});
+  }, [runCloudMutation]);
+
   // Global keyboard shortcuts (Space play/pause, Arrows seek/skip, M mute, L like, A album, F favorites, B blend, S shuffle, R repeat, ? help)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1677,17 +1966,17 @@ export default function App() {
     }
   };
 
-  const handlePlayerModeChange = (mode: PlayerMode) => {
-    setPlayerMode(mode);
+  const handleSelectStageMode = (mode: StageExperienceMode) => {
+    setStageMode(mode);
     setIsStageOpen(true);
-  };
-
-  const handleToggleLyrics = () => {
-    setIsLyricsOpen((prev) => {
-      const next = !prev;
-      if (next) setIsStageOpen(true);
-      return next;
-    });
+    setIsFloatingMinimized(false);
+    if (
+      (mode === 'lyrics-only' || mode === 'video-lyric' || mode === 'music-lyric') &&
+      currentTrackRef.current.lyrics.length === 0 &&
+      lyricsStatus === 'idle'
+    ) {
+      resolveLyricsForTrack(currentTrackRef.current);
+    }
   };
 
   const navigateToSearch = (query?: string) => {
@@ -1695,6 +1984,7 @@ export default function App() {
     if (trimmed) {
       setExternalSearchQuery(trimmed);
       setExternalSearchTrigger((n) => n + 1);
+      handleRecordSearch(trimmed, 'songs');
     }
     setCurrentTab('search');
   };
@@ -1910,58 +2200,124 @@ export default function App() {
 
             {/* Center Main Stage */}
             <main className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden p-4 sm:p-6 space-y-5 min-w-0">
-              {/* Persistent Top Search Bar + Quick Artist Directory / Stage Toggle */}
-              <form
-                onSubmit={handleTopSearchSubmit}
-                className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2 rounded-xl transition-colors"
-                style={{ boxShadow: 'var(--card-shadow)' }}
-              >
-                <div className="relative flex-1 min-w-[180px]">
-                  <Search
-                    size={15}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
-                  />
-                  <input
-                    type="text"
-                    value={topSearchInput}
-                    onChange={(e) => setTopSearchInput(e.target.value)}
-                    placeholder={t.searchPlaceholder}
-                    aria-label={t.searchPlaceholder}
-                    className="w-full pl-9 pr-3 min-h-[38px] py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-strong)] transition-colors"
-                  />
-                </div>
+              {/* Persistent Top Search Bar + Sound History Dropdown + Stage Toggle */}
+              <div className="relative z-30">
+                <form
+                  onSubmit={(e) => {
+                    setIsTopSearchFocused(false);
+                    handleTopSearchSubmit(e);
+                  }}
+                  className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2 rounded-xl transition-colors"
+                  style={{ boxShadow: 'var(--card-shadow)' }}
+                >
+                  <div className="relative flex-1 min-w-[180px]">
+                    <Search
+                      size={15}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
+                    />
+                    <input
+                      type="text"
+                      value={topSearchInput}
+                      onFocus={() => setIsTopSearchFocused(true)}
+                      onBlur={() => window.setTimeout(() => setIsTopSearchFocused(false), 160)}
+                      onChange={(e) => setTopSearchInput(e.target.value)}
+                      placeholder={t.searchPlaceholder}
+                      aria-label={t.searchPlaceholder}
+                      className="w-full pl-9 pr-3 min-h-[38px] py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-strong)] transition-colors"
+                    />
+                  </div>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                  <button
-                    type="submit"
-                    className="flex-1 sm:flex-none min-h-[38px] px-4 py-1.5 rounded-lg bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] hover:opacity-90 font-semibold text-xs transition-opacity flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                  >
-                    <Search size={14} />
-                    <span>{t.searchAction}</span>
-                  </button>
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <button
+                      type="submit"
+                      className="flex-1 sm:flex-none min-h-[38px] px-4 py-1.5 rounded-lg bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] hover:opacity-90 font-semibold text-xs transition-opacity flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      <Search size={14} />
+                      <span>{t.searchAction}</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange('search')}
-                    className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium text-xs shrink-0 cursor-pointer transition-colors"
-                  >
-                    {ARTISTS_DIRECTORY.length} Artists
-                  </button>
-
-                  {currentTab !== 'visualizer' && (
                     <button
                       type="button"
-                      onClick={() => setIsStageOpen((prev) => !prev)}
-                      className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-medium shrink-0 cursor-pointer transition-colors ${isStageOpen
-                          ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
-                          : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                        }`}
+                      onClick={() => handleTabChange('search')}
+                      className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium text-xs shrink-0 cursor-pointer transition-colors"
                     >
-                      {t.playerStageToggle}
+                      {ARTISTS_DIRECTORY.length} Artists
                     </button>
-                  )}
-                </div>
-              </form>
+
+                    {currentTab !== 'visualizer' && (
+                      <button
+                        type="button"
+                        onClick={() => setIsStageOpen((prev) => !prev)}
+                        className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-medium shrink-0 cursor-pointer transition-colors ${isStageOpen
+                            ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
+                            : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          }`}
+                      >
+                        {t.playerStageToggle}
+                      </button>
+                    )}
+                  </div>
+                </form>
+
+                {isTopSearchFocused && searchHistory.length > 0 && (
+                  <div
+                    data-testid="topbar-search-dropdown"
+                    onMouseDown={(e) => e.preventDefault()}
+                    className="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-medium)] shadow-2xl p-2.5 space-y-1.5 z-50"
+                  >
+                    <div className="flex items-center justify-between px-1.5 pb-1 border-b border-[var(--border-subtle)]">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1">
+                        <Clock size={11} />
+                        <span>{t.recentSearches}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleClearSearchHistory}
+                        className="text-[10px] font-semibold text-[var(--text-dim)] hover:text-rose-400 inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 size={10} />
+                        <span>{t.clearSearchHistory}</span>
+                      </button>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto space-y-1">
+                      {searchHistory.slice(0, 8).map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] transition-colors"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsTopSearchFocused(false);
+                              setTopSearchInput(item.query);
+                              navigateToSearch(item.query);
+                            }}
+                            className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
+                          >
+                            <Clock size={12} className="text-[var(--text-dim)] shrink-0" />
+                            <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                              {item.matchedTrack?.title || item.query}
+                            </span>
+                            {item.matchedTrack?.artist && (
+                              <span className="text-[11px] text-[var(--text-dim)] truncate">
+                                &middot; {item.matchedTrack.artist}
+                              </span>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={t.removeSearchItem}
+                            onClick={() => handleDeleteSearchHistory(item.id)}
+                            className="p-1 rounded text-[var(--text-dim)] hover:text-rose-400 cursor-pointer shrink-0"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Complete Mobile Horizontal Quick Navigation Strip */}
               <nav
@@ -1987,58 +2343,215 @@ export default function App() {
                 })}
               </nav>
 
-              {/* Top Stage Player Area */}
+              {/* Top Stage Player Area: 6 Separated & Optimized Modes */}
               {isStageVisible && (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[260px] sm:min-h-[300px] xl:min-h-[400px]">
+                <div className="space-y-3" data-testid="stage-container">
                   <div
-                    className={`transition-all duration-300 ${isLyricsOpen ? 'lg:col-span-7' : 'lg:col-span-12'
-                      }`}
+                    data-testid="stage-mode-bar"
+                    className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
                   >
-                    {playerMode === 'cover' && (
-                      <VinylCover
-                        coverUrl={currentTrack.coverUrl}
-                        title={currentTrack.title}
-                        artist={currentTrack.artist}
-                        album={currentTrack.album}
-                        genre={currentTrack.genre}
-                        isPlaying={isPlaying}
-                      />
-                    )}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {(
+                        [
+                          { id: 'music-only', label: t.modeMusicOnly, icon: <Disc size={13} /> },
+                          { id: 'orbwave-only', label: t.modeOrbwaveOnly, icon: <Activity size={13} /> },
+                          { id: 'video-only', label: t.modeVideoOnly, icon: <Video size={13} /> },
+                          { id: 'lyrics-only', label: t.modeLyricsOnly, icon: <Mic2 size={13} /> },
+                          { id: 'video-lyric', label: t.modeVideoLyric, icon: <Video size={13} /> },
+                          { id: 'music-lyric', label: t.modeMusicLyric, icon: <Disc size={13} /> }
+                        ] as const
+                      ).map((modeOpt) => {
+                        const active = stageMode === modeOpt.id;
+                        return (
+                          <button
+                            key={modeOpt.id}
+                            type="button"
+                            data-stage-mode={modeOpt.id}
+                            onClick={() => handleSelectStageMode(modeOpt.id)}
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer border ${
+                              active
+                                ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                                : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            }`}
+                          >
+                            {modeOpt.icon}
+                            <span>{modeOpt.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                    {playerMode === 'video' && (
-                      <VideoPlayer
-                        videoUrl={currentTrack.videoUrl}
-                        coverUrl={currentTrack.coverUrl}
-                        title={currentTrack.title}
-                        artist={currentTrack.artist}
-                        isPlaying={isPlaying}
-                        isOfficialStreamActive={isYouTubeActive}
-                        officialSlotRef={videoSlotRef}
-                      />
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="stage-low-cpu-btn"
+                        onClick={handleToggleLowCpu}
+                        aria-pressed={lowCpuMode}
+                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1 border cursor-pointer transition-colors ${
+                          lowCpuMode
+                            ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                            : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        <Zap size={12} />
+                        <span>{t.lowCpuShort}</span>
+                      </button>
 
-                    {playerMode === 'orbwave' && (
-                      <OrbwaveCanvas
-                        coverUrl={currentTrack.coverUrl}
-                        title={currentTrack.title}
-                        artist={currentTrack.artist}
-                        lyrics={currentTrack.lyrics}
-                        currentTime={currentTime}
-                      />
-                    )}
+                      <button
+                        type="button"
+                        data-testid="stage-minimize-btn"
+                        onClick={() => {
+                          setIsFloatingMinimized(true);
+                          setIsStageOpen(false);
+                        }}
+                        title={t.minimizeFloating}
+                        className="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+                      >
+                        <Minimize2 size={12} />
+                        <span className="hidden sm:inline">{t.minimizeFloating}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-testid="stage-pip-btn"
+                        onClick={handleOpenDesktopPip}
+                        title={t.desktopPip}
+                        className="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+                      >
+                        <PictureInPicture2 size={12} />
+                        <span className="hidden sm:inline">{t.desktopPip}</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {isLyricsOpen && (
-                    <div className="lg:col-span-5 h-[300px] sm:h-[340px] xl:h-[400px]">
-                      <LiveLyrics
-                        lyrics={currentTrack.lyrics}
-                        currentTime={currentTime}
-                        onSeek={handleSeek}
-                        title={currentTrack.title}
-                        artist={currentTrack.artist}
-                      />
-                    </div>
-                  )}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[260px] sm:min-h-[300px] xl:min-h-[400px]">
+                    {stageMode === 'music-only' && (
+                      <div className="lg:col-span-12" data-testid="stage-pane-music-only">
+                        <VinylCover
+                          coverUrl={currentTrack.coverUrl}
+                          title={currentTrack.title}
+                          artist={currentTrack.artist}
+                          album={currentTrack.album}
+                          genre={currentTrack.genre}
+                          isPlaying={isPlaying}
+                          lowCpuMode={lowCpuMode}
+                        />
+                      </div>
+                    )}
+
+                    {stageMode === 'orbwave-only' && (
+                      <div className="lg:col-span-12" data-testid="stage-pane-orbwave-only">
+                        <OrbwaveCanvas
+                          coverUrl={currentTrack.coverUrl}
+                          title={currentTrack.title}
+                          artist={currentTrack.artist}
+                          lyrics={currentTrack.lyrics}
+                          currentTime={currentTime}
+                          showLyricsOverlay={false}
+                          lowCpuMode={lowCpuMode}
+                          isPlaying={isPlaying}
+                        />
+                      </div>
+                    )}
+
+                    {stageMode === 'video-only' && (
+                      <div className="lg:col-span-12" data-testid="stage-pane-video-only">
+                        <VideoPlayer
+                          videoUrl={currentTrack.videoUrl}
+                          coverUrl={currentTrack.coverUrl}
+                          title={currentTrack.title}
+                          artist={currentTrack.artist}
+                          isPlaying={isPlaying}
+                          isOfficialStreamActive={isYouTubeActive}
+                          officialSlotRef={videoSlotRef}
+                        />
+                      </div>
+                    )}
+
+                    {stageMode === 'lyrics-only' && (
+                      <div
+                        className="lg:col-span-12 h-[340px] sm:h-[380px] xl:h-[430px]"
+                        data-testid="stage-pane-lyrics-only"
+                      >
+                        <LiveLyrics
+                          lyrics={currentTrack.lyrics}
+                          currentTime={currentTime}
+                          onSeek={handleSeek}
+                          title={currentTrack.title}
+                          artist={currentTrack.artist}
+                          lyricsStatus={lyricsStatus}
+                          lyricsSource={lyricsSource}
+                          lyricsSynced={lyricsSynced}
+                          onRetryLyrics={handleRetryCurrentLyrics}
+                          fullWidth={true}
+                        />
+                      </div>
+                    )}
+
+                    {stageMode === 'video-lyric' && (
+                      <>
+                        <div className="lg:col-span-7" data-testid="stage-pane-video-lyric-video">
+                          <VideoPlayer
+                            videoUrl={currentTrack.videoUrl}
+                            coverUrl={currentTrack.coverUrl}
+                            title={currentTrack.title}
+                            artist={currentTrack.artist}
+                            isPlaying={isPlaying}
+                            isOfficialStreamActive={isYouTubeActive}
+                            officialSlotRef={videoSlotRef}
+                          />
+                        </div>
+                        <div
+                          className="lg:col-span-5 h-[300px] sm:h-[340px] xl:h-[400px]"
+                          data-testid="stage-pane-video-lyric-lyrics"
+                        >
+                          <LiveLyrics
+                            lyrics={currentTrack.lyrics}
+                            currentTime={currentTime}
+                            onSeek={handleSeek}
+                            title={currentTrack.title}
+                            artist={currentTrack.artist}
+                            lyricsStatus={lyricsStatus}
+                            lyricsSource={lyricsSource}
+                            lyricsSynced={lyricsSynced}
+                            onRetryLyrics={handleRetryCurrentLyrics}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {stageMode === 'music-lyric' && (
+                      <>
+                        <div className="lg:col-span-7" data-testid="stage-pane-music-lyric-music">
+                          <VinylCover
+                            coverUrl={currentTrack.coverUrl}
+                            title={currentTrack.title}
+                            artist={currentTrack.artist}
+                            album={currentTrack.album}
+                            genre={currentTrack.genre}
+                            isPlaying={isPlaying}
+                            lowCpuMode={lowCpuMode}
+                          />
+                        </div>
+                        <div
+                          className="lg:col-span-5 h-[300px] sm:h-[340px] xl:h-[400px]"
+                          data-testid="stage-pane-music-lyric-lyrics"
+                        >
+                          <LiveLyrics
+                            lyrics={currentTrack.lyrics}
+                            currentTime={currentTime}
+                            onSeek={handleSeek}
+                            title={currentTrack.title}
+                            artist={currentTrack.artist}
+                            lyricsStatus={lyricsStatus}
+                            lyricsSource={lyricsSource}
+                            lyricsSynced={lyricsSynced}
+                            onRetryLyrics={handleRetryCurrentLyrics}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -2071,6 +2584,7 @@ export default function App() {
                     onDeletePlaylist={handleDeletePlaylist}
                     activeMood={activeMood}
                     onSelectMood={handleSelectMood}
+                    onRecordSearch={handleRecordSearch}
                   />
                 )}
 
@@ -2132,9 +2646,13 @@ export default function App() {
                     resolvingTrackId={resolvingTrackId}
                     externalQuery={externalSearchQuery}
                     externalTrigger={externalSearchTrigger}
+                    searchHistory={searchHistory}
+                    onRecordSearch={handleRecordSearch}
+                    onDeleteSearchHistory={handleDeleteSearchHistory}
+                    onClearSearchHistory={handleClearSearchHistory}
                     onSelectTrack={handleSelectTrack}
                     onTogglePlay={handleTogglePlay}
-                    onUpdateLyrics={handleUpdateTrackLyrics}
+                    onUpdateLyrics={(lyrics) => handleUpdateTrackLyrics(lyrics, currentTrack.id)}
                     likedTrackIds={likedTrackIds}
                     onToggleLike={handleToggleLike}
                     onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
@@ -2164,6 +2682,8 @@ export default function App() {
                   <VisualizerStudioView
                     currentTrack={currentTrack}
                     currentTime={currentTime}
+                    lowCpuMode={lowCpuMode}
+                    isPlaying={isPlaying}
                   />
                 )}
 
@@ -2200,7 +2720,14 @@ export default function App() {
               onSelectRadio={handleSelectRadio}
               onOpenTipModal={() => setIsWalletModalOpen(true)}
               ytMonitorRef={ytMonitorRef}
-              showYtMonitor={isYouTubeActive && (!isStageVisible || playerMode !== 'video')}
+              showYtMonitor={
+                isYouTubeActive &&
+                (!isStageVisible || (stageMode !== 'video-only' && stageMode !== 'video-lyric'))
+              }
+              lyricsStatus={lyricsStatus}
+              lyricsSource={lyricsSource}
+              lyricsSynced={lyricsSynced}
+              onRetryLyrics={handleRetryCurrentLyrics}
               isMobileOpen={isMobileQueueOpen}
               onCloseMobile={() => setIsMobileQueueOpen(false)}
             />
@@ -2220,10 +2747,9 @@ export default function App() {
             onSeek={handleSeek}
             volume={volume}
             onVolumeChange={handleVolumeChange}
-            playerMode={playerMode}
-            onPlayerModeChange={handlePlayerModeChange}
-            isLyricsOpen={isLyricsOpen}
-            onToggleLyrics={handleToggleLyrics}
+            stageMode={stageMode}
+            isStageOpen={isStageVisible}
+            onSelectStageMode={handleSelectStageMode}
             onOpenMobileQueue={() => setIsMobileQueueOpen(true)}
             shuffle={recState.shuffle}
             onToggleShuffle={handleToggleShuffle}
@@ -2231,6 +2757,11 @@ export default function App() {
             onCycleRepeat={handleCycleRepeat}
             autoplayEnabled={autoplayEnabled}
             onToggleAutoplay={handleToggleAutoplay}
+            lowCpuMode={lowCpuMode}
+            onToggleLowCpu={handleToggleLowCpu}
+            isFloatingMinimized={isFloatingMinimized}
+            onToggleFloating={() => setIsFloatingMinimized((prev) => !prev)}
+            onTriggerDesktopPip={handleOpenDesktopPip}
             isLiked={likedTrackIds.has(currentTrack.id)}
             onToggleLike={() => handleToggleLike(currentTrack)}
             onAddToAlbum={() => setAlbumModalTrack(currentTrack)}
@@ -2238,6 +2769,23 @@ export default function App() {
             onOpenExpandedPlayer={() => setIsExpandedPlayerOpen(true)}
           />
         </>
+      )}
+
+      {isFloatingMinimized && (
+        <FloatingMiniPlayer
+          track={currentTrack}
+          isPlaying={isPlaying}
+          lowCpuMode={lowCpuMode}
+          onTogglePlay={handleTogglePlay}
+          onNext={() => handleNext(false)}
+          onRestoreStage={() => {
+            setIsFloatingMinimized(false);
+            setIsStageOpen(true);
+            if (currentTab === 'landing') setCurrentTab('discover');
+          }}
+          onCloseFloating={() => setIsFloatingMinimized(false)}
+          onOpenDesktopPip={handleOpenDesktopPip}
+        />
       )}
 
       {/* Add to Album / Pin / Note / Artist Follow Sheet */}
@@ -2287,6 +2835,9 @@ export default function App() {
         crossfadeSeconds={recState.crossfadeSeconds}
         sleepTimerMinutesRemaining={sleepMinutesRemaining}
         playlists={recState.playlists}
+        lyricsStatus={lyricsStatus}
+        lyricsSource={lyricsSource}
+        onRetryLyrics={() => handleRetryCurrentLyrics()}
         onTogglePlay={handleTogglePlay}
         onNext={() => handleNext(false)}
         onPrev={handlePrev}
