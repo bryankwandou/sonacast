@@ -373,7 +373,7 @@ export default async function handler(req, res) {
       const playlists = [];
       for (const p of Array.isArray(dzData?.data) ? dzData.data : []) {
         const mapped = mapDeezerPlaylist(p);
-        const key = `${normalize(mapped.title)}::${normalize(mapped.creator)}`;
+        const key = `${normalizeText(mapped.title)}::${normalizeText(mapped.creator)}`;
         if (!mapped.title || mapped.nbTracks < 2 || seen.has(key)) continue;
         seen.add(key);
         playlists.push(mapped);
