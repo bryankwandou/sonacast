@@ -2265,7 +2265,7 @@ export default function App() {
       setCurrentTab(tab);
       if (tab === 'visualizer') {
         setIsStageOpen(true);
-      } else if (tab === 'landing') {
+      } else if (tab === 'landing' || tab === 'vibe') {
         setIsStageOpen(false);
       }
     }

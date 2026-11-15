@@ -118,7 +118,7 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-secondary)] shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-secondary)] min-w-0 max-w-full">
           {onOpenLyricCard && (
             <button
               type="button"

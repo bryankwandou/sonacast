@@ -15,7 +15,12 @@ export function normalizeOfflineKey(audioUrl: string): string {
 export function isCacheableAudioUrl(audioUrl?: string): boolean {
   if (!audioUrl) return false;
   const trimmed = audioUrl.trim();
-  return trimmed.startsWith('/') || trimmed.startsWith('http://') || trimmed.startsWith('https://');
+  return (
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('./') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://')
+  );
 }
 
 export function isTrackSavedOffline(offlineKeys: Set<string>, audioUrl?: string): boolean {
@@ -69,3 +74,4 @@ export async function removeTrackOffline(audioUrl: string): Promise<boolean> {
     return false;
   }
 }
+
