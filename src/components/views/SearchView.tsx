@@ -29,8 +29,10 @@ interface SearchViewProps {
   likedTrackIds?: Set<string>;
   onToggleLike?: (track: Track) => void;
   onAddToAlbum?: (track: Track) => void;
+  onPlayNext?: (track: Track) => void;
   onAddToQueue?: (track: Track) => void;
   onStartRadio?: (track: Track) => void;
+  onOpenArtist?: (artistName: string) => void;
   onPlayTrackList?: (
     tracks: Track[],
     shuffle?: boolean,
@@ -57,8 +59,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
   likedTrackIds,
   onToggleLike,
   onAddToAlbum,
+  onPlayNext,
   onAddToQueue,
   onStartRadio,
+  onOpenArtist,
   onPlayTrackList
 }) => {
   const { t } = useAppPreferences();
@@ -732,8 +736,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 isLiked={likedTrackIds?.has(track.id)}
                 onToggleLike={onToggleLike}
                 onAddToAlbum={onAddToAlbum}
+                onPlayNext={onPlayNext}
                 onAddToQueue={onAddToQueue}
                 onStartRadio={onStartRadio}
+                onOpenArtist={onOpenArtist}
               />
             ))}
           </div>

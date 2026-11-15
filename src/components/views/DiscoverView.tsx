@@ -21,6 +21,7 @@ import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { usePopularCharts } from '../../hooks/usePopularCharts';
 import { TrackCard } from '../common/TrackCard';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
+import { useCoverAccentRgb } from '../../utils/coverColor';
 import {
   Clock,
   Disc3,
@@ -57,8 +58,11 @@ interface DiscoverViewProps {
   likedTrackIds?: Set<string>;
   onToggleLike?: (track: Track) => void;
   onAddToAlbum?: (track: Track) => void;
+  onPlayNext?: (track: Track) => void;
   onAddToQueue?: (track: Track) => void;
   onStartRadio?: (track: Track) => void;
+  onOpenArtist?: (artistName: string) => void;
+  lowCpuMode?: boolean;
   onPlayTrackList?: (
     tracks: Track[],
     shuffle?: boolean,
@@ -98,8 +102,11 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   likedTrackIds,
   onToggleLike,
   onAddToAlbum,
+  onPlayNext,
   onAddToQueue,
   onStartRadio,
+  onOpenArtist,
+  lowCpuMode = false,
   onPlayTrackList,
   onCreatePlaylist,
   onAddTrackToPlaylist,
@@ -180,6 +187,30 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const featuredTrack = currentTrack || tracks[0];
+  const spotlightAccentRgb = useCoverAccentRgb(
+    featuredTrack?.coverUrl,
+    featuredTrack?.title,
+    featuredTrack?.artist,
+    lowCpuMode
+  );
+  const quickPicks = useMemo(() => {
+    const seen = new Set<string>();
+    const combined = [
+      ...recentTracks,
+      ...likedTracks,
+      ...popularCharts.global,
+      ...tracks
+    ];
+    const picked: Track[] = [];
+    for (const item of combined) {
+      const key = `${item.title.toLowerCase()}::${item.artist.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      picked.push(item);
+      if (picked.length >= 6) break;
+    }
+    return picked;
+  }, [recentTracks, likedTracks, popularCharts.global, tracks]);
   const activeCharts =
     chartRegion === 'global' ? popularCharts.global : popularCharts.indonesia;
   const selectedPlaylist =
@@ -339,17 +370,24 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       {/* TAB 1: BROWSE CATALOG */}
       {libraryTab === 'browse' && (
         <div className="space-y-8">
-          {/* Active Spotlight Card */}
-          <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-tint)] p-5 sm:p-6">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 opacity-20 blur-3xl scale-110"
-              style={{
-                backgroundImage: `url("${featuredTrack.coverUrl || DEFAULT_COVER_DATA_URI}")`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center'
-              }}
-            />
+          {/* Active Spotlight Card with Adaptive Cover Color */}
+          <div
+            className="relative overflow-hidden rounded-2xl bg-[var(--bg-tint)] p-5 sm:p-6 border border-[var(--border-subtle)]"
+            style={{
+              backgroundImage: `radial-gradient(circle at 18% 20%, rgba(${spotlightAccentRgb}, 0.20), transparent 62%)`
+            }}
+          >
+            {!lowCpuMode && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 opacity-15 blur-3xl scale-110"
+                style={{
+                  backgroundImage: `url("${featuredTrack.coverUrl || DEFAULT_COVER_DATA_URI}")`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center'
+                }}
+              />
+            )}
 
             <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4 min-w-0">
@@ -369,7 +407,18 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     {featuredTrack.title}
                   </h3>
                   <p className="text-xs text-[var(--text-secondary)] truncate">
-                    {featuredTrack.artist} &middot; {featuredTrack.album}
+                    {onOpenArtist ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenArtist(featuredTrack.artist)}
+                        className="hover:text-[var(--accent-text)] hover:underline cursor-pointer"
+                      >
+                        {featuredTrack.artist}
+                      </button>
+                    ) : (
+                      featuredTrack.artist
+                    )}{' '}
+                    &middot; {featuredTrack.album}
                   </p>
                 </div>
               </div>
@@ -399,6 +448,74 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Quick Picks 2-Row Compact Instant Tiles (Spotify / YT Music Parity) */}
+          {quickPicks.length > 0 && (
+            <section data-testid="discover-quick-picks" className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
+                  {t.quickPicks}
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {quickPicks.map((item) => {
+                  const isActive = item.id === currentTrack.id;
+                  return (
+                    <div
+                      key={`qp-${item.id}`}
+                      className={`group flex items-center gap-3 p-2 rounded-xl border transition-all ${
+                        isActive
+                          ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'
+                          : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] border-[var(--border-subtle)]'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handlePlayTrackWithLyrics(item)}
+                        className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
+                      >
+                        <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-[var(--bg-elevated)] shrink-0">
+                          <img
+                            src={item.coverUrl || DEFAULT_COVER_DATA_URI}
+                            alt={item.title}
+                            loading="lazy"
+                            onError={(e) => applyCoverFallback(e, item.title, item.artist)}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <Play size={14} className="text-white fill-white" />
+                          </div>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div
+                            className={`text-xs font-bold truncate ${
+                              isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
+                            }`}
+                          >
+                            {item.title}
+                          </div>
+                          <div className="text-[11px] text-[var(--text-dim)] truncate">
+                            {item.artist}
+                          </div>
+                        </div>
+                      </button>
+                      {onPlayNext && (
+                        <button
+                          type="button"
+                          onClick={() => onPlayNext(item)}
+                          aria-label={t.playNext}
+                          title={t.playNext}
+                          className="p-1.5 rounded-lg text-[var(--text-dim)] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--accent-text)] hover:bg-[var(--bg-surface)] transition-all cursor-pointer shrink-0"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {onSelectMood && (
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
@@ -537,8 +654,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     isLiked={likedTrackIds?.has(track.id)}
                     onToggleLike={onToggleLike}
                     onAddToAlbum={onAddToAlbum}
+                    onPlayNext={onPlayNext}
                     onAddToQueue={onAddToQueue}
                     onStartRadio={onStartRadio}
+                    onOpenArtist={onOpenArtist}
                   />
                 ))}
               </div>
@@ -915,8 +1034,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   isLiked={likedTrackIds?.has(track.id)}
                   onToggleLike={onToggleLike}
                   onAddToAlbum={onAddToAlbum}
+                  onPlayNext={onPlayNext}
                   onAddToQueue={onAddToQueue}
                   onStartRadio={onStartRadio}
+                  onOpenArtist={onOpenArtist}
                 />
               ))}
             </div>
@@ -1011,8 +1132,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     isLiked={likedTrackIds?.has(track.id)}
                     onToggleLike={onToggleLike}
                     onAddToAlbum={onAddToAlbum}
+                    onPlayNext={onPlayNext}
                     onAddToQueue={onAddToQueue}
                     onStartRadio={onStartRadio}
+                    onOpenArtist={onOpenArtist}
                   />
                 ))}
               </div>
@@ -1070,8 +1193,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   isLiked
                   onToggleLike={onToggleLike}
                   onAddToAlbum={onAddToAlbum}
+                  onPlayNext={onPlayNext}
                   onAddToQueue={onAddToQueue}
                   onStartRadio={onStartRadio}
+                  onOpenArtist={onOpenArtist}
                 />
               ))}
             </div>
@@ -1118,8 +1243,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   isLiked={likedTrackIds?.has(track.id)}
                   onToggleLike={onToggleLike}
                   onAddToAlbum={onAddToAlbum}
+                  onPlayNext={onPlayNext}
                   onAddToQueue={onAddToQueue}
                   onStartRadio={onStartRadio}
+                  onOpenArtist={onOpenArtist}
                 />
               ))}
             </div>

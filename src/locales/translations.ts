@@ -164,6 +164,20 @@ export interface TranslationKeys {
   minimizeFloating: string;
   desktopPip: string;
   downloadApk: string;
+  clearQueue: string;
+  moveUp: string;
+  soundAndSleep: string;
+  lyricCardStudio: string;
+  copyQuote: string;
+  downloadPng: string;
+  selectLyricLinesHint: string;
+  artistProfileLabel: string;
+  followArtist: string;
+  followingArtist: string;
+  artistTopTracks: string;
+  artistAlbums: string;
+  playArtistTopMix: string;
+  sleepOff: string;
 }
 
 export interface LanguageOption {
@@ -363,7 +377,21 @@ const EN_BASE: TranslationKeys = {
   lowCpuShort: 'Low CPU',
   minimizeFloating: 'Floating Mini',
   desktopPip: 'Desktop PiP',
-  downloadApk: 'Android APK (24/7)'
+  downloadApk: 'Android APK (24/7)',
+  clearQueue: 'Clear Queue',
+  moveUp: 'Move Up',
+  soundAndSleep: 'Sound & Timer',
+  lyricCardStudio: 'Lyric Card Studio',
+  copyQuote: 'Copy Quote',
+  downloadPng: 'Download PNG',
+  selectLyricLinesHint: 'Select up to 4 lyric lines to feature on your card',
+  artistProfileLabel: 'Artist Profile',
+  followArtist: 'Follow',
+  followingArtist: 'Following',
+  artistTopTracks: 'Popular Tracks',
+  artistAlbums: 'Albums & Releases',
+  playArtistTopMix: 'Play Top Mix',
+  sleepOff: 'Off'
 };
 
 const loc = (overrides: Partial<TranslationKeys>): TranslationKeys => ({
@@ -535,7 +563,21 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     lowCpuShort: 'Hemat CPU',
     minimizeFloating: 'Ikon Mengambang',
     desktopPip: 'PiP Desktop',
-    downloadApk: 'APK Android (24/7)'
+    downloadApk: 'APK Android (24/7)',
+    clearQueue: 'Kosongkan',
+    moveUp: 'Naikkan',
+    soundAndSleep: 'Suara & Timer',
+    lyricCardStudio: 'Studio Kartu Lirik',
+    copyQuote: 'Salin Kutipan',
+    downloadPng: 'Unduh PNG',
+    selectLyricLinesHint: 'Pilih maksimal 4 baris lirik untuk ditampilkan di kartu',
+    artistProfileLabel: 'Profil Artis',
+    followArtist: 'Ikuti',
+    followingArtist: 'Mengikuti',
+    artistTopTracks: 'Lagu Populer',
+    artistAlbums: 'Album & Rilisan',
+    playArtistTopMix: 'Putar Mix Populer',
+    sleepOff: 'Mati'
   }),
   ms: loc({
     navLanding: 'Halaman Utama',

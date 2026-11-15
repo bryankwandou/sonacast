@@ -17,12 +17,14 @@ import {
   SkipForward,
   Sliders,
   Sparkles,
-  Check
+  Check,
+  Share2
 } from 'lucide-react';
 import type { EqPreset, LyricLine, RepeatMode, Track, UserPlaylist } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { applyCoverFallback } from '../../utils/coverFallback';
 import { exportLyricQuotePng } from '../../services/recommendationEngine';
+import { useCoverAccentRgb } from '../../utils/coverColor';
 
 interface ExpandedPlayerModalProps {
   isOpen: boolean;
@@ -41,6 +43,7 @@ interface ExpandedPlayerModalProps {
   playlists: UserPlaylist[];
   lyricsStatus?: 'idle' | 'loading' | 'loaded' | 'unavailable';
   lyricsSource?: string;
+  lowCpuMode?: boolean;
   onRetryLyrics?: () => void;
   onTogglePlay: () => void;
   onNext: () => void;
@@ -55,6 +58,8 @@ interface ExpandedPlayerModalProps {
   onSetSleepTimer: (minutes: number | null) => void;
   onStartRadio: (track: Track) => void;
   onAddToPlaylist: (playlistId: string, track: Track) => void;
+  onOpenArtist?: (artistName: string) => void;
+  onOpenLyricCard?: (lineIndex?: number) => void;
 }
 
 const EQ_OPTIONS: { id: EqPreset; label: string }[] = [
@@ -99,14 +104,18 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   onSelectCrossfade,
   onSetSleepTimer,
   onStartRadio,
-  onAddToPlaylist
+  onAddToPlaylist,
+  lowCpuMode = false,
+  onOpenArtist,
+  onOpenLyricCard
 }) => {
   const { t } = useAppPreferences();
   const [showDsp, setShowDsp] = useState(false);
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
-  const activeLyricRef = useRef<HTMLButtonElement | null>(null);
+  const activeLyricRef = useRef<HTMLDivElement | null>(null);
+  const accentRgb = useCoverAccentRgb(track.coverUrl, track.title, track.artist, lowCpuMode);
 
   const lyrics: LyricLine[] = track.lyrics || [];
   let activeIndex = -1;
@@ -136,6 +145,10 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   const progressPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
 
   const handleExportCard = async () => {
+    if (onOpenLyricCard) {
+      onOpenLyricCard(activeIndex >= 0 ? activeIndex : undefined);
+      return;
+    }
     setExportStatus('saving');
     const activeLine = activeIndex >= 0 ? lyrics[activeIndex] : lyrics[0] || null;
     const nextLine = activeIndex >= 0 && activeIndex + 1 < lyrics.length ? lyrics[activeIndex + 1] : null;
@@ -149,6 +162,9 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   return (
     <div
       className="fixed inset-0 z-50 bg-[var(--bg-app)]/98 backdrop-blur-2xl flex flex-col overflow-hidden transition-colors"
+      style={{
+        backgroundImage: `radial-gradient(circle at 22% 20%, rgba(${accentRgb}, 0.22), transparent 58%)`
+      }}
       role="dialog"
       aria-modal="true"
       aria-label={t.nowPlayingSheet}
@@ -225,9 +241,19 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                 <h2 className="text-xl sm:text-2xl font-extrabold text-[var(--text-primary)] truncate">
                   {track.title}
                 </h2>
-                <p className="text-sm text-[var(--text-secondary)] truncate mt-0.5">
-                  {track.artist}
-                </p>
+                {onOpenArtist ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenArtist(track.artist)}
+                    className="block max-w-full text-left text-sm text-[var(--text-secondary)] hover:text-[var(--accent-text)] hover:underline truncate mt-0.5 cursor-pointer"
+                  >
+                    {track.artist}
+                  </button>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)] truncate mt-0.5">
+                    {track.artist}
+                  </p>
+                )}
                 <div className="flex items-center gap-2 mt-2 text-[11px] font-mono text-[var(--text-dim)]">
                   <span>{track.genre}</span>
                   <span>&middot;</span>
@@ -560,31 +586,59 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                 <div className="space-y-3 py-4">
                   {lyrics.map((line, idx) => {
                     const isActive = idx === activeIndex;
+                    const distance = activeIndex >= 0 ? Math.abs(idx - activeIndex) : 0;
+                    const fadeCls =
+                      activeIndex >= 0 && !isActive && distance > 3
+                        ? 'opacity-50 hover:opacity-95'
+                        : '';
                     return (
-                      <button
+                      <div
                         key={`${idx}-${line.time}`}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         ref={isActive ? activeLyricRef : null}
                         onClick={() => onSeek(line.time)}
-                        className={`block w-full text-left py-2 px-3 rounded-xl transition-all cursor-pointer ${
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSeek(line.time);
+                          }
+                        }}
+                        className={`group flex items-start justify-between gap-3 w-full text-left py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${fadeCls} ${
                           isActive
                             ? 'bg-[var(--accent-soft)] text-[var(--text-primary)] scale-[1.01]'
                             : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint-hover)]'
                         }`}
                       >
-                        <div
-                          className={`leading-snug ${
-                            isActive ? 'text-xl sm:text-2xl font-extrabold' : 'text-base sm:text-lg font-medium'
-                          }`}
-                        >
-                          {line.text}
-                        </div>
-                        {line.translation && (
-                          <div className="text-xs sm:text-sm text-[var(--accent-text)] mt-1">
-                            {line.translation}
+                        <div className="min-w-0 flex-1">
+                          <div
+                            className={`leading-snug ${
+                              isActive ? 'text-xl sm:text-2xl font-extrabold' : 'text-base sm:text-lg font-medium'
+                            }`}
+                          >
+                            {line.text}
                           </div>
+                          {line.translation && (
+                            <div className="text-xs sm:text-sm text-[var(--accent-text)] mt-1">
+                              {line.translation}
+                            </div>
+                          )}
+                        </div>
+                        {onOpenLyricCard && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenLyricCard(idx);
+                            }}
+                            title={t.lyricCardStudio}
+                            aria-label={t.lyricCardStudio}
+                            className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 focus:opacity-100 bg-[var(--bg-surface)] text-[var(--text-dim)] hover:text-[var(--accent-text)] transition-opacity cursor-pointer shrink-0 mt-1"
+                          >
+                            <Share2 size={14} />
+                          </button>
                         )}
-                      </button>
+                      </div>
                     );
                   })}
                 </div>

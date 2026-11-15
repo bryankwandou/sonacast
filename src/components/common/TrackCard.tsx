@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Track } from '../../types';
-import { Disc3, FolderPlus, Heart, ListPlus, Loader2, Play, Radio } from 'lucide-react';
+import { Disc3, FolderPlus, Heart, ListPlus, ListStart, Loader2, Play, Radio } from 'lucide-react';
 import { applyCoverFallback } from '../../utils/coverFallback';
 
 interface TrackCardProps {
@@ -12,8 +12,10 @@ interface TrackCardProps {
   isLiked?: boolean;
   onToggleLike?: (track: Track) => void;
   onAddToAlbum?: (track: Track) => void;
+  onPlayNext?: (track: Track) => void;
   onAddToQueue?: (track: Track) => void;
   onStartRadio?: (track: Track) => void;
+  onOpenArtist?: (artistName: string) => void;
 }
 
 export const TrackCard: React.FC<TrackCardProps> = ({
@@ -25,8 +27,10 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   isLiked,
   onToggleLike,
   onAddToAlbum,
+  onPlayNext,
   onAddToQueue,
-  onStartRadio
+  onStartRadio,
+  onOpenArtist
 }) => {
   const formatDuration = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -60,7 +64,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
         />
 
         {/* Quick Action Pill Overlay (top-right on hover or liked) */}
-        {(onToggleLike || onAddToAlbum || onAddToQueue || onStartRadio) && (
+        {(onToggleLike || onAddToAlbum || onPlayNext || onAddToQueue || onStartRadio) && (
           <div
             className={`absolute top-2 right-2 flex items-center gap-1 transition-opacity ${isLiked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
               }`}
@@ -95,6 +99,21 @@ export const TrackCard: React.FC<TrackCardProps> = ({
                 className="w-7 h-7 rounded-full bg-black/65 text-white hover:bg-[var(--accent-emerald)] hover:text-[var(--accent-fg)] flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer"
               >
                 <FolderPlus size={13} />
+              </button>
+            )}
+            {onPlayNext && (
+              <button
+                type="button"
+                data-testid="track-card-play-next-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPlayNext(track);
+                }}
+                aria-label="Play Next"
+                title="Play Next"
+                className="w-7 h-7 rounded-full bg-black/65 hover:bg-[var(--accent-emerald)] hover:text-[var(--accent-fg)] text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer"
+              >
+                <ListStart size={13} />
               </button>
             )}
             {onAddToQueue && (
@@ -166,7 +185,21 @@ export const TrackCard: React.FC<TrackCardProps> = ({
         >
           {track.title}
         </div>
-        <div className="text-xs text-[var(--text-secondary)] truncate">{track.artist}</div>
+        {onOpenArtist ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenArtist(track.artist);
+            }}
+            className="block max-w-full text-left text-xs text-[var(--text-secondary)] hover:text-[var(--accent-text)] hover:underline truncate cursor-pointer"
+            title={track.artist}
+          >
+            {track.artist}
+          </button>
+        ) : (
+          <div className="text-xs text-[var(--text-secondary)] truncate">{track.artist}</div>
+        )}
         <div className="flex items-center justify-between text-[11px] font-mono text-[var(--text-dim)] pt-0.5">
           <span className="truncate max-w-[110px]">{track.genre}</span>
           <span>{formatDuration(track.duration)}</span>

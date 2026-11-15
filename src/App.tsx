@@ -87,10 +87,13 @@ import { VisualizerStudioView } from './components/views/VisualizerStudioView';
 import { ProofOfStreamView } from './components/rewards/ProofOfStreamView';
 
 import { AddToAlbumModal } from './components/modals/AddToAlbumModal';
+import { ArtistSpotlightModal } from './components/modals/ArtistSpotlightModal';
 import { AuthModal } from './components/auth/AuthModal';
+import { LyricCardModal } from './components/modals/LyricCardModal';
 import { ShortcutsModal } from './components/modals/ShortcutsModal';
 import { SolanaWalletModal } from './components/web3/SolanaWalletModal';
 import { PitchDeckModal } from './components/pitch/PitchDeckModal';
+import { getPrimaryArtistName } from './utils/coverColor';
 import {
   Activity,
   Award,
@@ -209,6 +212,11 @@ export default function App() {
   const [cloudStats, setCloudStats] = useState<ListeningStats | null>(null);
   const [blends, setBlends] = useState<BlendRoom[]>([]);
   const [albumModalTrack, setAlbumModalTrack] = useState<Track | null>(null);
+  const [artistSpotlightName, setArtistSpotlightName] = useState<string | null>(null);
+  const [lyricCardState, setLyricCardState] = useState<{ open: boolean; lineIndex: number | null }>({
+    open: false,
+    lineIndex: null
+  });
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [initialBlendCode, setInitialBlendCode] = useState<string | null>(null);
 
@@ -976,7 +984,7 @@ export default function App() {
               );
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
 
       // 1. Direct Studio Master MP3 or local user file
@@ -1359,8 +1367,41 @@ export default function App() {
     setManualQueue((prev) => (prev.some((x) => x.id === track.id) ? prev : [...prev, track]));
   }, []);
 
+  const handlePlayNext = useCallback((track: Track) => {
+    setManualQueue((prev) => [track, ...prev.filter((x) => x.id !== track.id)]);
+  }, []);
+
   const handleRemoveFromManualQueue = useCallback((index: number) => {
     setManualQueue((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleClearManualQueue = useCallback(() => {
+    setManualQueue([]);
+  }, []);
+
+  const handleMoveManualQueueItem = useCallback((index: number, delta: -1 | 1) => {
+    setManualQueue((prev) => {
+      const target = index + delta;
+      if (index < 0 || index >= prev.length || target < 0 || target >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved);
+      return next;
+    });
+  }, []);
+
+  const handleOpenArtistSpotlight = useCallback((artistName: string) => {
+    const clean = getPrimaryArtistName(artistName);
+    if (clean) setArtistSpotlightName(clean);
+  }, []);
+
+  const handleOpenLyricCard = useCallback((lineIndex?: number) => {
+    setLyricCardState({
+      open: true,
+      lineIndex: typeof lineIndex === 'number' ? lineIndex : null
+    });
   }, []);
 
   const handleStartRadio = useCallback(
@@ -1486,14 +1527,14 @@ export default function App() {
       const safeStart = Math.max(0, Math.min(startIndex, tracksList.length - 1));
       const resolvedTracks = shouldShuffle
         ? (() => {
-            const copy = [...tracksList];
-            const firstPick = copy.splice(safeStart, 1)[0];
-            for (let i = copy.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [copy[i], copy[j]] = [copy[j], copy[i]];
-            }
-            return firstPick ? [firstPick, ...copy] : copy;
-          })()
+          const copy = [...tracksList];
+          const firstPick = copy.splice(safeStart, 1)[0];
+          for (let i = copy.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [copy[i], copy[j]] = [copy[j], copy[i]];
+          }
+          return firstPick ? [firstPick, ...copy] : copy;
+        })()
         : tracksList;
 
       const resolvedCtx: PlaybackContextInfo = contextInfo || {
@@ -1857,12 +1898,12 @@ export default function App() {
         .request('screen')
         .then((s) => {
           if (released) {
-            s.release?.().catch(() => {});
+            s.release?.().catch(() => { });
           } else {
             sentinel = s;
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     };
 
     const handleVisibilityWakeLock = () => {
@@ -1878,7 +1919,7 @@ export default function App() {
     return () => {
       released = true;
       document.removeEventListener('visibilitychange', handleVisibilityWakeLock);
-      sentinel?.release?.().catch(() => {});
+      sentinel?.release?.().catch(() => { });
     };
   }, [isPlaying, lowCpuMode]);
 
@@ -2354,8 +2395,8 @@ export default function App() {
                         type="button"
                         onClick={() => setIsStageOpen((prev) => !prev)}
                         className={`min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-medium shrink-0 cursor-pointer transition-colors ${isStageOpen
-                            ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
-                            : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
+                          : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                           }`}
                       >
                         {t.playerStageToggle}
@@ -2437,8 +2478,8 @@ export default function App() {
                       type="button"
                       onClick={() => handleTabChange(chip.id)}
                       className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 border transition-colors cursor-pointer ${active
-                          ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
-                          : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
+                        ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
+                        : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
                         }`}
                     >
                       {chip.icon}
@@ -2473,11 +2514,10 @@ export default function App() {
                             type="button"
                             data-stage-mode={modeOpt.id}
                             onClick={() => handleSelectStageMode(modeOpt.id)}
-                            className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer border ${
-                              active
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer border ${active
                                 ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
                                 : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                            }`}
+                              }`}
                           >
                             {modeOpt.icon}
                             <span>{modeOpt.label}</span>
@@ -2492,11 +2532,10 @@ export default function App() {
                         data-testid="stage-low-cpu-btn"
                         onClick={handleToggleLowCpu}
                         aria-pressed={lowCpuMode}
-                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1 border cursor-pointer transition-colors ${
-                          lowCpuMode
+                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1 border cursor-pointer transition-colors ${lowCpuMode
                             ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
                             : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                        }`}
+                          }`}
                       >
                         <Zap size={12} />
                         <span>{t.lowCpuShort}</span>
@@ -2588,6 +2627,8 @@ export default function App() {
                           lyricsSource={lyricsSource}
                           lyricsSynced={lyricsSynced}
                           onRetryLyrics={handleRetryCurrentLyrics}
+                          onOpenLyricCard={handleOpenLyricCard}
+                          onOpenArtist={handleOpenArtistSpotlight}
                           fullWidth={true}
                         />
                       </div>
@@ -2620,6 +2661,8 @@ export default function App() {
                             lyricsSource={lyricsSource}
                             lyricsSynced={lyricsSynced}
                             onRetryLyrics={handleRetryCurrentLyrics}
+                            onOpenLyricCard={handleOpenLyricCard}
+                            onOpenArtist={handleOpenArtistSpotlight}
                           />
                         </div>
                       </>
@@ -2652,6 +2695,8 @@ export default function App() {
                             lyricsSource={lyricsSource}
                             lyricsSynced={lyricsSynced}
                             onRetryLyrics={handleRetryCurrentLyrics}
+                            onOpenLyricCard={handleOpenLyricCard}
+                            onOpenArtist={handleOpenArtistSpotlight}
                           />
                         </div>
                       </>
@@ -2679,8 +2724,11 @@ export default function App() {
                     likedTrackIds={likedTrackIds}
                     onToggleLike={handleToggleLike}
                     onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+                    onPlayNext={handlePlayNext}
                     onAddToQueue={handleAddToQueue}
                     onStartRadio={handleStartRadio}
+                    onOpenArtist={handleOpenArtistSpotlight}
+                    lowCpuMode={lowCpuMode}
                     onPlayTrackList={handlePlayTrackList}
                     followedArtists={followedArtists}
                     onCreatePlaylist={(name) => handleCreatePlaylist(name)}
@@ -2715,7 +2763,7 @@ export default function App() {
                     onDeleteAlbum={handleDeletePlaylist}
                     onRemoveTrackFromAlbum={handleRemoveTrackFromPlaylist}
                     onToggleFollowArtist={handleToggleFollowArtist}
-                    onSearchArtist={(name) => navigateToSearch(name)}
+                    onSearchArtist={(name) => handleOpenArtistSpotlight(name)}
                     onUpdateProfile={handleUpdateProfile}
                     onCloneSharedAlbum={handleCloneSharedAlbum}
                     onClearHistory={handleClearHistory}
@@ -2761,8 +2809,10 @@ export default function App() {
                     likedTrackIds={likedTrackIds}
                     onToggleLike={handleToggleLike}
                     onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+                    onPlayNext={handlePlayNext}
                     onAddToQueue={handleAddToQueue}
                     onStartRadio={handleStartRadio}
+                    onOpenArtist={handleOpenArtistSpotlight}
                     onPlayTrackList={handlePlayTrackList}
                   />
                 )}
@@ -2811,6 +2861,8 @@ export default function App() {
               currentTrack={currentTrack}
               onSelectTrack={(item) => handleSelectTrack(item, { fromContextList: true })}
               onRemoveFromManualQueue={handleRemoveFromManualQueue}
+              onClearManualQueue={handleClearManualQueue}
+              onMoveManualQueueItem={handleMoveManualQueueItem}
               onRefreshRadioMix={handleRefreshRadioMix}
               playbackContext={playbackContext}
               autoplayEnabled={autoplayEnabled}
@@ -2824,6 +2876,7 @@ export default function App() {
               radioStations={RADIO_STATIONS}
               onSelectRadio={handleSelectRadio}
               onOpenTipModal={() => setIsWalletModalOpen(true)}
+              onOpenLyricCard={() => handleOpenLyricCard()}
               ytMonitorRef={ytMonitorRef}
               showYtMonitor={
                 isYouTubeActive &&
@@ -2872,6 +2925,16 @@ export default function App() {
             onAddToAlbum={() => setAlbumModalTrack(currentTrack)}
             onStartRadio={() => handleStartRadio(currentTrack)}
             onOpenExpandedPlayer={() => setIsExpandedPlayerOpen(true)}
+            eqPreset={recState.eqPreset}
+            playbackRate={recState.playbackRate}
+            crossfadeSeconds={recState.crossfadeSeconds}
+            sleepTimerMinutesRemaining={sleepMinutesRemaining}
+            onSelectEqPreset={handleSelectEqPreset}
+            onSelectPlaybackRate={handleSelectPlaybackRate}
+            onSelectCrossfade={handleSelectCrossfade}
+            onSetSleepTimer={handleSetSleepTimer}
+            onOpenArtist={handleOpenArtistSpotlight}
+            onOpenLyricCard={() => handleOpenLyricCard()}
           />
         </>
       )}
@@ -2956,6 +3019,43 @@ export default function App() {
         onSetSleepTimer={handleSetSleepTimer}
         onStartRadio={handleStartRadio}
         onAddToPlaylist={handleAddTrackToPlaylist}
+        lowCpuMode={lowCpuMode}
+        onOpenArtist={handleOpenArtistSpotlight}
+        onOpenLyricCard={handleOpenLyricCard}
+      />
+
+      {/* Resso / Spotify Style Shareable Lyric Card Studio */}
+      <LyricCardModal
+        isOpen={lyricCardState.open}
+        onClose={() => setLyricCardState({ open: false, lineIndex: null })}
+        track={currentTrack}
+        initialLineIndex={lyricCardState.lineIndex}
+        currentTime={currentTime}
+      />
+
+      {/* Spotify / YT Music Artist Spotlight & Follow Drawer */}
+      <ArtistSpotlightModal
+        artistName={artistSpotlightName}
+        genreHint={currentTrack.genre}
+        curatedTracks={TRACK_CATALOG}
+        currentTrackId={currentTrack.id}
+        resolvingTrackId={resolvingTrackId}
+        isFollowed={
+          artistSpotlightName
+            ? followedArtists.some(
+                (a) => a.name.toLowerCase() === artistSpotlightName.toLowerCase()
+              )
+            : false
+        }
+        likedTrackIds={likedTrackIds}
+        onClose={() => setArtistSpotlightName(null)}
+        onToggleFollowArtist={handleToggleFollowArtist}
+        onSelectTrack={(tr) => handleSelectTrack(tr)}
+        onPlayTrackList={handlePlayTrackList}
+        onPlayNext={handlePlayNext}
+        onAddToQueue={handleAddToQueue}
+        onStartRadio={handleStartRadio}
+        onToggleLike={handleToggleLike}
       />
 
       {/* Neon Auth Login / Account Modal */}

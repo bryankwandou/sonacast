@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { PlaybackContextInfo, RadioStation, Track } from '../../types';
 import {
+  ChevronUp,
   Disc3,
   Heart,
   Infinity as InfinityIcon,
@@ -10,7 +11,9 @@ import {
   Radio,
   RefreshCw,
   Send,
+  Share2,
   Shuffle,
+  Trash2,
   X
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
@@ -24,6 +27,8 @@ interface RightSidebarProps {
   currentTrack: Track;
   onSelectTrack: (track: Track) => void;
   onRemoveFromManualQueue?: (index: number) => void;
+  onClearManualQueue?: () => void;
+  onMoveManualQueueItem?: (index: number, delta: -1 | 1) => void;
   onRefreshRadioMix?: () => void;
   playbackContext?: PlaybackContextInfo;
   autoplayEnabled?: boolean;
@@ -37,6 +42,7 @@ interface RightSidebarProps {
   radioStations: RadioStation[];
   onSelectRadio: (station: RadioStation) => void;
   onOpenTipModal: () => void;
+  onOpenLyricCard?: () => void;
   ytMonitorRef: React.RefObject<HTMLDivElement | null>;
   showYtMonitor: boolean;
   lyricsStatus?: 'idle' | 'loading' | 'loaded' | 'unavailable';
@@ -53,6 +59,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   currentTrack,
   onSelectTrack,
   onRemoveFromManualQueue,
+  onClearManualQueue,
+  onMoveManualQueueItem,
   onRefreshRadioMix,
   playbackContext,
   autoplayEnabled = true,
@@ -66,6 +74,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   radioStations,
   onSelectRadio,
   onOpenTipModal,
+  onOpenLyricCard,
   ytMonitorRef,
   showYtMonitor,
   lyricsStatus = 'idle',
@@ -281,17 +290,28 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
             {/* Tier-1: Manual User Queue ("Play Next / Added to Queue") */}
             {manualQueue.length > 0 && (
-              <div className="space-y-1.5">
+              <div className="space-y-1.5" data-testid="sidebar-manual-queue">
                 <div className="flex items-center justify-between px-1">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
                     {t.queuedByYou} ({manualQueue.length})
                   </span>
+                  {onClearManualQueue && (
+                    <button
+                      type="button"
+                      onClick={onClearManualQueue}
+                      data-testid="clear-manual-queue-btn"
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--text-dim)] hover:text-rose-400 cursor-pointer transition-colors"
+                    >
+                      <Trash2 size={10} />
+                      <span>{t.clearQueue}</span>
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-1">
                   {manualQueue.map((item, idx) => (
                     <div
                       key={`manual-${item.id}-${idx}`}
-                      className="flex items-center gap-2 p-2 rounded-lg bg-[var(--accent-soft)] group"
+                      className="flex items-center gap-1.5 p-2 rounded-lg bg-[var(--accent-soft)] group"
                     >
                       <button
                         type="button"
@@ -313,6 +333,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                           </div>
                         </div>
                       </button>
+                      {onMoveManualQueueItem && idx > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => onMoveManualQueueItem(idx, -1)}
+                          aria-label={t.moveUp}
+                          title={t.moveUp}
+                          className="p-1 text-[var(--text-dim)] hover:text-[var(--accent-text)] cursor-pointer"
+                        >
+                          <ChevronUp size={12} />
+                        </button>
+                      )}
                       {onRemoveFromManualQueue && (
                         <button
                           type="button"
@@ -452,16 +483,29 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     ? `${lyricsSynced ? t.lyricsSyncedLabel : t.lyricsTimedLabel}${lyricsSource ? ` - ${lyricsSource}` : ''}`
                     : t.lyricsUnavailable}
               </span>
-              {onRetryLyrics && (
-                <button
-                  type="button"
-                  onClick={() => onRetryLyrics()}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[10px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer shrink-0"
-                >
-                  <RefreshCw size={10} className={lyricsStatus === 'loading' ? 'animate-spin' : ''} />
-                  <span>{t.lyricsRetry}</span>
-                </button>
-              )}
+              <div className="flex items-center gap-1 shrink-0">
+                {onOpenLyricCard && (
+                  <button
+                    type="button"
+                    onClick={onOpenLyricCard}
+                    title={t.lyricCardStudio}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--accent-soft)] text-[10px] font-semibold text-[var(--accent-text)] hover:bg-[var(--accent-emerald)] hover:text-[var(--accent-fg)] cursor-pointer transition-colors"
+                  >
+                    <Share2 size={10} />
+                    <span>Card</span>
+                  </button>
+                )}
+                {onRetryLyrics && (
+                  <button
+                    type="button"
+                    onClick={() => onRetryLyrics()}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[10px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer shrink-0"
+                  >
+                    <RefreshCw size={10} className={lyricsStatus === 'loading' ? 'animate-spin' : ''} />
+                    <span>{t.lyricsRetry}</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {lyricsStatus === 'loading' && lyrics.length === 0 ? (

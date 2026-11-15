@@ -1,7 +1,8 @@
-import React from 'react';
-import type { RepeatMode, StageExperienceMode, Track } from '../../types';
+import React, { useEffect, useRef, useState } from 'react';
+import type { EqPreset, RepeatMode, StageExperienceMode, Track } from '../../types';
 import {
   Activity,
+  Clock,
   Disc,
   FolderPlus,
   Heart,
@@ -17,9 +18,11 @@ import {
   Radio,
   Repeat,
   Repeat1,
+  Share2,
   Shuffle,
   SkipBack,
   SkipForward,
+  SlidersHorizontal,
   Video,
   Volume2,
   VolumeX,
@@ -27,6 +30,11 @@ import {
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { applyCoverFallback } from '../../utils/coverFallback';
+
+const EQ_LIST: EqPreset[] = ['flat', 'bass', 'vocal', 'club', 'acoustic'];
+const SPEED_LIST = [0.75, 1, 1.25, 1.5];
+const CROSSFADE_LIST = [0, 2, 4, 6];
+const SLEEP_LIST: (number | null)[] = [null, 15, 30, 60];
 
 interface BottomPlayerBarProps {
   currentTrack: Track;
@@ -61,6 +69,16 @@ interface BottomPlayerBarProps {
   onAddToAlbum?: () => void;
   onStartRadio?: () => void;
   onOpenExpandedPlayer?: () => void;
+  eqPreset?: EqPreset;
+  playbackRate?: number;
+  crossfadeSeconds?: number;
+  sleepTimerMinutesRemaining?: number | null;
+  onSelectEqPreset?: (eq: EqPreset) => void;
+  onSelectPlaybackRate?: (rate: number) => void;
+  onSelectCrossfade?: (secs: number) => void;
+  onSetSleepTimer?: (mins: number | null) => void;
+  onOpenArtist?: (artistName: string) => void;
+  onOpenLyricCard?: () => void;
 }
 
 export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
@@ -95,9 +113,40 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   onToggleLike,
   onAddToAlbum,
   onStartRadio,
-  onOpenExpandedPlayer
+  onOpenExpandedPlayer,
+  eqPreset = 'flat',
+  playbackRate = 1,
+  crossfadeSeconds = 0,
+  sleepTimerMinutesRemaining = null,
+  onSelectEqPreset,
+  onSelectPlaybackRate,
+  onSelectCrossfade,
+  onSetSleepTimer,
+  onOpenArtist,
+  onOpenLyricCard
 }) => {
   const { t } = useAppPreferences();
+  const [hoverPct, setHoverPct] = useState<number | null>(null);
+  const [isDspMenuOpen, setIsDspMenuOpen] = useState(false);
+  const dspContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isDspMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (dspContainerRef.current && !dspContainerRef.current.contains(e.target as Node)) {
+        setIsDspMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsDspMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isDspMenuOpen]);
 
   const formatTime = (secs: number) => {
     const safe = Math.max(0, Math.floor(secs || 0));
@@ -112,7 +161,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
     <footer
       className="fixed bottom-0 left-0 right-0 z-40 h-20 sm:h-24 bg-[var(--backdrop-bar)] backdrop-blur-xl border-t border-[var(--border-subtle)] px-3 sm:px-5 flex flex-col justify-center select-none transition-colors"
     >
-      {/* Top Edge Interactive Progress Scrubber */}
+      {/* Top Edge Interactive Progress Scrubber with Hover Time Preview */}
       <div
         role="slider"
         tabIndex={0}
@@ -120,12 +169,18 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
         aria-valuemin={0}
         aria-valuemax={duration}
         aria-valuenow={Math.floor(currentTime)}
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          setHoverPct(pct);
+        }}
+        onMouseLeave={() => setHoverPct(null)}
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
           onSeek(pct * duration);
         }}
-        className="absolute -top-1 left-0 right-0 h-2.5 cursor-pointer group flex items-center"
+        className="absolute -top-1 left-0 right-0 h-3 cursor-pointer group flex items-center"
       >
         <div className="w-full h-1 group-hover:h-1.5 bg-[var(--border-subtle)] transition-all overflow-hidden">
           <div
@@ -133,6 +188,14 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             style={{ width: `${progress}%` }}
           />
         </div>
+        {hoverPct !== null && duration > 0 && (
+          <div
+            className="pointer-events-none absolute -top-7 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] text-[10px] font-mono font-bold shadow-lg"
+            style={{ left: `${hoverPct * 100}%` }}
+          >
+            {formatTime(hoverPct * duration)}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-3 max-w-full">
@@ -162,7 +225,19 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               {currentTrack.title}
             </button>
             <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] truncate">
-              <span className="truncate">{currentTrack.artist}</span>
+              {onOpenArtist ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenArtist(currentTrack.artist)}
+                  data-testid="player-artist-link"
+                  title={t.artistProfileLabel}
+                  className="truncate hover:text-[var(--accent-text)] hover:underline cursor-pointer text-left"
+                >
+                  {currentTrack.artist}
+                </button>
+              ) : (
+                <span className="truncate">{currentTrack.artist}</span>
+              )}
               {currentTrack.sourceTag && (
                 <span className="hidden md:inline-block px-1.5 py-0.2 rounded bg-[var(--bg-tint)] text-[9px] font-mono text-[var(--accent-text)] uppercase shrink-0">
                   {currentTrack.sourceTag}
@@ -409,6 +484,169 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             >
               <Maximize2 size={15} />
             </button>
+          )}
+
+          {(onSelectEqPreset || onSetSleepTimer || onOpenLyricCard) && (
+            <div className="relative" ref={dspContainerRef}>
+              <button
+                type="button"
+                onClick={() => setIsDspMenuOpen((prev) => !prev)}
+                data-testid="bottom-dsp-toggle"
+                aria-expanded={isDspMenuOpen}
+                aria-label={t.soundAndSleep}
+                title={t.soundAndSleep}
+                className={`inline-flex items-center gap-1 p-2 sm:px-2.5 sm:py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                  isDspMenuOpen || sleepTimerMinutesRemaining !== null || eqPreset !== 'flat' || playbackRate !== 1
+                    ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
+                    : 'text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
+                }`}
+              >
+                <SlidersHorizontal size={15} />
+                {sleepTimerMinutesRemaining !== null && (
+                  <span className="text-[10px] font-mono font-bold">
+                    {sleepTimerMinutesRemaining}m
+                  </span>
+                )}
+              </button>
+
+              {isDspMenuOpen && (
+                <div
+                  data-testid="bottom-dsp-popover"
+                  className="absolute bottom-12 right-0 w-72 sm:w-80 p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-medium)] shadow-2xl space-y-3.5 z-50"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-[var(--text-primary)]">
+                      {t.soundAndSleep}
+                    </span>
+                    {onOpenLyricCard && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsDspMenuOpen(false);
+                          onOpenLyricCard();
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)] text-[10px] font-bold hover:bg-[var(--accent-emerald)] hover:text-[var(--accent-fg)] cursor-pointer transition-colors"
+                      >
+                        <Share2 size={10} />
+                        <span>{t.exportLyricCard}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {onSelectEqPreset && (
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                        {t.equalizer}
+                      </div>
+                      <div className="grid grid-cols-5 gap-1">
+                        {EQ_LIST.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => onSelectEqPreset(preset)}
+                            className={`py-1.5 rounded-lg text-[10px] font-bold uppercase cursor-pointer transition-colors ${
+                              eqPreset === preset
+                                ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                                : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {onSelectPlaybackRate && (
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                        {t.playbackSpeed}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1">
+                        {SPEED_LIST.map((rate) => (
+                          <button
+                            key={rate}
+                            type="button"
+                            onClick={() => onSelectPlaybackRate(rate)}
+                            className={`py-1.5 rounded-lg text-[11px] font-mono font-bold cursor-pointer transition-colors ${
+                              Math.abs(playbackRate - rate) < 0.01
+                                ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                                : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            }`}
+                          >
+                            {rate}x
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {onSelectCrossfade && (
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                        {t.crossfade}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1">
+                        {CROSSFADE_LIST.map((sec) => (
+                          <button
+                            key={sec}
+                            type="button"
+                            onClick={() => onSelectCrossfade(sec)}
+                            className={`py-1.5 rounded-lg text-[11px] font-mono font-bold cursor-pointer transition-colors ${
+                              crossfadeSeconds === sec
+                                ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                                : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            }`}
+                          >
+                            {sec}s
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {onSetSleepTimer && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                        <span className="inline-flex items-center gap-1">
+                          <Clock size={10} />
+                          <span>{t.sleepTimer}</span>
+                        </span>
+                        {sleepTimerMinutesRemaining !== null && (
+                          <span className="text-[var(--accent-text)] font-mono">
+                            {sleepTimerMinutesRemaining}m left
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1">
+                        {SLEEP_LIST.map((mins) => {
+                          const isSelected =
+                            mins === null
+                              ? sleepTimerMinutesRemaining === null
+                              : sleepTimerMinutesRemaining !== null &&
+                                Math.abs(sleepTimerMinutesRemaining - mins) <= 1;
+                          return (
+                            <button
+                              key={String(mins)}
+                              type="button"
+                              data-testid={`sleep-timer-${mins === null ? 'off' : mins}`}
+                              onClick={() => onSetSleepTimer(mins)}
+                              className={`py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition-colors ${
+                                isSelected
+                                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                                  : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                              }`}
+                            >
+                              {mins === null ? t.sleepOff : `${mins}m`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           <button

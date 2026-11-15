@@ -844,36 +844,116 @@ export function getMoodSeedQueries(mood: MoodPreset): string[] {
   }
 }
 
-export async function exportLyricQuotePng(
+export type LyricCardTheme = 'nocturne' | 'emerald' | 'daylight';
+
+const LYRIC_THEME_STYLES: Record<
+  LyricCardTheme,
+  {
+    bgStops: [string, string, string];
+    glow: string;
+    titleColor: string;
+    artistColor: string;
+    lyricColor: string;
+    subLyricColor: string;
+    accentColor: string;
+    divider: string;
+    artFallbackBg: string;
+  }
+> = {
+  nocturne: {
+    bgStops: ['#0C1412', '#07090F', '#04060A'],
+    glow: 'rgba(16, 185, 129, 0.22)',
+    titleColor: '#F8FAFC',
+    artistColor: '#94A3B8',
+    lyricColor: '#FFFFFF',
+    subLyricColor: '#94A3B8',
+    accentColor: '#10B981',
+    divider: 'rgba(255, 255, 255, 0.08)',
+    artFallbackBg: '#111926'
+  },
+  emerald: {
+    bgStops: ['#052E24', '#064E3B', '#04221C'],
+    glow: 'rgba(52, 211, 153, 0.28)',
+    titleColor: '#ECFDF5',
+    artistColor: '#A7F3D0',
+    lyricColor: '#FFFFFF',
+    subLyricColor: '#A7F3D0',
+    accentColor: '#6EE7B7',
+    divider: 'rgba(255, 255, 255, 0.14)',
+    artFallbackBg: '#065F46'
+  },
+  daylight: {
+    bgStops: ['#FAF7F2', '#F3EEE5', '#EAE2D6'],
+    glow: 'rgba(16, 185, 129, 0.14)',
+    titleColor: '#0F172A',
+    artistColor: '#475569',
+    lyricColor: '#090D16',
+    subLyricColor: '#475569',
+    accentColor: '#047857',
+    divider: 'rgba(15, 23, 42, 0.10)',
+    artFallbackBg: '#E2E8F0'
+  }
+};
+
+function drawRoundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+export async function renderLyricCardCanvas(
   track: Track,
-  activeLine: LyricLine | null,
-  nextLine?: LyricLine | null
-): Promise<boolean> {
-  if (typeof document === 'undefined') return false;
+  selectedLines: LyricLine[],
+  theme: LyricCardTheme = 'nocturne',
+  targetCanvas?: HTMLCanvasElement
+): Promise<HTMLCanvasElement | null> {
+  if (typeof document === 'undefined') return null;
   const width = 1080;
   const height = 1350;
-  const canvas = document.createElement('canvas');
+  const canvas = targetCanvas || document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return false;
+  if (!ctx) return null;
 
-  // Deep dark editorial background gradient
+  const palette = LYRIC_THEME_STYLES[theme] || LYRIC_THEME_STYLES.nocturne;
+
   const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-  bgGrad.addColorStop(0, '#0C1412');
-  bgGrad.addColorStop(0.5, '#07090F');
-  bgGrad.addColorStop(1, '#04060A');
+  bgGrad.addColorStop(0, palette.bgStops[0]);
+  bgGrad.addColorStop(0.5, palette.bgStops[1]);
+  bgGrad.addColorStop(1, palette.bgStops[2]);
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, width, height);
 
-  // Subtle emerald atmosphere glow
-  const glow = ctx.createRadialGradient(width * 0.25, height * 0.22, 40, width * 0.25, height * 0.22, 620);
-  glow.addColorStop(0, 'rgba(16, 185, 129, 0.22)');
+  const glow = ctx.createRadialGradient(
+    width * 0.25,
+    height * 0.22,
+    40,
+    width * 0.25,
+    height * 0.22,
+    640
+  );
+  glow.addColorStop(0, palette.glow);
   glow.addColorStop(1, 'rgba(16, 185, 129, 0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
 
-  // Attempt artwork draw (CORS-safe fallback to clean monogram badge)
   const artSize = 180;
   const artX = 96;
   const artY = 108;
@@ -883,13 +963,19 @@ export async function exportLyricQuotePng(
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
         const image = new Image();
         image.crossOrigin = 'anonymous';
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error('Image load failed'));
+        const timer = window.setTimeout(() => reject(new Error('Image timeout')), 3500);
+        image.onload = () => {
+          window.clearTimeout(timer);
+          resolve(image);
+        };
+        image.onerror = () => {
+          window.clearTimeout(timer);
+          reject(new Error('Image load failed'));
+        };
         image.src = track.coverUrl;
       });
       ctx.save();
-      ctx.beginPath();
-      ctx.roundRect(artX, artY, artSize, artSize, 24);
+      drawRoundedRectPath(ctx, artX, artY, artSize, artSize, 24);
       ctx.clip();
       ctx.drawImage(img, artX, artY, artSize, artSize);
       ctx.restore();
@@ -900,43 +986,35 @@ export async function exportLyricQuotePng(
   }
 
   if (!drewArtwork) {
-    ctx.fillStyle = '#111926';
-    ctx.beginPath();
-    ctx.roundRect(artX, artY, artSize, artSize, 24);
+    ctx.fillStyle = palette.artFallbackBg;
+    drawRoundedRectPath(ctx, artX, artY, artSize, artSize, 24);
     ctx.fill();
-    ctx.fillStyle = '#10B981';
+    ctx.fillStyle = palette.accentColor;
     ctx.font = '700 64px "Plus Jakarta Sans", sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText((track.title || 'S').slice(0, 2).toUpperCase(), artX + 52, artY + artSize / 2);
+    ctx.fillText((track.title || 'S').slice(0, 2).toUpperCase(), artX + 48, artY + artSize / 2);
   }
 
-  // Track Title + Artist header beside artwork
   ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = '#F8FAFC';
+  ctx.fillStyle = palette.titleColor;
   ctx.font = '700 42px "Plus Jakarta Sans", sans-serif';
-  const titleText = (track.title || 'Unknown Track').slice(0, 30);
+  const titleText = (track.title || 'Unknown Track').slice(0, 28);
   ctx.fillText(titleText, artX + artSize + 36, artY + 76);
 
-  ctx.fillStyle = '#94A3B8';
+  ctx.fillStyle = palette.artistColor;
   ctx.font = '500 30px "Plus Jakarta Sans", sans-serif';
-  ctx.fillText((track.artist || 'Unknown Artist').slice(0, 36), artX + artSize + 36, artY + 126);
+  ctx.fillText((track.artist || 'Unknown Artist').slice(0, 34), artX + artSize + 36, artY + 126);
 
-  // Genre tag
-  ctx.fillStyle = '#10B981';
-  ctx.font = '600 22px "Plus Jakarta Sans", sans-serif';
+  ctx.fillStyle = palette.accentColor;
+  ctx.font = '700 22px "Plus Jakarta Sans", sans-serif';
   ctx.fillText((track.genre || 'Music').toUpperCase(), artX + artSize + 36, artY + 168);
 
-  // Divider line
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.strokeStyle = palette.divider;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(96, 360);
-  ctx.lineTo(width - 96, 360);
+  ctx.moveTo(96, 356);
+  ctx.lineTo(width - 96, 356);
   ctx.stroke();
-
-  // Lyric lines wrapped nicely
-  const quoteText = activeLine?.text?.trim() || `${track.title} — ${track.artist}`;
-  const secondaryText = activeLine?.translation?.trim() || nextLine?.text?.trim() || '';
 
   const wrapLines = (text: string, maxWidth: number, font: string): string[] => {
     ctx.font = font;
@@ -956,37 +1034,70 @@ export async function exportLyricQuotePng(
     return lines;
   };
 
-  const mainFont = '800 58px "Plus Jakarta Sans", sans-serif';
-  const wrappedMain = wrapLines(quoteText, width - 192, mainFont).slice(0, 6);
+  const validLines = selectedLines.filter((l) => Boolean(l?.text?.trim())).slice(0, 4);
+  const mainLinesText =
+    validLines.length > 0
+      ? validLines.map((l) => l.text.trim())
+      : [`${track.title} — ${track.artist}`];
+  const secondaryText =
+    validLines.length === 1 ? validLines[0].translation?.trim() || '' : '';
 
-  let y = 520;
-  ctx.fillStyle = '#FFFFFF';
+  const lineCount = mainLinesText.length;
+  const fontSize = lineCount >= 3 ? 46 : 56;
+  const lineAdvance = lineCount >= 3 ? 64 : 76;
+  const mainFont = `800 ${fontSize}px "Plus Jakarta Sans", sans-serif`;
+
+  let y = lineCount >= 3 ? 470 : 510;
+  ctx.fillStyle = palette.lyricColor;
   ctx.font = mainFont;
-  for (const line of wrappedMain) {
-    ctx.fillText(line, 96, y);
-    y += 78;
+
+  for (const quoteLine of mainLinesText) {
+    const wrapped = wrapLines(quoteLine, width - 192, mainFont).slice(0, 3);
+    for (const wLine of wrapped) {
+      if (y > height - 210) break;
+      ctx.fillText(wLine, 96, y);
+      y += lineAdvance;
+    }
+    y += 18;
   }
 
-  if (secondaryText) {
-    y += 32;
-    const subFont = '500 34px "Plus Jakarta Sans", sans-serif';
-    const wrappedSub = wrapLines(secondaryText, width - 192, subFont).slice(0, 4);
-    ctx.fillStyle = '#94A3B8';
+  if (secondaryText && y < height - 180) {
+    y += 14;
+    const subFont = '500 32px "Plus Jakarta Sans", sans-serif';
+    const wrappedSub = wrapLines(secondaryText, width - 192, subFont).slice(0, 3);
+    ctx.fillStyle = palette.subLyricColor;
     ctx.font = subFont;
     for (const line of wrappedSub) {
       ctx.fillText(line, 96, y);
-      y += 48;
+      y += 44;
     }
   }
 
-  // Footer watermark
-  ctx.fillStyle = '#10B981';
-  ctx.font = '700 26px "Plus Jakarta Sans", sans-serif';
+  ctx.fillStyle = palette.accentColor;
+  ctx.font = '800 26px "Plus Jakarta Sans", sans-serif';
   ctx.fillText('SONACAST', 96, height - 96);
 
-  ctx.fillStyle = '#64748B';
+  ctx.fillStyle = palette.artistColor;
   ctx.font = '500 24px "Plus Jakarta Sans", sans-serif';
-  ctx.fillText(track.album || 'Studio Release', 270, height - 96);
+  ctx.fillText((track.album || 'Studio Release').slice(0, 38), 270, height - 96);
+
+  return canvas;
+}
+
+export async function exportLyricQuotePng(
+  track: Track,
+  activeLine: LyricLine | null,
+  nextLine?: LyricLine | null,
+  theme: LyricCardTheme = 'nocturne',
+  customLines?: LyricLine[]
+): Promise<boolean> {
+  const chosenLines =
+    customLines && customLines.length > 0
+      ? customLines
+      : [activeLine, nextLine].filter((item): item is LyricLine => Boolean(item && item.text.trim()));
+
+  const canvas = await renderLyricCardCanvas(track, chosenLines, theme);
+  if (!canvas) return false;
 
   try {
     const dataUrl = canvas.toDataURL('image/png');

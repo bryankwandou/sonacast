@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { LyricLine } from '../../types';
-import { Clock, Globe, Loader2, Mic2, RefreshCw, Search } from 'lucide-react';
+import { Clock, Globe, Loader2, Mic2, RefreshCw, Search, Share2 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 
 interface LiveLyricsProps {
@@ -13,6 +13,8 @@ interface LiveLyricsProps {
   lyricsSource?: string;
   lyricsSynced?: boolean;
   onRetryLyrics?: (customTitle?: string, customArtist?: string) => void;
+  onOpenLyricCard?: (lineIndex?: number) => void;
+  onOpenArtist?: (artistName: string) => void;
   fullWidth?: boolean;
 }
 
@@ -26,6 +28,8 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
   lyricsSource,
   lyricsSynced,
   onRetryLyrics,
+  onOpenLyricCard,
+  onOpenArtist,
   fullWidth = false
 }) => {
   const { t } = useAppPreferences();
@@ -73,11 +77,36 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
           </div>
           <div className="min-w-0">
             <h3 className="text-[var(--text-primary)] font-bold text-sm truncate">{t.lyrics}</h3>
-            <p className="text-xs text-[var(--text-secondary)] truncate">{title} &middot; {artist}</p>
+            <p className="text-xs text-[var(--text-secondary)] truncate">
+              {title} &middot;{' '}
+              {onOpenArtist ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenArtist(artist)}
+                  className="hover:text-[var(--accent-text)] hover:underline cursor-pointer"
+                >
+                  {artist}
+                </button>
+              ) : (
+                artist
+              )}
+            </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-secondary)] shrink-0">
+          {onOpenLyricCard && (
+            <button
+              type="button"
+              onClick={() => onOpenLyricCard(activeIndex >= 0 ? activeIndex : undefined)}
+              data-testid="live-lyrics-card-btn"
+              title={t.lyricCardStudio}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--accent-soft)] hover:bg-[var(--accent-emerald)] hover:text-[var(--accent-fg)] border border-[var(--accent-border)] text-[11px] font-semibold text-[var(--accent-text)] cursor-pointer transition-colors"
+            >
+              <Share2 size={11} />
+              <span>{t.exportLyricCard}</span>
+            </button>
+          )}
           {lyricsStatus === 'loading' ? (
             <span className="flex items-center gap-1.5 bg-[var(--bg-elevated)] px-2.5 py-1 rounded-full border border-[var(--border-subtle)] text-[var(--accent-text)]">
               <Loader2 size={12} className="animate-spin" />
@@ -188,15 +217,18 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
           lyrics.map((line, idx) => {
             const isActive = idx === activeIndex;
             const isPast = idx < activeIndex;
+            const distance = activeIndex >= 0 ? Math.abs(idx - activeIndex) : 0;
+            const focusFade =
+              activeIndex >= 0 && !isActive && distance > 3 ? 'opacity-55 hover:opacity-95' : '';
 
             return (
               <div
                 key={idx}
                 ref={isActive ? activeLineRef : null}
                 onClick={() => onSeek(line.time)}
-                className={`group flex items-start gap-3 sm:gap-4 p-3 rounded-xl cursor-pointer transition-all duration-300 ${
+                className={`group flex items-start gap-3 sm:gap-4 p-3 rounded-xl cursor-pointer transition-all duration-300 ${focusFade} ${
                   isActive
-                    ? 'bg-[var(--accent-soft)] border-l-4 border-[var(--accent-emerald)] pl-4'
+                    ? 'bg-[var(--accent-soft)] border-l-4 border-[var(--accent-emerald)] pl-4 scale-[1.01]'
                     : isPast
                     ? 'text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
@@ -231,8 +263,24 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
                   )}
                 </div>
 
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-1 text-[var(--text-dim)]">
-                  <Clock size={14} />
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity mt-0.5 shrink-0">
+                  {onOpenLyricCard && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenLyricCard(idx);
+                      }}
+                      title={t.lyricCardStudio}
+                      aria-label={t.lyricCardStudio}
+                      className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--accent-soft)] text-[var(--text-dim)] hover:text-[var(--accent-text)] cursor-pointer transition-colors"
+                    >
+                      <Share2 size={12} />
+                    </button>
+                  )}
+                  <span className="p-1 text-[var(--text-dim)]">
+                    <Clock size={14} />
+                  </span>
                 </div>
               </div>
             );
