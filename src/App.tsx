@@ -76,8 +76,17 @@ import { VideoPlayer } from './components/player/VideoPlayer';
 import { OrbwaveCanvas } from './components/visualizer/OrbwaveCanvas';
 import { LiveLyrics } from './components/lyrics/LiveLyrics';
 
+import { ToastBanner } from './components/common/ToastBanner';
+import {
+  isCacheableAudioUrl,
+  isTrackSavedOffline,
+  listOfflineAudioUrls,
+  removeTrackOffline,
+  saveTrackOffline
+} from './services/offlineCacheService';
 import { LandingView } from './components/views/LandingView';
 import { DiscoverView } from './components/views/DiscoverView';
+import { VibeFeedView } from './components/views/VibeFeedView';
 import { FavoritesView } from './components/views/FavoritesView';
 import { BlendView } from './components/views/BlendView';
 import { SearchView } from './components/views/SearchView';
@@ -117,14 +126,32 @@ import {
   User,
   Users,
   Video,
+  WifiOff,
   X,
   Zap
 } from 'lucide-react';
 
 export default function App() {
   const { t } = useAppPreferences();
-  const [currentTab, setCurrentTab] = useState<TabType>('landing');
-  const [currentTrack, setCurrentTrack] = useState<Track>(TRACK_CATALOG[0]);
+  const [currentTab, setCurrentTab] = useState<TabType>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('track')?.trim()) return 'discover';
+    }
+    return 'landing';
+  });
+  const [currentTrack, setCurrentTrack] = useState<Track>(() => {
+    if (typeof window !== 'undefined') {
+      const trackParam = new URLSearchParams(window.location.search).get('track')?.trim();
+      if (trackParam) {
+        const match = TRACK_CATALOG.find(
+          (item) => item.id === trackParam || item.title.toLowerCase() === trackParam.toLowerCase()
+        );
+        if (match) return match;
+      }
+    }
+    return TRACK_CATALOG[0];
+  });
   const [queue, setQueue] = useState<Track[]>(TRACK_CATALOG);
   const [stageMode, setStageMode] = useState<StageExperienceMode>('orbwave-only');
   const [isStageOpen, setIsStageOpen] = useState(false);
@@ -219,6 +246,32 @@ export default function App() {
   });
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [initialBlendCode, setInitialBlendCode] = useState<string | null>(null);
+  const [normalizationEnabled, setNormalizationEnabled] = useState(true);
+  const [vocalReductionEnabled, setVocalReductionEnabled] = useState(false);
+  const [offlineAudioKeys, setOfflineAudioKeys] = useState<Set<string>>(() => new Set());
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [toastState, setToastState] = useState<{
+    message: string;
+    tone: 'default' | 'success' | 'warning';
+  } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const topSearchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const showToast = useCallback(
+    (message: string, tone: 'default' | 'success' | 'warning' = 'default') => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+      setToastState({ message, tone });
+      toastTimerRef.current = window.setTimeout(() => {
+        setToastState(null);
+        toastTimerRef.current = null;
+      }, 2600);
+    },
+    []
+  );
 
   const favoritesList = useMemo<FavoriteTrack[]>(() => {
     const metaById = new Map(favoritesMeta.map((f) => [f.id, f]));
@@ -518,11 +571,43 @@ export default function App() {
         setInitialBlendCode(blendParam);
         setCurrentTab('blend');
       }
+
+      const trackParam = params?.get('track')?.trim() || '';
+      if (!cancelled && trackParam) {
+        const localMatch = TRACK_CATALOG.find(
+          (item) => item.id === trackParam || item.title.toLowerCase() === trackParam.toLowerCase()
+        );
+        if (!localMatch) {
+          const remoteMatches = await searchTracksOnline(trackParam).catch(() => []);
+          if (!cancelled && remoteMatches[0]) {
+            setCurrentTrack(remoteMatches[0]);
+            setQueue((prev) => [
+              remoteMatches[0],
+              ...prev.filter((item) => item.id !== remoteMatches[0].id)
+            ]);
+          }
+        }
+      }
     };
 
     hydrateCloud();
+
+    const refreshOfflineKeys = () => {
+      void listOfflineAudioUrls().then((keys) => {
+        if (!cancelled) setOfflineAudioKeys(keys);
+      });
+    };
+    const handleOnlineChange = () => setIsOnline(navigator.onLine);
+    refreshOfflineKeys();
+    window.addEventListener('sonacast-offline-changed', refreshOfflineKeys);
+    window.addEventListener('online', handleOnlineChange);
+    window.addEventListener('offline', handleOnlineChange);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('sonacast-offline-changed', refreshOfflineKeys);
+      window.removeEventListener('online', handleOnlineChange);
+      window.removeEventListener('offline', handleOnlineChange);
     };
   }, [initialIdentity.listenerId, applyCloudSnapshot, hydrateListenerData]);
 
@@ -1367,9 +1452,13 @@ export default function App() {
     setManualQueue((prev) => (prev.some((x) => x.id === track.id) ? prev : [...prev, track]));
   }, []);
 
-  const handlePlayNext = useCallback((track: Track) => {
-    setManualQueue((prev) => [track, ...prev.filter((x) => x.id !== track.id)]);
-  }, []);
+  const handlePlayNext = useCallback(
+    (track: Track) => {
+      setManualQueue((prev) => [track, ...prev.filter((x) => x.id !== track.id)]);
+      showToast(`${t.playNext}: ${track.title}`, 'success');
+    },
+    [showToast, t.playNext]
+  );
 
   const handleRemoveFromManualQueue = useCallback((index: number) => {
     setManualQueue((prev) => prev.filter((_, i) => i !== index));
@@ -1377,7 +1466,8 @@ export default function App() {
 
   const handleClearManualQueue = useCallback(() => {
     setManualQueue([]);
-  }, []);
+    showToast(t.clearQueue);
+  }, [showToast, t.clearQueue]);
 
   const handleMoveManualQueueItem = useCallback((index: number, delta: -1 | 1) => {
     setManualQueue((prev) => {
@@ -1604,15 +1694,74 @@ export default function App() {
     });
   }, []);
 
-  const handleSetSleepTimer = useCallback((minutes: number | null) => {
-    if (minutes === null) {
-      setSleepEndAtMs(null);
-      setSleepMinutesRemaining(null);
-    } else {
-      setSleepEndAtMs(Date.now() + minutes * 60000);
-      setSleepMinutesRemaining(minutes);
-    }
-  }, []);
+  const handleSetSleepTimer = useCallback(
+    (minutes: number | null) => {
+      if (minutes === null) {
+        setSleepEndAtMs(null);
+        setSleepMinutesRemaining(null);
+        showToast(`${t.sleepTimer}: ${t.sleepOff}`);
+      } else {
+        setSleepEndAtMs(Date.now() + minutes * 60000);
+        setSleepMinutesRemaining(minutes);
+        showToast(`${t.sleepTimer}: ${minutes}m`, 'success');
+      }
+    },
+    [showToast, t.sleepTimer, t.sleepOff]
+  );
+
+  const handleToggleNormalization = useCallback(() => {
+    setNormalizationEnabled((prev) => {
+      const next = !prev;
+      sharedAudioEngine.setNormalization(next);
+      showToast(`${t.normalizeVolume}: ${next ? 'ON' : 'OFF'}`, 'success');
+      return next;
+    });
+  }, [showToast, t.normalizeVolume]);
+
+  const handleToggleVocalReduction = useCallback(() => {
+    setVocalReductionEnabled((prev) => {
+      const next = !prev;
+      sharedAudioEngine.setVocalReduction(next);
+      showToast(`${t.karaokeMode}: ${next ? 'ON' : 'OFF'}`, 'success');
+      return next;
+    });
+  }, [showToast, t.karaokeMode]);
+
+  const handleToggleSaveOffline = useCallback(
+    async (track: Track) => {
+      if (!track.audioUrl || !isCacheableAudioUrl(track.audioUrl)) {
+        showToast('Direct audio stream required for offline cache', 'warning');
+        return;
+      }
+      if (isTrackSavedOffline(offlineAudioKeys, track.audioUrl)) {
+        await removeTrackOffline(track.audioUrl);
+        showToast(`${t.saveOffline}: ${track.title} removed`);
+      } else {
+        const ok = await saveTrackOffline(track.audioUrl);
+        showToast(
+          ok ? `${t.savedOffline}: ${track.title}` : 'Unable to cache audio offline',
+          ok ? 'success' : 'warning'
+        );
+      }
+    },
+    [offlineAudioKeys, showToast, t.saveOffline, t.savedOffline]
+  );
+
+  const handleShareTrack = useCallback(
+    async (track: Track) => {
+      const url =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/?track=${encodeURIComponent(track.id)}`
+          : `/?track=${encodeURIComponent(track.id)}`;
+      try {
+        await navigator.clipboard?.writeText(url);
+      } catch {
+        // Fallback when clipboard permission is denied
+      }
+      showToast(`${t.shareTrackLink}: ${track.title}`, 'success');
+    },
+    [showToast, t.shareTrackLink]
+  );
 
   const handleCreatePlaylist = useCallback(
     (name: string, description = '', initialTrack?: Track) => {
@@ -2037,9 +2186,15 @@ export default function App() {
     runCloudMutation('clear_search_history', {});
   }, [runCloudMutation]);
 
-  // Global keyboard shortcuts (Space play/pause, Arrows seek/skip, M mute, L like, A album, F favorites, B blend, S shuffle, R repeat, ? help)
+  // Global keyboard shortcuts (/, Ctrl+K search focus, Space play/pause, Arrows seek/skip, M mute, L like, A album, F favorites, B blend, S shuffle, R repeat, ? help)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCurrentTab((prev) => (prev === 'landing' ? 'discover' : prev));
+        window.requestAnimationFrame(() => topSearchInputRef.current?.focus());
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
       if (
@@ -2051,7 +2206,11 @@ export default function App() {
       ) {
         return;
       }
-      if (e.code === 'Space') {
+      if (e.key === '/') {
+        e.preventDefault();
+        setCurrentTab((prev) => (prev === 'landing' ? 'discover' : prev));
+        window.requestAnimationFrame(() => topSearchInputRef.current?.focus());
+      } else if (e.code === 'Space') {
         e.preventDefault();
         if (sharedAudioEngine.getIsPlaying()) sharedAudioEngine.pause();
         else sharedAudioEngine.resume();
@@ -2275,6 +2434,15 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+              {!isOnline && (
+                <span
+                  data-testid="offline-mode-badge"
+                  className="text-[10px] font-bold text-amber-500 hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30"
+                >
+                  <WifiOff size={11} />
+                  <span>{t.offlineReadyBadge}</span>
+                </span>
+              )}
               {sleepMinutesRemaining !== null && (
                 <span className="text-[11px] text-[var(--accent-text)] font-mono hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--accent-soft)]">
                   {sleepMinutesRemaining}m
@@ -2362,7 +2530,9 @@ export default function App() {
                       className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
                     />
                     <input
+                      ref={topSearchInputRef}
                       type="text"
+                      data-testid="topbar-search-input"
                       value={topSearchInput}
                       onFocus={() => setIsTopSearchFocused(true)}
                       onBlur={() => window.setTimeout(() => setIsTopSearchFocused(false), 160)}
@@ -2741,6 +2911,41 @@ export default function App() {
                   />
                 )}
 
+                {currentTab === 'vibe' && (
+                  <VibeFeedView
+                    tracks={queue.length > 0 ? queue : TRACK_CATALOG}
+                    currentTrack={currentTrack}
+                    isPlaying={isPlaying}
+                    currentTime={currentTime}
+                    duration={currentTrack.duration}
+                    lyrics={currentTrack.lyrics || []}
+                    lyricsSynced={lyricsSynced}
+                    isLiked={likedTrackIds.has(currentTrack.id)}
+                    isSavedOffline={isTrackSavedOffline(offlineAudioKeys, currentTrack.audioUrl)}
+                    canSaveOffline={isCacheableAudioUrl(currentTrack.audioUrl)}
+                    vocalReductionEnabled={vocalReductionEnabled}
+                    lowCpuMode={lowCpuMode}
+                    onSelectTrack={(tr) => handleSelectTrack(tr)}
+                    onTogglePlay={handleTogglePlay}
+                    onNext={() => handleNext(false)}
+                    onPrevious={handlePrev}
+                    onSeek={handleSeek}
+                    onToggleLike={(id) => {
+                      const targetTrack =
+                        queue.find((q) => q.id === id) ||
+                        TRACK_CATALOG.find((c) => c.id === id) ||
+                        currentTrack;
+                      handleToggleLike(targetTrack);
+                    }}
+                    onPlayNext={handlePlayNext}
+                    onToggleVocalReduction={handleToggleVocalReduction}
+                    onToggleSaveOffline={handleToggleSaveOffline}
+                    onShareTrack={handleShareTrack}
+                    onOpenLyricCard={handleOpenLyricCard}
+                    onOpenArtist={handleOpenArtistSpotlight}
+                  />
+                )}
+
                 {currentTab === 'favorites' && (
                   <FavoritesView
                     favorites={favoritesList}
@@ -2859,6 +3064,8 @@ export default function App() {
               queue={queue}
               manualQueue={manualQueue}
               currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              lowCpuMode={lowCpuMode}
               onSelectTrack={(item) => handleSelectTrack(item, { fromContextList: true })}
               onRemoveFromManualQueue={handleRemoveFromManualQueue}
               onClearManualQueue={handleClearManualQueue}
@@ -2935,6 +3142,17 @@ export default function App() {
             onSetSleepTimer={handleSetSleepTimer}
             onOpenArtist={handleOpenArtistSpotlight}
             onOpenLyricCard={() => handleOpenLyricCard()}
+            onSkipSeconds={(delta) =>
+              handleSeek(Math.max(0, Math.min(currentTrack.duration || 210, currentTime + delta)))
+            }
+            normalizationEnabled={normalizationEnabled}
+            onToggleNormalization={handleToggleNormalization}
+            vocalReductionEnabled={vocalReductionEnabled}
+            onToggleVocalReduction={handleToggleVocalReduction}
+            canSaveOffline={isCacheableAudioUrl(currentTrack.audioUrl)}
+            isSavedOffline={isTrackSavedOffline(offlineAudioKeys, currentTrack.audioUrl)}
+            onToggleSaveOffline={() => void handleToggleSaveOffline(currentTrack)}
+            onShareTrack={() => void handleShareTrack(currentTrack)}
           />
         </>
       )}
@@ -3022,6 +3240,14 @@ export default function App() {
         lowCpuMode={lowCpuMode}
         onOpenArtist={handleOpenArtistSpotlight}
         onOpenLyricCard={handleOpenLyricCard}
+        normalizationEnabled={normalizationEnabled}
+        onToggleNormalization={handleToggleNormalization}
+        vocalReductionEnabled={vocalReductionEnabled}
+        onToggleVocalReduction={handleToggleVocalReduction}
+        canSaveOffline={isCacheableAudioUrl(currentTrack.audioUrl)}
+        isSavedOffline={isTrackSavedOffline(offlineAudioKeys, currentTrack.audioUrl)}
+        onToggleSaveOffline={() => void handleToggleSaveOffline(currentTrack)}
+        onShareTrack={() => void handleShareTrack(currentTrack)}
       />
 
       {/* Resso / Spotify Style Shareable Lyric Card Studio */}
@@ -3083,6 +3309,12 @@ export default function App() {
       <PitchDeckModal
         isOpen={isPitchModalOpen}
         onClose={() => setIsPitchModalOpen(false)}
+      />
+
+      <ToastBanner
+        message={toastState?.message || null}
+        tone={toastState?.tone || 'default'}
+        onDismiss={() => setToastState(null)}
       />
     </div>
   );

@@ -75,7 +75,10 @@ declare global {
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
+  private compressorNode: DynamicsCompressorNode | null = null;
   private gainNode: GainNode | null = null;
+  private bypassGainNode: GainNode | null = null;
+  private vocalOutGainNode: GainNode | null = null;
   private lowFilter: BiquadFilterNode | null = null;
   private midFilter: BiquadFilterNode | null = null;
   private highFilter: BiquadFilterNode | null = null;
@@ -85,6 +88,8 @@ export class AudioEngine {
   private eqPreset: EqPreset = 'flat';
   private playbackRate = 1;
   private crossfadeSeconds = 2;
+  private normalizationEnabled = true;
+  private vocalReductionEnabled = false;
 
   private activeBackend: AudioBackendType = 'none';
   private ytHostElement: HTMLElement | null = null;
@@ -311,6 +316,19 @@ export class AudioEngine {
       this.gainNode = this.ctx.createGain();
       this.gainNode.gain.value = 1;
 
+      this.compressorNode = this.ctx.createDynamicsCompressor();
+      this.compressorNode.threshold.value = -18;
+      this.compressorNode.knee.value = 12;
+      this.compressorNode.ratio.value = 3.5;
+      this.compressorNode.attack.value = 0.005;
+      this.compressorNode.release.value = 0.18;
+
+      this.bypassGainNode = this.ctx.createGain();
+      this.bypassGainNode.gain.value = 1;
+
+      this.vocalOutGainNode = this.ctx.createGain();
+      this.vocalOutGainNode.gain.value = 0;
+
       this.lowFilter = this.ctx.createBiquadFilter();
       this.lowFilter.type = 'lowshelf';
       this.lowFilter.frequency.value = 110;
@@ -324,12 +342,16 @@ export class AudioEngine {
       this.highFilter.type = 'highshelf';
       this.highFilter.frequency.value = 4600;
 
+      this.bypassGainNode.connect(this.lowFilter);
+      this.vocalOutGainNode.connect(this.lowFilter);
       this.lowFilter.connect(this.midFilter);
       this.midFilter.connect(this.highFilter);
-      this.highFilter.connect(this.analyser);
+      this.highFilter.connect(this.compressorNode);
+      this.compressorNode.connect(this.analyser);
       this.analyser.connect(this.gainNode);
       this.gainNode.connect(this.ctx.destination);
       this.applyEqFilters();
+      this.applyDspSettings();
 
       this.freqArray = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
       this.waveArray = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
@@ -343,7 +365,35 @@ export class AudioEngine {
 
       try {
         this.mediaSourceNode = this.ctx.createMediaElementSource(this.audioElement);
-        this.mediaSourceNode.connect(this.lowFilter);
+        this.mediaSourceNode.connect(this.bypassGainNode);
+
+        // Stereo center-channel attenuation (L-R / R-L) + sub-200Hz bass preservation
+        const splitter = this.ctx.createChannelSplitter(2);
+        const merger = this.ctx.createChannelMerger(2);
+        const invertRight = this.ctx.createGain();
+        invertRight.gain.value = -1;
+        const invertLeft = this.ctx.createGain();
+        invertLeft.gain.value = -1;
+        const bassKeepFilter = this.ctx.createBiquadFilter();
+        bassKeepFilter.type = 'lowpass';
+        bassKeepFilter.frequency.value = 200;
+        const bassKeepGain = this.ctx.createGain();
+        bassKeepGain.gain.value = 0.68;
+
+        this.mediaSourceNode.connect(splitter);
+        splitter.connect(merger, 0, 0);
+        splitter.connect(invertRight, 1);
+        invertRight.connect(merger, 0, 0);
+
+        splitter.connect(merger, 1, 1);
+        splitter.connect(invertLeft, 0);
+        invertLeft.connect(merger, 0, 1);
+
+        merger.connect(this.vocalOutGainNode);
+
+        this.mediaSourceNode.connect(bassKeepFilter);
+        bassKeepFilter.connect(bassKeepGain);
+        bassKeepGain.connect(this.vocalOutGainNode);
       } catch {
         // Safe fallback if browser blocks media source attachment
       }
@@ -1187,6 +1237,53 @@ export class AudioEngine {
     this.lowFilter.gain.setValueAtTime(lowGain, now);
     this.midFilter.gain.setValueAtTime(midGain, now);
     this.highFilter.gain.setValueAtTime(highGain, now);
+  }
+
+  private applyDspSettings() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (this.compressorNode) {
+      this.compressorNode.threshold.setTargetAtTime(
+        this.normalizationEnabled ? -18 : 0,
+        now,
+        0.04
+      );
+      this.compressorNode.ratio.setTargetAtTime(
+        this.normalizationEnabled ? 3.5 : 1,
+        now,
+        0.04
+      );
+    }
+    if (this.bypassGainNode && this.vocalOutGainNode) {
+      this.bypassGainNode.gain.setTargetAtTime(
+        this.vocalReductionEnabled ? 0 : 1,
+        now,
+        0.03
+      );
+      this.vocalOutGainNode.gain.setTargetAtTime(
+        this.vocalReductionEnabled ? 0.92 : 0,
+        now,
+        0.03
+      );
+    }
+  }
+
+  public setNormalization(enabled: boolean) {
+    this.normalizationEnabled = enabled;
+    this.applyDspSettings();
+  }
+
+  public isNormalizationEnabled(): boolean {
+    return this.normalizationEnabled;
+  }
+
+  public setVocalReduction(enabled: boolean) {
+    this.vocalReductionEnabled = enabled;
+    this.applyDspSettings();
+  }
+
+  public isVocalReductionEnabled(): boolean {
+    return this.vocalReductionEnabled;
   }
 
   public setEqPreset(preset: EqPreset) {

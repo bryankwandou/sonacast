@@ -2,9 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { EqPreset, RepeatMode, StageExperienceMode, Track } from '../../types';
 import {
   Activity,
+  Check,
   Clock,
   Disc,
+  Download,
   FolderPlus,
+  Gauge,
   Heart,
   Infinity as InfinityIcon,
   ListMusic,
@@ -18,6 +21,8 @@ import {
   Radio,
   Repeat,
   Repeat1,
+  RotateCcw,
+  RotateCw,
   Share2,
   Shuffle,
   SkipBack,
@@ -79,6 +84,15 @@ interface BottomPlayerBarProps {
   onSetSleepTimer?: (mins: number | null) => void;
   onOpenArtist?: (artistName: string) => void;
   onOpenLyricCard?: () => void;
+  onSkipSeconds?: (delta: number) => void;
+  normalizationEnabled?: boolean;
+  onToggleNormalization?: () => void;
+  vocalReductionEnabled?: boolean;
+  onToggleVocalReduction?: () => void;
+  canSaveOffline?: boolean;
+  isSavedOffline?: boolean;
+  onToggleSaveOffline?: () => void;
+  onShareTrack?: () => void;
 }
 
 export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
@@ -123,7 +137,16 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   onSelectCrossfade,
   onSetSleepTimer,
   onOpenArtist,
-  onOpenLyricCard
+  onOpenLyricCard,
+  onSkipSeconds,
+  normalizationEnabled = true,
+  onToggleNormalization,
+  vocalReductionEnabled = false,
+  onToggleVocalReduction,
+  canSaveOffline = false,
+  isSavedOffline = false,
+  onToggleSaveOffline,
+  onShareTrack
 }) => {
   const { t } = useAppPreferences();
   const [hoverPct, setHoverPct] = useState<number | null>(null);
@@ -290,12 +313,40 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                 <Radio size={15} />
               </button>
             )}
+            {canSaveOffline && onToggleSaveOffline && (
+              <button
+                type="button"
+                onClick={onToggleSaveOffline}
+                data-testid="player-offline-btn"
+                aria-label={isSavedOffline ? t.savedOffline : t.saveOffline}
+                title={isSavedOffline ? t.savedOffline : t.saveOffline}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  isSavedOffline
+                    ? 'text-[var(--accent-text)] bg-[var(--accent-soft)]'
+                    : 'text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
+                }`}
+              >
+                {isSavedOffline ? <Check size={15} /> : <Download size={15} />}
+              </button>
+            )}
+            {onShareTrack && (
+              <button
+                type="button"
+                onClick={onShareTrack}
+                data-testid="player-share-btn"
+                aria-label={t.shareTrackLink}
+                title={t.shareTrackLink}
+                className="hidden md:inline-flex p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
+              >
+                <Share2 size={14} />
+              </button>
+            )}
           </div>
         </div>
 
         {/* Center: Transport Controls & Time Display */}
         <div className="flex flex-col items-center gap-1 shrink-0">
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             <button
               type="button"
               onClick={() => onToggleShuffle?.()}
@@ -311,6 +362,20 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             >
               <Shuffle size={15} />
             </button>
+
+            {onSkipSeconds && (
+              <button
+                type="button"
+                onClick={() => onSkipSeconds(-15)}
+                data-testid="player-skip-back-15"
+                aria-label={t.skipBack15}
+                title={t.skipBack15}
+                className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-1 rounded-md text-[10px] font-mono font-bold text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
+              >
+                <RotateCcw size={12} />
+                <span>15</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -349,6 +414,20 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             >
               <SkipForward size={18} className="fill-current" />
             </button>
+
+            {onSkipSeconds && (
+              <button
+                type="button"
+                onClick={() => onSkipSeconds(15)}
+                data-testid="player-skip-forward-15"
+                aria-label={t.skipForward15}
+                title={t.skipForward15}
+                className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-1 rounded-md text-[10px] font-mono font-bold text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] transition-colors cursor-pointer"
+              >
+                <span>15</span>
+                <RotateCw size={12} />
+              </button>
+            )}
 
             <button
               type="button"
@@ -602,6 +681,43 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                           </button>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {(onToggleNormalization || onToggleVocalReduction) && (
+                    <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
+                      {onToggleNormalization && (
+                        <button
+                          type="button"
+                          onClick={onToggleNormalization}
+                          data-testid="dsp-normalize-toggle"
+                          aria-pressed={normalizationEnabled}
+                          className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-[10px] font-bold cursor-pointer transition-colors border ${
+                            normalizationEnabled
+                              ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                              : 'bg-[var(--bg-tint)] border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          }`}
+                        >
+                          <Gauge size={12} />
+                          <span className="truncate">{t.normalizeVolume}</span>
+                        </button>
+                      )}
+                      {onToggleVocalReduction && (
+                        <button
+                          type="button"
+                          onClick={onToggleVocalReduction}
+                          data-testid="dsp-vocal-toggle"
+                          aria-pressed={vocalReductionEnabled}
+                          className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-[10px] font-bold cursor-pointer transition-colors border ${
+                            vocalReductionEnabled
+                              ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                              : 'bg-[var(--bg-tint)] border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          }`}
+                        >
+                          <Mic2 size={12} />
+                          <span className="truncate">{t.karaokeMode}</span>
+                        </button>
+                      )}
                     </div>
                   )}
 

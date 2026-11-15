@@ -20,6 +20,7 @@ import { MOOD_PRESETS } from '../../services/recommendationEngine';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { usePopularCharts } from '../../hooks/usePopularCharts';
 import { TrackCard } from '../common/TrackCard';
+import { PlayingBars } from '../common/PlayingBars';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 import { useCoverAccentRgb } from '../../utils/coverColor';
 import {
@@ -216,14 +217,21 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const selectedPlaylist =
     playlists.find((p) => p.id === activePlaylistId) || playlists[0] || null;
 
-  const filteredMasters =
-    selectedArtist === 'All'
-      ? tracks
-      : tracks.filter(
-        (item) =>
-          item.artist.toLowerCase().includes(selectedArtist.toLowerCase()) ||
-          item.title.toLowerCase().includes(selectedArtist.toLowerCase())
-      );
+  const normalizedFilter = inlineQuery.trim().toLowerCase();
+  const filteredMasters = tracks.filter((item) => {
+    const matchesArtist =
+      selectedArtist === 'All' ||
+      item.artist.toLowerCase().includes(selectedArtist.toLowerCase()) ||
+      item.title.toLowerCase().includes(selectedArtist.toLowerCase());
+    if (!matchesArtist) return false;
+    if (!normalizedFilter) return true;
+    return (
+      item.title.toLowerCase().includes(normalizedFilter) ||
+      item.artist.toLowerCase().includes(normalizedFilter) ||
+      item.album.toLowerCase().includes(normalizedFilter) ||
+      item.genre.toLowerCase().includes(normalizedFilter)
+    );
+  });
 
   const handlePlayTrackWithLyrics = (track: Track) => {
     if (inlineQuery.trim()) {
@@ -236,22 +244,6 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           onUpdateLyrics(track.id, synced);
         }
       });
-    }
-  };
-
-  const handleInlineSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = inlineQuery.trim();
-    if (!q) return;
-    onRecordSearch?.(q, 'songs');
-    setIsSearchingInline(true);
-    try {
-      const results = await searchTracksOnline(q);
-      setInlineResults(results);
-    } catch {
-      setInlineResults([]);
-    } finally {
-      setIsSearchingInline(false);
     }
   };
 
@@ -488,11 +480,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                         </div>
                         <div className="min-w-0 flex-1">
                           <div
-                            className={`text-xs font-bold truncate ${
+                            className={`flex items-center gap-1.5 text-xs font-bold truncate ${
                               isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
                             }`}
                           >
-                            {item.title}
+                            {isActive && (
+                              <PlayingBars isPlaying={isPlaying} lowCpuMode={lowCpuMode} />
+                            )}
+                            <span className="truncate">{item.title}</span>
                           </div>
                           <div className="text-[11px] text-[var(--text-dim)] truncate">
                             {item.artist}
@@ -549,41 +544,52 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </div>
           )}
 
-          {/* Quick Inline Catalog Search + Artist Chips */}
-          <div className="space-y-3">
-            <form onSubmit={handleInlineSearch} className="flex flex-col sm:flex-row gap-2">
+          {/* Compact Local Shelf Filter + Artist Chips */}
+          <div className="space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <div className="relative flex-1">
                 <Search
-                  size={15}
+                  size={14}
                   className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
                 />
                 <input
                   type="text"
                   value={inlineQuery}
                   onChange={(e) => setInlineQuery(e.target.value)}
-                  placeholder={t.searchPlaceholder}
-                  className="w-full h-10 pl-10 pr-4 rounded-xl bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-emerald)]"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && inlineQuery.trim() && filteredMasters.length === 0 && onNavigateSearch) {
+                      onNavigateSearch(inlineQuery.trim());
+                    }
+                  }}
+                  placeholder={t.filterBelowPlaceholder}
+                  className="w-full h-9 pl-9 pr-8 rounded-full bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-emerald)]"
                 />
+                {inlineQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setInlineQuery('')}
+                    aria-label="Clear filter"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)] hover:text-[var(--text-primary)] cursor-pointer"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
               </div>
-              <button
-                type="submit"
-                disabled={isSearchingInline}
-                className="h-10 px-5 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-xs font-bold flex items-center justify-center gap-2 shrink-0 cursor-pointer disabled:opacity-60"
-              >
-                {isSearchingInline ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                <span>{t.searchAction}</span>
-              </button>
               {onNavigateSearch && (
                 <button
                   type="button"
                   onClick={() => onNavigateSearch(inlineQuery.trim() || 'Queen')}
-                  className="h-10 px-4 rounded-xl bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                  className="h-9 px-3.5 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                 >
-                  <Globe size={14} className="text-[var(--accent-text)]" />
-                  <span>Full Search</span>
+                  {isSearchingInline ? (
+                    <Loader2 size={13} className="animate-spin text-[var(--accent-text)]" />
+                  ) : (
+                    <Globe size={13} className="text-[var(--accent-text)]" />
+                  )}
+                  <span>{t.navSearch}</span>
                 </button>
               )}
-            </form>
+            </div>
 
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
               <button

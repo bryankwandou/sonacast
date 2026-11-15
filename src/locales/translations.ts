@@ -178,6 +178,20 @@ export interface TranslationKeys {
   artistAlbums: string;
   playArtistTopMix: string;
   sleepOff: string;
+  navVibeFeed: string;
+  navGroupDiscover: string;
+  navGroupLibrary: string;
+  navGroupExperience: string;
+  normalizeVolume: string;
+  karaokeMode: string;
+  saveOffline: string;
+  savedOffline: string;
+  shareTrackLink: string;
+  resyncLyrics: string;
+  skipBack15: string;
+  skipForward15: string;
+  offlineReadyBadge: string;
+  filterBelowPlaceholder: string;
 }
 
 export interface LanguageOption {
@@ -391,7 +405,21 @@ const EN_BASE: TranslationKeys = {
   artistTopTracks: 'Popular Tracks',
   artistAlbums: 'Albums & Releases',
   playArtistTopMix: 'Play Top Mix',
-  sleepOff: 'Off'
+  sleepOff: 'Off',
+  navVibeFeed: 'Vibe Feed',
+  navGroupDiscover: 'Discover',
+  navGroupLibrary: 'Collection',
+  navGroupExperience: 'Studio & Audio',
+  normalizeVolume: 'Loudness Norm',
+  karaokeMode: 'Vocal Sing',
+  saveOffline: 'Save Offline',
+  savedOffline: 'Saved Offline',
+  shareTrackLink: 'Copy Share Link',
+  resyncLyrics: 'Sync to Live',
+  skipBack15: 'Back 15s',
+  skipForward15: 'Forward 15s',
+  offlineReadyBadge: 'Offline Mode',
+  filterBelowPlaceholder: 'Filter shelves below by title, artist, or mood...'
 };
 
 const loc = (overrides: Partial<TranslationKeys>): TranslationKeys => ({
@@ -577,7 +605,21 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     artistTopTracks: 'Lagu Populer',
     artistAlbums: 'Album & Rilisan',
     playArtistTopMix: 'Putar Mix Populer',
-    sleepOff: 'Mati'
+    sleepOff: 'Mati',
+    navVibeFeed: 'Feed Vibe',
+    navGroupDiscover: 'Jelajah',
+    navGroupLibrary: 'Koleksi',
+    navGroupExperience: 'Studio & Audio',
+    normalizeVolume: 'Normalisasi Volume',
+    karaokeMode: 'Mode Vokal / Sing',
+    saveOffline: 'Simpan Offline',
+    savedOffline: 'Tersimpan Offline',
+    shareTrackLink: 'Salin Link Lagu',
+    resyncLyrics: 'Sinkron ke Aktif',
+    skipBack15: 'Mundur 15d',
+    skipForward15: 'Maju 15d',
+    offlineReadyBadge: 'Mode Offline',
+    filterBelowPlaceholder: 'Filter katalog di bawah berdasarkan judul, artis, atau mood...'
   }),
   ms: loc({
     navLanding: 'Halaman Utama',

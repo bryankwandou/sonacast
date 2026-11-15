@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { LyricLine } from '../../types';
-import { Clock, Globe, Loader2, Mic2, RefreshCw, Search, Share2 } from 'lucide-react';
+import { Clock, Globe, Loader2, LocateFixed, Mic2, RefreshCw, Search, Share2 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 
 interface LiveLyricsProps {
@@ -35,9 +35,14 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
   const { t } = useAppPreferences();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const activeLineRef = useRef<HTMLDivElement | null>(null);
+  const programmaticScrollUntilRef = useRef<number>(0);
   const [showManualLookup, setShowManualLookup] = useState(false);
   const [manualTitle, setManualTitle] = useState(title);
   const [manualArtist, setManualArtist] = useState(artist);
+  const [lockedTrackKey, setLockedTrackKey] = useState<string | null>(null);
+
+  const trackKey = `${title}::${artist}`;
+  const manualScrollLocked = lockedTrackKey === trackKey;
 
   // Determine active index
   let activeIndex = -1;
@@ -48,15 +53,34 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
     }
   }
 
-  // Smooth auto-scroll active lyric into center view
+  // Smooth auto-scroll active lyric into center view unless paused by manual browse
   useEffect(() => {
+    if (manualScrollLocked) return;
     if (activeLineRef.current && containerRef.current) {
+      programmaticScrollUntilRef.current = performance.now() + 900;
       activeLineRef.current.scrollIntoView({
         behavior: 'smooth',
         block: 'center'
       });
     }
-  }, [activeIndex]);
+  }, [activeIndex, manualScrollLocked]);
+
+  const handleManualScrollIntent = () => {
+    if (lyrics.length > 0 && !manualScrollLocked) {
+      setLockedTrackKey(trackKey);
+    }
+  };
+
+  const handleResync = () => {
+    setLockedTrackKey(null);
+    if (activeLineRef.current) {
+      programmaticScrollUntilRef.current = performance.now() + 900;
+      activeLineRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }
+  };
 
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -187,6 +211,13 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
       <div
         ref={containerRef}
         data-testid="live-lyrics-container"
+        onWheel={handleManualScrollIntent}
+        onTouchMove={handleManualScrollIntent}
+        onScroll={() => {
+          if (performance.now() > programmaticScrollUntilRef.current) {
+            handleManualScrollIntent();
+          }
+        }}
         className="flex-1 overflow-y-auto space-y-2.5 pr-2 scroll-smooth focus:outline-none"
       >
         {lyricsStatus === 'loading' && lyrics.length === 0 ? (
@@ -287,6 +318,20 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
           })
         )}
       </div>
+
+      {manualScrollLocked && lyrics.length > 0 && activeIndex >= 0 && (
+        <div className="flex justify-center -mt-10 mb-2 relative z-10 pointer-events-none">
+          <button
+            type="button"
+            onClick={handleResync}
+            data-testid="lyrics-resync-btn"
+            className="pointer-events-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-xs font-bold shadow-lg cursor-pointer transition-transform active:scale-95"
+          >
+            <LocateFixed size={13} />
+            <span>{t.resyncLyrics}</span>
+          </button>
+        </div>
+      )}
 
       {/* Footer hint */}
       <div className="pt-3 border-t border-[var(--border-subtle)] mt-3 text-center text-[11px] text-[var(--text-dim)]">

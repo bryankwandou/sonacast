@@ -153,6 +153,7 @@ export type StageExperienceMode =
 export type TabType =
   | 'landing'
   | 'discover'
+  | 'vibe'
   | 'favorites'
   | 'blend'
   | 'search'

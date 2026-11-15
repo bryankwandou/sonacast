@@ -2,9 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronDown,
   Download,
+  Gauge,
   Heart,
   ListPlus,
   Loader2,
+  Mic2,
   Moon,
   Pause,
   Play,
@@ -12,6 +14,8 @@ import {
   RefreshCw,
   Repeat,
   Repeat1,
+  RotateCcw,
+  RotateCw,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -60,6 +64,14 @@ interface ExpandedPlayerModalProps {
   onAddToPlaylist: (playlistId: string, track: Track) => void;
   onOpenArtist?: (artistName: string) => void;
   onOpenLyricCard?: (lineIndex?: number) => void;
+  normalizationEnabled?: boolean;
+  onToggleNormalization?: () => void;
+  vocalReductionEnabled?: boolean;
+  onToggleVocalReduction?: () => void;
+  canSaveOffline?: boolean;
+  isSavedOffline?: boolean;
+  onToggleSaveOffline?: () => void;
+  onShareTrack?: () => void;
 }
 
 const EQ_OPTIONS: { id: EqPreset; label: string }[] = [
@@ -107,7 +119,15 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   onAddToPlaylist,
   lowCpuMode = false,
   onOpenArtist,
-  onOpenLyricCard
+  onOpenLyricCard,
+  normalizationEnabled = true,
+  onToggleNormalization,
+  vocalReductionEnabled = false,
+  onToggleVocalReduction,
+  canSaveOffline = false,
+  isSavedOffline = false,
+  onToggleSaveOffline,
+  onShareTrack
 }) => {
   const { t } = useAppPreferences();
   const [showDsp, setShowDsp] = useState(false);
@@ -293,6 +313,34 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                   <Radio size={18} />
                 </button>
 
+                {canSaveOffline && onToggleSaveOffline && (
+                  <button
+                    type="button"
+                    onClick={onToggleSaveOffline}
+                    title={isSavedOffline ? t.savedOffline : t.saveOffline}
+                    aria-label={isSavedOffline ? t.savedOffline : t.saveOffline}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                      isSavedOffline
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                        : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    {isSavedOffline ? <Check size={18} /> : <Download size={18} />}
+                  </button>
+                )}
+
+                {onShareTrack && (
+                  <button
+                    type="button"
+                    onClick={onShareTrack}
+                    title={t.shareTrackLink}
+                    aria-label={t.shareTrackLink}
+                    className="w-10 h-10 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <Share2 size={17} />
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setShowPlaylistMenu((v) => !v)}
@@ -382,7 +430,18 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                 aria-label="Previous track"
                 className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
               >
-                <SkipBack size={24} className="fill-current" />
+                <SkipBack size={22} className="fill-current" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSeek(Math.max(0, currentTime - 15))}
+                aria-label={t.skipBack15}
+                title={t.skipBack15}
+                className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-mono font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer"
+              >
+                <RotateCcw size={13} />
+                <span>15</span>
               </button>
 
               <button
@@ -396,11 +455,22 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
 
               <button
                 type="button"
+                onClick={() => onSeek(Math.min(duration, currentTime + 15))}
+                aria-label={t.skipForward15}
+                title={t.skipForward15}
+                className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-mono font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer"
+              >
+                <span>15</span>
+                <RotateCw size={13} />
+              </button>
+
+              <button
+                type="button"
                 onClick={onNext}
                 aria-label="Next track"
                 className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
               >
-                <SkipForward size={24} className="fill-current" />
+                <SkipForward size={22} className="fill-current" />
               </button>
 
               <button
@@ -487,6 +557,41 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {(onToggleNormalization || onToggleVocalReduction) && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {onToggleNormalization && (
+                      <button
+                        type="button"
+                        onClick={onToggleNormalization}
+                        aria-pressed={normalizationEnabled}
+                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer ${
+                          normalizationEnabled
+                            ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                            : 'bg-[var(--bg-surface)] text-[var(--text-secondary)]'
+                        }`}
+                      >
+                        <Gauge size={14} />
+                        <span>{t.normalizeVolume}</span>
+                      </button>
+                    )}
+                    {onToggleVocalReduction && (
+                      <button
+                        type="button"
+                        onClick={onToggleVocalReduction}
+                        aria-pressed={vocalReductionEnabled}
+                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer ${
+                          vocalReductionEnabled
+                            ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                            : 'bg-[var(--bg-surface)] text-[var(--text-secondary)]'
+                        }`}
+                      >
+                        <Mic2 size={14} />
+                        <span>{t.karaokeMode}</span>
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-[var(--text-dim)] mb-1.5">

@@ -121,3 +121,17 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-hover);
 }
+
+@keyframes sonacastEqBounce {
+  0%, 100% {
+    transform: scaleY(0.28);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.sonacast-eq-bar {
+  transform-origin: bottom;
+  animation: sonacastEqBounce 0.85s ease-in-out infinite;
+}

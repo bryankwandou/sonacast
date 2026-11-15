@@ -9,8 +9,10 @@ interface ShortcutsModalProps {
 
 const SHORTCUT_ITEMS: { keyLabel: string; description: string }[] = [
   { keyLabel: 'Space', description: 'Play / Pause current full-length track' },
+  { keyLabel: '/', description: 'Focus global catalog search bar (or Ctrl+K)' },
   { keyLabel: 'Right Arrow', description: 'Skip to next pure-algorithm recommendation' },
   { keyLabel: 'Left Arrow', description: 'Return to previous track in session history' },
+  { keyLabel: 'Up / Down', description: 'Switch tracks vertically in Vibe Feed' },
   { keyLabel: 'L', description: 'Toggle Favorite (synced to Neon Postgres)' },
   { keyLabel: 'A', description: 'Open Add to Album & Personal Note sheet' },
   { keyLabel: 'B', description: 'Open Blend Music studio' },

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import type { PlaybackContextInfo, RadioStation, Track } from '../../types';
 import {
   ChevronUp,
-  Disc3,
   Heart,
   Infinity as InfinityIcon,
   ListMusic,
@@ -20,11 +19,14 @@ import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { applyCoverFallback } from '../../utils/coverFallback';
 import { classifyTrackTier } from '../../services/recommendationEngine';
 import { solanaService } from '../../services/solanaService';
+import { PlayingBars } from '../common/PlayingBars';
 
 interface RightSidebarProps {
   queue: Track[];
   manualQueue?: Track[];
   currentTrack: Track;
+  isPlaying?: boolean;
+  lowCpuMode?: boolean;
   onSelectTrack: (track: Track) => void;
   onRemoveFromManualQueue?: (index: number) => void;
   onClearManualQueue?: () => void;
@@ -57,6 +59,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   queue,
   manualQueue = [],
   currentTrack,
+  isPlaying = false,
+  lowCpuMode = false,
   onSelectTrack,
   onRemoveFromManualQueue,
   onClearManualQueue,
@@ -216,7 +220,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
-                    <Disc3 size={11} />
+                    <PlayingBars isPlaying={isPlaying} lowCpuMode={lowCpuMode} />
                     <span>
                       {t.playingFrom} &middot; {contextKindLabel}
                     </span>

@@ -7,6 +7,7 @@ import {
   Award,
   Cloud,
   Compass,
+  Flame,
   Heart,
   Home,
   LogIn,
@@ -51,17 +52,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { t } = useAppPreferences();
 
-  const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
-    { id: 'landing', label: t.navLanding, icon: <Home size={17} /> },
-    { id: 'discover', label: t.navDiscover, icon: <Compass size={17} /> },
-    { id: 'favorites', label: t.navFavorites, icon: <Heart size={17} /> },
-    { id: 'blend', label: t.navBlend, icon: <Users size={17} /> },
-    { id: 'search', label: t.navSearch, icon: <Search size={17} /> },
-    { id: 'radio', label: t.navRadio, icon: <Radio size={17} /> },
-    { id: 'podcasts', label: t.navPodcasts, icon: <Mic2 size={17} /> },
-    { id: 'visualizer', label: t.navVisualizer, icon: <Sparkles size={17} /> },
-    { id: 'proofOfStream', label: t.navProofOfStream, icon: <Award size={17} /> },
-    { id: 'pitch', label: t.navPitchDeck, icon: <Presentation size={17} /> },
+  const navGroups: { label: string; items: { id: TabType; label: string; icon: React.ReactNode }[] }[] = [
+    {
+      label: t.navGroupDiscover,
+      items: [
+        { id: 'landing', label: t.navLanding, icon: <Home size={16} /> },
+        { id: 'discover', label: t.navDiscover, icon: <Compass size={16} /> },
+        { id: 'vibe', label: t.navVibeFeed, icon: <Flame size={16} /> },
+        { id: 'search', label: t.navSearch, icon: <Search size={16} /> },
+      ],
+    },
+    {
+      label: t.navGroupLibrary,
+      items: [
+        { id: 'favorites', label: t.navFavorites, icon: <Heart size={16} /> },
+        { id: 'blend', label: t.navBlend, icon: <Users size={16} /> },
+      ],
+    },
+    {
+      label: t.navGroupExperience,
+      items: [
+        { id: 'radio', label: t.navRadio, icon: <Radio size={16} /> },
+        { id: 'podcasts', label: t.navPodcasts, icon: <Mic2 size={16} /> },
+        { id: 'visualizer', label: t.navVisualizer, icon: <Sparkles size={16} /> },
+        { id: 'proofOfStream', label: t.navProofOfStream, icon: <Award size={16} /> },
+        { id: 'pitch', label: t.navPitchDeck, icon: <Presentation size={16} /> },
+      ],
+    },
   ];
 
   const handleSelectNav = (tab: TabType) => {
@@ -109,28 +126,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {/* Navigation Section */}
-        <nav className="space-y-1" aria-label="Primary Navigation">
-          {navItems.map((item) => {
-            const isActive = currentTab === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleSelectNav(item.id)}
-                data-nav-tab={item.id}
-                className={`w-full flex items-center gap-3 px-3.5 min-h-[42px] py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${isActive
-                    ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border border-transparent'
-                  }`}
-              >
-                <span className={isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-dim)]'}>
-                  {item.icon}
-                </span>
-                <span className="truncate">{item.label}</span>
-              </button>
-            );
-          })}
+        {/* Grouped Navigation Sections */}
+        <nav className="space-y-4" aria-label="Primary Navigation">
+          {navGroups.map((group) => (
+            <div key={group.label} className="space-y-1">
+              <div className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                {group.label}
+              </div>
+              {group.items.map((item) => {
+                const isActive = currentTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectNav(item.id)}
+                    data-nav-tab={item.id}
+                    className={`w-full flex items-center gap-3 px-3.5 min-h-[38px] py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${isActive
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)]'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border border-transparent'
+                      }`}
+                  >
+                    <span className={isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-dim)]'}>
+                      {item.icon}
+                    </span>
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </div>
 
