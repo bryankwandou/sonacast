@@ -53,7 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMobileOpen = false,
   onCloseMobile,
 }) => {
-  const { t } = useAppPreferences();
+  const { t, language } = useAppPreferences();
 
   const navGroups: { label: string; items: { id: TabType; label: string; icon: React.ReactNode }[] }[] = [
     {
@@ -254,7 +254,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {authUser ? authUser.displayName : t.authSignIn}
                 </span>
                 <span className="block text-[10px] text-[var(--text-dim)] truncate">
-                  {authUser ? authUser.email : 'Neon Account'}
+                  {authUser ? authUser.email : language === 'id' ? 'Masuk untuk sinkron' : 'Sign in to sync'}
                 </span>
               </span>
             </span>
@@ -300,7 +300,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex md:flex-col w-56 xl:w-64 bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] shrink-0 h-full transition-colors">
+      <aside className="hidden md:flex md:flex-col w-56 xl:w-64 min-h-0 overflow-hidden bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] shrink-0 h-full transition-colors">
         {renderInner(false)}
       </aside>
 

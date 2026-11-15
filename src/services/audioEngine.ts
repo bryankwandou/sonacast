@@ -657,7 +657,7 @@ export class AudioEngine {
       }
       if (typeof pos === 'number' && pos >= 0.3) return;
       this.advanceToNextCandidate(gen);
-    }, 10500);
+    }, 5500);
   }
 
   private advanceToNextCandidate(gen: number): boolean {
@@ -878,6 +878,8 @@ export class AudioEngine {
             this.isPlaying &&
             this.duration >= 30 &&
             (pos >= this.duration - 0.5 ||
+              ((ytState === 2 || ytState === 3 || ytState === 5 || ytState === -1) &&
+                pos >= this.duration - 1.5) ||
               ((ytState === 2 || ytState === 5 || ytState === -1) && pos >= this.duration - 2.0))
           ) {
             this.completeCurrentTrack(pollGen);

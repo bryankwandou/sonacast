@@ -3225,8 +3225,8 @@ export default function App() {
             </div>
           </header>
 
-          {/* Top Application Workspace (reserves space above fixed BottomPlayerBar) */}
-          <div className="flex flex-1 overflow-hidden min-h-0 pb-20 sm:pb-24">
+          {/* Top Application Workspace (flex-1 clips cleanly above shrink-0 BottomPlayerBar) */}
+          <div className="flex flex-1 overflow-hidden min-h-0">
             {/* Left Navigation Sidebar + Mobile Drawer */}
             <Sidebar
               currentTab={currentTab}
@@ -3262,13 +3262,10 @@ export default function App() {
               onCloseMobile={() => setIsMobileNavOpen(false)}
             />
 
-            {/* Center Main Stage */}
-            <main
-              ref={mainScrollRef}
-              className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden p-4 sm:p-6 space-y-5 min-w-0"
-            >
+            {/* Center Column: Fixed Top Search Bar + Scrollable Main Stage & Views */}
+            <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
               {/* Persistent Top Search Bar + Sound History Dropdown + Stage Toggle */}
-              <div className="relative z-30">
+              <div className="shrink-0 px-4 sm:px-6 pt-4 pb-2 space-y-3 relative z-30">
                 <form
                   onSubmit={(e) => {
                     setIsTopSearchFocused(false);
@@ -3665,7 +3662,7 @@ export default function App() {
               {/* Complete Mobile Horizontal Quick Navigation Strip */}
               <nav
                 aria-label="Mobile Quick Navigation"
-                className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 -mt-1 shrink-0"
+                className="md:hidden px-4 sm:px-6 flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 shrink-0"
               >
                 {mobileNavChips.map((chip) => {
                   const active = currentTab === chip.id;
@@ -3685,6 +3682,11 @@ export default function App() {
                   );
                 })}
               </nav>
+
+            <main
+              ref={mainScrollRef}
+              className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 pt-2 pb-6 space-y-5 min-w-0 min-h-0"
+            >
 
               {/* Top Stage Player Area: 6 Separated & Optimized Modes */}
               {isStageVisible && (
@@ -4093,8 +4095,9 @@ export default function App() {
                 )}
               </div>
             </main>
+            </div>
 
-            {/* Right Sidebar Queue, Official Stream Slot & Tipping */}
+            {/* Right Sidebar Queue & Lyrics Panel */}
             <RightSidebar
               queue={queue}
               manualQueue={manualQueue}
@@ -4119,7 +4122,6 @@ export default function App() {
               currentTime={currentTime}
               radioStations={RADIO_STATIONS}
               onSelectRadio={handleSelectRadio}
-              onOpenTipModal={() => setIsWalletModalOpen(true)}
               onOpenLyricCard={() => handleOpenLyricCard()}
               ytMonitorRef={ytMonitorRef}
               showYtMonitor={

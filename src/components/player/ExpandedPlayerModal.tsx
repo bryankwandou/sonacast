@@ -798,7 +798,15 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                               isActive ? 'text-xl sm:text-2xl font-extrabold' : 'text-base sm:text-lg font-medium'
                             }`}
                           >
-                            {line.text}
+                            {/^[\s♪♫♬•·.…-]+$/.test(line.text) ? (
+                              <span className="inline-flex items-center gap-1.5 py-0.5 opacity-60">
+                                <span className="w-2 h-2 rounded-full bg-current" />
+                                <span className="w-2 h-2 rounded-full bg-current opacity-80" />
+                                <span className="w-2 h-2 rounded-full bg-current opacity-60" />
+                              </span>
+                            ) : (
+                              line.text
+                            )}
                           </div>
                           {line.translation && (
                             <div className="text-xs sm:text-sm text-[var(--accent-text)] mt-1">

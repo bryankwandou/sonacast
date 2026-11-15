@@ -741,8 +741,14 @@ function scoreMusicVideoCandidate(
     score += 50;
   }
 
-  if (rawAuthor.includes('vevo')) {
-    score += 34;
+  if (rawAuthor.includes('vevo') || (artistNorm && normalizeText(item.author).includes(artistNorm))) {
+    score += 45;
+  } else if (!/\b(records?|recordings?|music|official|entertainment|group)\b/i.test(rawAuthor)) {
+    score -= 35;
+  }
+
+  if (/\bofficial\b/i.test(rawTitle) || /\bofficial\b/i.test(rawAuthor)) {
+    score += 15;
   }
 
   if (rawAuthor.endsWith('- topic') || rawAuthor.includes(' - topic')) {

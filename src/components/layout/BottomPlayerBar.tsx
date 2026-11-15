@@ -228,7 +228,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   return (
     <footer
       data-testid="bottom-player-bar"
-      className="fixed bottom-0 left-0 right-0 z-40 h-20 md:h-[88px] bg-[var(--backdrop-bar)] backdrop-blur-xl border-t border-[var(--border-subtle)] px-3 sm:px-4 flex flex-col justify-center select-none transition-colors"
+      className="relative z-40 shrink-0 h-20 md:h-[88px] bg-[var(--backdrop-bar)] backdrop-blur-xl border-t border-[var(--border-subtle)] px-3 sm:px-4 flex flex-col justify-center select-none transition-colors"
     >
       {/* Mobile-Only Top Edge Progress Scrubber (desktop renders Spotify scrubber inside Center Zone) */}
       <div

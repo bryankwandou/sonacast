@@ -12,14 +12,12 @@ import {
   Radio,
   RefreshCw,
   Save,
-  Send,
   Share2,
   Trash2,
   X
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { applyCoverFallback } from '../../utils/coverFallback';
-import { solanaService } from '../../services/solanaService';
 import { PlayingBars } from '../common/PlayingBars';
 
 interface RightSidebarProps {
@@ -47,7 +45,6 @@ interface RightSidebarProps {
   lyricsOffset?: number;
   radioStations: RadioStation[];
   onSelectRadio: (station: RadioStation) => void;
-  onOpenTipModal: () => void;
   onOpenLyricCard?: () => void;
   ytMonitorRef: React.RefObject<HTMLDivElement | null>;
   showYtMonitor: boolean;
@@ -81,7 +78,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   lyricsOffset = 0,
   radioStations,
   onSelectRadio,
-  onOpenTipModal,
   onOpenLyricCard,
   ytMonitorRef,
   showYtMonitor,
@@ -93,7 +89,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onCloseMobile
 }) => {
   const { t } = useAppPreferences();
-  const [activePanelTab, setActivePanelTab] = useState<'queue' | 'lyrics' | 'tip'>('queue');
+  const [activePanelTab, setActivePanelTab] = useState<'queue' | 'lyrics'>('queue');
   const activeSidebarLyricRef = useRef<HTMLButtonElement | null>(null);
 
   const currentQueueIdx = queue.findIndex((item) => item.id === currentTrack.id);
@@ -141,7 +137,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       className={`${
         isMobileOpen
           ? 'fixed inset-y-0 right-0 z-50 flex w-80 max-w-[90vw] shadow-2xl'
-          : 'hidden min-[1380px]:flex w-80 shrink-0'
+          : 'hidden min-[1380px]:flex w-80 shrink-0 min-h-0 overflow-hidden'
       } flex-col bg-[var(--bg-sidebar)] border-l border-[var(--border-subtle)] h-full p-4 select-none transition-colors`}
     >
       {isMobileOpen && (
@@ -194,8 +190,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         />
       </div>
 
-      {/* 3 Clean Tab Pills: Up Next | Lyrics | Artist Tip */}
-      <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[var(--bg-tint)] mb-3 shrink-0">
+      {/* 2 Clean Tab Pills: Up Next | Lyrics (YouTube Music / Spotify parity) */}
+      <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[var(--bg-tint)] mb-3 shrink-0">
         <button
           type="button"
           onClick={() => setActivePanelTab('queue')}
@@ -219,18 +215,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         >
           <Mic2 size={12} />
           <span>{t.lyrics}</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActivePanelTab('tip')}
-          className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
-            activePanelTab === 'tip'
-              ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
-              : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          <Send size={12} />
-          <span>{t.artistTip}</span>
         </button>
       </div>
 
@@ -578,7 +562,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                           : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] text-xs'
                       }`}
                     >
-                      <div>{line.text}</div>
+                      <div>
+                        {/^[\s♪♫♬•·.…-]+$/.test(line.text) ? (
+                          <span className="inline-flex items-center gap-1 py-0.5 opacity-60">
+                            <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
+                          </span>
+                        ) : (
+                          line.text
+                        )}
+                      </div>
                       {line.translation && (
                         <div className="text-[11px] text-[var(--accent-text)] mt-0.5">{line.translation}</div>
                       )}
@@ -589,45 +583,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             )}
           </div>
         )}
-
-        {activePanelTab === 'tip' && (
-          <div className="p-4 rounded-xl bg-[var(--bg-tint)] space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[var(--text-primary)]">{t.directTipTitle}</span>
-              <span className="text-[10px] font-mono text-[var(--accent-text)]">
-                {solanaService.getCluster() === 'mainnet-beta' ? 'Solana Mainnet' : 'Solana Devnet'}
-              </span>
-            </div>
-            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              Send an atomic split tip for{' '}
-              <span className="font-semibold text-[var(--text-primary)]">{currentTrack.artist}</span>{' '}
-              on <span className="italic">{currentTrack.title}</span>: 85% goes to creator (or verified escrow) and 15% funds platform operations.
-            </p>
-            <button
-              type="button"
-              onClick={onOpenTipModal}
-              className="w-full py-2.5 rounded-lg bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-            >
-              <Send size={13} />
-              <span>{t.tipArtist} (85/15 Split)</span>
-            </button>
-          </div>
-        )}
       </div>
-
-      {/* Bottom Sticky Quick-Action Queue Drawer link when in mobile drawer */}
-      {isMobileOpen && (
-        <div className="pt-3 mt-2 border-t border-[var(--border-subtle)] min-[1380px]:hidden">
-          <button
-            type="button"
-            onClick={onOpenTipModal}
-            aria-label={t.queue}
-            className="w-full py-2 rounded-lg bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold cursor-pointer"
-          >
-            {t.tipArtist}
-          </button>
-        </div>
-      )}
     </aside>
   );
 };
