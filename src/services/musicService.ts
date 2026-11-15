@@ -640,6 +640,55 @@ export interface ResolvedFullStream {
   duration: number;
 }
 
+const STREAM_CACHE_KEY = 'sonacast_stream_cache_v1';
+const STREAM_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const streamMemoryCache = new Map<string, { value: ResolvedFullStream; cachedAt: number }>();
+
+function readStreamCache(key: string): ResolvedFullStream | null {
+  const now = Date.now();
+  const memHit = streamMemoryCache.get(key);
+  if (memHit) {
+    if (now - memHit.cachedAt < STREAM_CACHE_TTL_MS) return memHit.value;
+    streamMemoryCache.delete(key);
+  }
+  try {
+    const raw = localStorage.getItem(STREAM_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, { value: ResolvedFullStream; cachedAt: number }>;
+    const entry = parsed?.[key];
+    if (entry && now - entry.cachedAt < STREAM_CACHE_TTL_MS && entry.value?.youtubeId) {
+      streamMemoryCache.set(key, entry);
+      return entry.value;
+    }
+  } catch {
+    // Ignore storage read errors
+  }
+  return null;
+}
+
+function writeStreamCache(key: string, value: ResolvedFullStream) {
+  const now = Date.now();
+  const entry = { value, cachedAt: now };
+  streamMemoryCache.set(key, entry);
+  try {
+    const raw = localStorage.getItem(STREAM_CACHE_KEY);
+    const parsed = raw
+      ? (JSON.parse(raw) as Record<string, { value: ResolvedFullStream; cachedAt: number }>)
+      : {};
+    parsed[key] = entry;
+    const keys = Object.keys(parsed);
+    if (keys.length > 80) {
+      const sorted = keys.sort((a, b) => (parsed[a]?.cachedAt || 0) - (parsed[b]?.cachedAt || 0));
+      for (const staleKey of sorted.slice(0, keys.length - 80)) {
+        delete parsed[staleKey];
+      }
+    }
+    localStorage.setItem(STREAM_CACHE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
 export async function resolveFullTrackStream(
   title: string,
   artist: string,
@@ -653,6 +702,11 @@ export async function resolveFullTrackStream(
   const query = cleanArtist && !cleanTitle.toLowerCase().includes(cleanArtist.toLowerCase())
     ? `${cleanArtist} ${cleanTitle}`
     : cleanTitle;
+  const cacheKey = normalizeText(query);
+  if (cacheKey) {
+    const cached = readStreamCache(cacheKey);
+    if (cached) return cached;
+  }
 
   const { signal: linkedSignal, cleanup } = createLinkedAbortSignal(7500, parentSignal);
 
@@ -693,11 +747,15 @@ export async function resolveFullTrackStream(
     const candidateIds = ranked.slice(0, 8).map((c) => c.videoId);
     const best = ranked[0];
 
-    return {
+    const resolved: ResolvedFullStream = {
       youtubeId: candidateIds[0],
       candidateIds,
       duration: best.duration >= 60 ? best.duration : expectedDuration && expectedDuration >= 60 ? expectedDuration : 210
     };
+    if (cacheKey) {
+      writeStreamCache(cacheKey, resolved);
+    }
+    return resolved;
   } finally {
     cleanup();
   }
@@ -830,14 +888,30 @@ function extractIndexedArtistAndSong(normQuery: string): ParsedArtistSongQuery {
   return { indexedArtistName: '', indexedArtistNorm: '', songNorm: '' };
 }
 
+const catalogApiSearchCache = new Map<string, { data: CatalogSearchResponse; cachedAt: number }>();
+
 async function fetchCatalogApiSearch(query: string): Promise<CatalogSearchResponse> {
+  const key = normalizeText(query);
+  const now = Date.now();
+  const cached = key ? catalogApiSearchCache.get(key) : undefined;
+  if (cached && now - cached.cachedAt < 20 * 60 * 1000) {
+    return cached.data;
+  }
   try {
     const endpoint = getApiEndpoint('/api/catalog-search');
     const res = await fetch(`${endpoint}?q=${encodeURIComponent(query)}`, {
       signal: AbortSignal.timeout(3200)
     });
     if (!res.ok) return { items: [] };
-    return await res.json();
+    const data = (await res.json()) as CatalogSearchResponse;
+    if (key && Array.isArray(data?.items) && data.items.length > 0) {
+      if (catalogApiSearchCache.size >= 80) {
+        const oldestKey = catalogApiSearchCache.keys().next().value;
+        if (oldestKey) catalogApiSearchCache.delete(oldestKey);
+      }
+      catalogApiSearchCache.set(key, { data, cachedAt: now });
+    }
+    return data;
   } catch {
     return { items: [] };
   }
@@ -1373,6 +1447,13 @@ async function fetchDirectAppleRssFallback(country: 'us' | 'id', limit: number):
   }
 }
 
+const DAILY_CHARTS_FEED_URLS = [
+  'https://cdn.jsdelivr.net/gh/bryankwandou/sonacast@catalog-data/daily-charts.json',
+  'https://raw.githubusercontent.com/bryankwandou/sonacast/catalog-data/daily-charts.json'
+];
+const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v1';
+const DAILY_CHARTS_TTL_MS = 12 * 60 * 60 * 1000;
+
 export async function fetchPopularCharts(): Promise<PopularChartsResult> {
   const emptyIds = new Set<string>();
   const toTrack = (item: CatalogApiItem): Track =>
@@ -1390,24 +1471,87 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
       emptyIds
     );
 
+  const mapChartsPayload = (data: {
+    global?: CatalogApiItem[];
+    us?: CatalogApiItem[];
+    indonesia?: CatalogApiItem[];
+  }): PopularChartsResult => {
+    const seenGlobal = new Set<string>();
+    const globalItems: CatalogApiItem[] = [];
+    for (const item of [...(data.global || []), ...(data.us || [])]) {
+      const key = `${normalizeText(stripTitleModifiers(item.title))}::${normalizeText(item.artist.split(/[,&]|ft\.?/i)[0] || '')}`;
+      if (!item.title || seenGlobal.has(key)) continue;
+      seenGlobal.add(key);
+      globalItems.push(item);
+    }
+    return {
+      global: globalItems.slice(0, 30).map(toTrack),
+      indonesia: (data.indonesia || []).slice(0, 24).map(toTrack)
+    };
+  };
+
+  // 1. Check 12h browser storage cache first (0 network / 0 Vercel quota)
+  try {
+    const cachedRaw = localStorage.getItem(DAILY_CHARTS_CACHE_KEY);
+    if (cachedRaw) {
+      const parsed = JSON.parse(cachedRaw) as {
+        cachedAt?: number;
+        payload?: { global?: CatalogApiItem[]; us?: CatalogApiItem[]; indonesia?: CatalogApiItem[] };
+      };
+      if (
+        parsed?.cachedAt &&
+        Date.now() - parsed.cachedAt < DAILY_CHARTS_TTL_MS &&
+        parsed.payload &&
+        ((parsed.payload.global?.length || 0) > 0 || (parsed.payload.indonesia?.length || 0) > 0)
+      ) {
+        return mapChartsPayload(parsed.payload);
+      }
+    }
+  } catch {
+    // Ignore storage read failure
+  }
+
+  // 2. Read daily 24h CI/CD catalog feed directly via free CDN (0 Vercel serverless calls / bandwidth)
+  for (const feedUrl of DAILY_CHARTS_FEED_URLS) {
+    try {
+      const feedRes = await fetch(feedUrl, { signal: AbortSignal.timeout(3500) });
+      if (feedRes.ok) {
+        const data: { global?: CatalogApiItem[]; us?: CatalogApiItem[]; indonesia?: CatalogApiItem[] } =
+          await feedRes.json();
+        if ((data.global?.length || 0) > 0 || (data.indonesia?.length || 0) > 0) {
+          try {
+            localStorage.setItem(
+              DAILY_CHARTS_CACHE_KEY,
+              JSON.stringify({ cachedAt: Date.now(), payload: data })
+            );
+          } catch {
+            // Ignore quota errors
+          }
+          return mapChartsPayload(data);
+        }
+      }
+    } catch {
+      // Try next CDN mirror or fallback
+    }
+  }
+
+  // 3. Edge-cached Vercel serverless fallback (24h s-maxage)
   try {
     const res = await fetch(`${getApiEndpoint('/api/catalog-search')}?mode=charts`, {
       signal: AbortSignal.timeout(4800)
     });
     if (res.ok) {
-      const data: { global?: CatalogApiItem[]; us?: CatalogApiItem[]; indonesia?: CatalogApiItem[] } = await res.json();
-      const seenGlobal = new Set<string>();
-      const globalItems: CatalogApiItem[] = [];
-      for (const item of [...(data.global || []), ...(data.us || [])]) {
-        const key = `${normalizeText(stripTitleModifiers(item.title))}::${normalizeText(item.artist.split(/[,&]|ft\.?/i)[0] || '')}`;
-        if (!item.title || seenGlobal.has(key)) continue;
-        seenGlobal.add(key);
-        globalItems.push(item);
+      const data: { global?: CatalogApiItem[]; us?: CatalogApiItem[]; indonesia?: CatalogApiItem[] } =
+        await res.json();
+      try {
+        localStorage.setItem(
+          DAILY_CHARTS_CACHE_KEY,
+          JSON.stringify({ cachedAt: Date.now(), payload: data })
+        );
+      } catch {
+        // Ignore quota errors
       }
-      return {
-        global: globalItems.slice(0, 30).map(toTrack),
-        indonesia: (data.indonesia || []).slice(0, 24).map(toTrack)
-      };
+      return mapChartsPayload(data);
     }
   } catch {
     // Fall back to direct CORS Apple RSS feeds

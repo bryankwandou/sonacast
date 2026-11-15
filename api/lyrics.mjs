@@ -309,12 +309,12 @@ export default async function handler(req, res) {
       neteaseRes;
 
     if (best && Array.isArray(best.lyrics) && best.lyrics.length > 0) {
-      res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+      res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
       res.status(200).json(best);
       return;
     }
 
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=1800');
+    res.setHeader('Cache-Control', 'public, s-maxage=21600, stale-while-revalidate=86400');
     res.status(200).json({ found: false, synced: false, source: 'none', lyrics: [] });
   } catch {
     res.status(200).json({ found: false, synced: false, source: 'none', lyrics: [] });

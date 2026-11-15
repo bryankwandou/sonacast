@@ -3,6 +3,14 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "cleanUrls": true,
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "catalog-data": false,
+      "gh-pages": false
+    }
+  },
+  "ignoreCommand": "git rev-parse --verify HEAD^ >/dev/null 2>&1 && git diff --quiet HEAD^ HEAD -- src/ index.html package.json package-lock.json vite.config.ts tsconfig.json tsconfig.app.json api/",
   "headers": [
     {
       "source": "/",
@@ -48,6 +56,15 @@
       ]
     },
     {
+      "source": "/audio/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
       "source": "/downloads/(.*\\.apk)",
       "headers": [
         {
@@ -60,7 +77,16 @@
         },
         {
           "key": "Cache-Control",
-          "value": "public, max-age=3600"
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
+        }
+      ]
+    },
+    {
+      "source": "/(icon-.*\\.png|favicon\\.svg|icons\\.svg)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
         }
       ]
     },

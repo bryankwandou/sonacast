@@ -71,10 +71,15 @@ export default async function handler(req, res) {
 
   const queryLower = q.toLowerCase();
 
+  const sendCached = (payload, maxAge = 86400, swr = 604800) => {
+    res.setHeader('Cache-Control', `public, s-maxage=${maxAge}, stale-while-revalidate=${swr}`);
+    res.status(200).json(payload);
+  };
+
   if (mode !== 'yt') {
     const cleaned = await queryPipedMusicSongs(q, queryLower);
     if (cleaned.length >= 4) {
-      res.status(200).json({ source: 'piped', items: cleaned });
+      sendCached({ source: 'piped', items: cleaned });
       return;
     }
   }
@@ -91,7 +96,7 @@ export default async function handler(req, res) {
 
     if (!ytRes.ok) {
       const pipedFallback = await queryPipedMusicSongs(q, queryLower);
-      res.status(200).json({ source: 'piped-fallback', items: pipedFallback });
+      sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
       return;
     }
 
@@ -100,7 +105,7 @@ export default async function handler(req, res) {
     if (!match) {
       const fallbackIds = [...new Set([...html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)].map((m) => m[1]))].slice(0, 10);
       if (fallbackIds.length >= 2) {
-        res.status(200).json({
+        sendCached({
           source: 'yt-ids',
           items: fallbackIds.map((videoId) => ({
             videoId,
@@ -113,7 +118,7 @@ export default async function handler(req, res) {
         return;
       }
       const pipedFallback = await queryPipedMusicSongs(q, queryLower);
-      res.status(200).json({ source: 'piped-fallback', items: pipedFallback });
+      sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
       return;
     }
 
@@ -146,15 +151,15 @@ export default async function handler(req, res) {
     if (items.length < 2) {
       const pipedFallback = await queryPipedMusicSongs(q, queryLower);
       if (pipedFallback.length > items.length) {
-        res.status(200).json({ source: 'piped-fallback', items: pipedFallback });
+        sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
         return;
       }
     }
 
-    res.status(200).json({ source: 'yt-html', items: items.slice(0, 20) });
+    sendCached({ source: 'yt-html', items: items.slice(0, 20) }, items.length > 0 ? 86400 : 1800);
   } catch {
     const pipedFallback = await queryPipedMusicSongs(q, queryLower);
-    res.status(200).json({ source: 'piped-fallback', items: pipedFallback });
+    sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
   }
 }
 

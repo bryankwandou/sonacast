@@ -653,9 +653,10 @@ export default function App() {
     };
   }, [isYouTubeActive, stageMode, currentTab, isStageVisible]);
 
-  // Periodically check active Solana cluster balance & sync wallet switches
+  // Periodically check active Solana cluster balance & sync wallet switches (throttled when idle/hidden)
   useEffect(() => {
     const checkBal = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       setWalletCluster(solanaService.getCluster());
       const bal = await solanaService.fetchBalance();
       setWalletBalanceSol(bal);
@@ -665,12 +666,16 @@ export default function App() {
       setWalletCluster(solanaService.getCluster());
       setWalletBalanceSol(solanaService.getCachedBalance());
     });
-    const interval = setInterval(checkBal, 12000);
+    const interval = setInterval(() => {
+      if (!lowCpuMode) {
+        checkBal();
+      }
+    }, 60000);
     return () => {
       unsub();
       clearInterval(interval);
     };
-  }, []);
+  }, [lowCpuMode]);
 
   const buildAutoSimilarContext = useCallback((track: Track): PlaybackContextInfo => {
     const tier = classifyTrackTier(track);

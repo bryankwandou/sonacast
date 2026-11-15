@@ -227,7 +227,7 @@ export default async function handler(req, res) {
       };
 
       albums.sort((x, y) => scoreAlbum(y) - scoreAlbum(x));
-      res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=900');
+      res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
       res.status(200).json({ albums: albums.slice(0, 18) });
     } catch {
       res.status(500).json({ albums: [] });
@@ -290,7 +290,7 @@ export default async function handler(req, res) {
           trackNumber: Number(t.trackNumber) || idx + 1,
           discNumber: Number(t.discNumber) || 1
         }));
-        res.setHeader('Cache-Control', 'public, s-maxage=600, stale-while-revalidate=1800');
+        res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
         res.status(200).json({ album: albumMeta, items });
         return;
       }
@@ -342,7 +342,7 @@ export default async function handler(req, res) {
           trackNumber: Number(t.track_position) || idx + 1,
           discNumber: Number(t.disk_number) || 1
         }));
-      res.setHeader('Cache-Control', 'public, s-maxage=600, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
       res.status(200).json({ album: albumMeta, items });
     } catch {
       res.status(500).json({ album: null, items: [] });
@@ -366,7 +366,7 @@ export default async function handler(req, res) {
             .filter((t) => t.title && t.artist && t.duration >= 60 && t.duration <= 1800 && !isNonOriginalTitle(t.title, ''))
         : [];
 
-      res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
+      res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
       res.status(200).json({
         global: dzItems.length > 0 ? dzItems : usRss,
         us: usRss,
@@ -456,7 +456,7 @@ export default async function handler(req, res) {
       ...dedupedSearchTracks.map((t) => mapDeezerTrack(t, false))
     ].filter((t) => t.title && t.artist && t.duration >= 40 && t.duration <= 2400 && !isNonOriginalTitle(t.title, queryLower));
 
-    res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
+    res.setHeader('Cache-Control', 'public, s-maxage=43200, stale-while-revalidate=86400');
     res.status(200).json({
       matchedArtist: topArtist?.name || '',
       artistFans: topArtist?.fans || 0,

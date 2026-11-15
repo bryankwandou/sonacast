@@ -1,0 +1,68 @@
+name: Daily Music Catalog Sync (Max 1x / 24h, Zero Vercel Deploy)
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force refresh bypassing the 24-hour guard'
+        required: false
+        default: 'false'
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: music-catalog-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout main sync script
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/sync-music-catalog.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Prepare catalog-data branch worktree
+        run: |
+          if git ls-remote --exit-code --heads origin catalog-data >/dev/null 2>&1; then
+            git fetch origin catalog-data:catalog-data --depth=1
+            git worktree add _catalog_out catalog-data
+          else
+            git worktree add --orphan -b catalog-data _catalog_out
+          fi
+
+      - name: Setup Node.js 24 (zero npm install)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Sync daily music catalog with 24h lock
+        env:
+          FORCE_INPUT: ${{ inputs.force }}
+        run: |
+          FORCE_FLAG=""
+          if [ "$FORCE_INPUT" = "true" ]; then
+            FORCE_FLAG="--force"
+          fi
+          node scripts/sync-music-catalog.mjs _catalog_out/daily-charts.json $FORCE_FLAG
+
+      - name: Push updated catalog-data branch only if changed
+        run: |
+          cd _catalog_out
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Catalog unchanged or within 24h guard; zero commit needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add daily-charts.json
+          git commit -m "chore(catalog): daily 24h music chart sync"
+          git push origin catalog-data
