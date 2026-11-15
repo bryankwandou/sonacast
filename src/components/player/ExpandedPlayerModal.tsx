@@ -78,7 +78,6 @@ interface ExpandedPlayerModalProps {
   onToggleSaveOffline?: () => void;
   onShareTrack?: () => void;
   lyricsOffset?: number;
-  onChangeLyricsOffset?: (offsetSeconds: number) => void;
 }
 
 const EQ_OPTIONS: { id: EqPreset; label: string }[] = [
@@ -110,7 +109,6 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   sleepTimerMinutesRemaining,
   playlists,
   lyricsStatus = 'idle',
-  lyricsSource,
   onRetryLyrics,
   onTogglePlay,
   onNext,
@@ -138,8 +136,7 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   isSavedOffline = false,
   onToggleSaveOffline,
   onShareTrack,
-  lyricsOffset = 0,
-  onChangeLyricsOffset
+  lyricsOffset = 0
 }) => {
   const { t } = useAppPreferences();
   const [showDsp, setShowDsp] = useState(false);
@@ -538,16 +535,18 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                 <SkipBack size={22} className="fill-current" />
               </button>
 
-              <button
-                type="button"
-                onClick={() => onSeek(Math.max(0, currentTime - 15))}
-                aria-label={t.skipBack15}
-                title={t.skipBack15}
-                className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-mono font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer"
-              >
-                <RotateCcw size={13} />
-                <span>15</span>
-              </button>
+              {track.genre === 'Podcast' && (
+                <button
+                  type="button"
+                  onClick={() => onSeek(Math.max(0, currentTime - 15))}
+                  aria-label={t.skipBack15}
+                  title={t.skipBack15}
+                  className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-mono font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer"
+                >
+                  <RotateCcw size={13} />
+                  <span>15</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -558,16 +557,18 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                 {isPlaying ? <Pause size={24} className="fill-current" /> : <Play size={24} className="fill-current ml-0.5" />}
               </button>
 
-              <button
-                type="button"
-                onClick={() => onSeek(Math.min(duration, currentTime + 15))}
-                aria-label={t.skipForward15}
-                title={t.skipForward15}
-                className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-mono font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer"
-              >
-                <span>15</span>
-                <RotateCw size={13} />
-              </button>
+              {track.genre === 'Podcast' && (
+                <button
+                  type="button"
+                  onClick={() => onSeek(Math.min(duration, currentTime + 15))}
+                  aria-label={t.skipForward15}
+                  title={t.skipForward15}
+                  className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-mono font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer"
+                >
+                  <span>15</span>
+                  <RotateCw size={13} />
+                </button>
+              )}
 
               <button
                 type="button"
@@ -751,51 +752,18 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                     <Sparkles size={14} />
                   )}
                   <span>{t.lyrics}</span>
-                  {lyricsSource && lyrics.length > 0 && (
-                    <span className="text-[10px] font-mono text-[var(--text-dim)] lowercase">
-                      ({lyricsSource})
-                    </span>
-                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {onChangeLyricsOffset && lyrics.length > 0 && (
-                    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-mono">
-                      <button
-                        type="button"
-                        onClick={() => onChangeLyricsOffset(Math.round((lyricsOffset - 0.5) * 10) / 10)}
-                        className="px-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
-                      >
-                        -0.5s
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onChangeLyricsOffset(0)}
-                        title={t.syncReset}
-                        className="px-1 text-[var(--accent-text)] font-bold cursor-pointer"
-                      >
-                        {Math.abs(lyricsOffset) < 0.05
-                          ? '0.0s'
-                          : `${lyricsOffset > 0 ? '+' : ''}${lyricsOffset.toFixed(1)}s`}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onChangeLyricsOffset(Math.round((lyricsOffset + 0.5) * 10) / 10)}
-                        className="px-1 text-[var(--accent-text)] hover:opacity-80 cursor-pointer"
-                      >
-                        +0.5s
-                      </button>
-                    </div>
-                  )}
                   <span className="text-[11px] font-mono text-[var(--text-dim)] hidden sm:inline">
                     Tap line to seek
                   </span>
-                  {onRetryLyrics && (
+                  {lyricsStatus === 'unavailable' && onRetryLyrics && (
                     <button
                       type="button"
                       onClick={onRetryLyrics}
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
                     >
-                      <RefreshCw size={11} className={lyricsStatus === 'loading' ? 'animate-spin' : ''} />
+                      <RefreshCw size={11} />
                       <span>{t.lyricsRetry}</span>
                     </button>
                   )}

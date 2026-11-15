@@ -145,6 +145,7 @@ export interface PodcastEpisode {
   podcastName: string;
   duration: number;
   coverUrl: string;
+  audioUrl?: string;
   videoUrl?: string;
   description: string;
   episodeNumber: number;

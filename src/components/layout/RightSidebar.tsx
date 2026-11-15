@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { PlaybackContextInfo, RadioStation, Track } from '../../types';
 import {
   ChevronUp,
@@ -48,7 +48,6 @@ interface RightSidebarProps {
   onSeek?: (seconds: number) => void;
   currentTime?: number;
   lyricsOffset?: number;
-  onChangeLyricsOffset?: (offset: number) => void;
   radioStations: RadioStation[];
   onSelectRadio: (station: RadioStation) => void;
   onOpenTipModal: () => void;
@@ -58,8 +57,6 @@ interface RightSidebarProps {
   onExpandVideoStage?: () => void;
   onSaveQueueAsPlaylist?: () => void;
   lyricsStatus?: 'idle' | 'loading' | 'loaded' | 'unavailable';
-  lyricsSource?: string;
-  lyricsSynced?: boolean;
   onRetryLyrics?: (customTitle?: string, customArtist?: string) => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
@@ -88,7 +85,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onSeek,
   currentTime = 0,
   lyricsOffset = 0,
-  onChangeLyricsOffset,
   radioStations,
   onSelectRadio,
   onOpenTipModal,
@@ -98,14 +94,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onExpandVideoStage,
   onSaveQueueAsPlaylist,
   lyricsStatus = 'idle',
-  lyricsSource,
-  lyricsSynced,
   onRetryLyrics,
   isMobileOpen = false,
   onCloseMobile
 }) => {
   const { t } = useAppPreferences();
   const [activePanelTab, setActivePanelTab] = useState<'queue' | 'lyrics' | 'tip'>('queue');
+  const activeSidebarLyricRef = useRef<HTMLButtonElement | null>(null);
 
   const currentQueueIdx = queue.findIndex((item) => item.id === currentTrack.id);
   const orderedUpcoming =
@@ -141,6 +136,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const upcomingMinutes = Math.round(
     upNextTracks.reduce((sum, item) => sum + (Number(item.duration) || 210), 0) / 60
   );
+
+  useEffect(() => {
+    if (activePanelTab !== 'lyrics' || activeLyricIdx < 0) return;
+    activeSidebarLyricRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [activePanelTab, activeLyricIdx]);
 
   return (
     <aside
@@ -566,15 +566,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         {activePanelTab === 'lyrics' && (
           <div className="space-y-2 py-1" data-testid="sidebar-lyrics-panel">
             <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-[var(--border-subtle)]">
-              <span className="text-[10px] font-mono text-[var(--text-dim)] truncate">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)] truncate">
                 {lyricsStatus === 'loading'
                   ? t.lyricsLoading
                   : lyrics.length > 0
-                    ? `${lyricsSynced ? t.lyricsSyncedLabel : t.lyricsTimedLabel}${lyricsSource ? ` - ${lyricsSource}` : ''}`
+                    ? t.lyrics
                     : t.lyricsUnavailable}
               </span>
               <div className="flex items-center gap-1 shrink-0">
-                {onOpenLyricCard && (
+                {onOpenLyricCard && lyrics.length > 0 && (
                   <button
                     type="button"
                     onClick={onOpenLyricCard}
@@ -583,16 +583,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   >
                     <Share2 size={10} />
                     <span>Card</span>
-                  </button>
-                )}
-                {onRetryLyrics && (
-                  <button
-                    type="button"
-                    onClick={() => onRetryLyrics()}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[10px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer shrink-0"
-                  >
-                    <RefreshCw size={10} className={lyricsStatus === 'loading' ? 'animate-spin' : ''} />
-                    <span>{t.lyricsRetry}</span>
                   </button>
                 )}
               </div>
@@ -620,35 +610,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               </div>
             ) : (
               <>
-                {onChangeLyricsOffset && (
-                  <div className="flex items-center justify-between gap-1 mb-2 px-2 py-1.5 rounded-lg bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-[10px]">
-                    <span className="font-semibold text-[var(--text-dim)]">{t.syncOffsetLabel}</span>
-                    <div className="flex items-center gap-1 font-mono">
-                      <button
-                        type="button"
-                        onClick={() => onChangeLyricsOffset(Math.round((lyricsOffset - 0.5) * 10) / 10)}
-                        className="px-1.5 py-0.5 rounded bg-[var(--bg-surface)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-primary)] cursor-pointer"
-                      >
-                        -0.5s
-                      </button>
-                      <span className="px-1 text-[var(--accent-text)] font-bold">
-                        {Math.abs(lyricsOffset) < 0.05 ? '0.0s' : `${lyricsOffset > 0 ? '+' : ''}${lyricsOffset.toFixed(1)}s`}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onChangeLyricsOffset(Math.round((lyricsOffset + 0.5) * 10) / 10)}
-                        className="px-1.5 py-0.5 rounded bg-[var(--bg-surface)] hover:bg-[var(--bg-tint-hover)] text-[var(--accent-text)] cursor-pointer"
-                      >
-                        +0.5s
-                      </button>
-                    </div>
-                  </div>
-                )}
                 {lyrics.map((line, idx) => {
                   const isActive = idx === activeLyricIdx;
                   return (
                     <button
                       key={`${idx}-${line.time}`}
+                      ref={isActive ? activeSidebarLyricRef : null}
                       type="button"
                       onClick={() => onSeek?.(Math.max(0, line.time - lyricsOffset))}
                       className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${

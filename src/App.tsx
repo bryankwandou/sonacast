@@ -24,7 +24,6 @@ import type {
   AuthProvidersMeta
 } from './types';
 import { TRACK_CATALOG, PODCAST_CATALOG, RADIO_STATIONS } from './data/catalog';
-import { ARTISTS_DIRECTORY } from './data/artists800';
 import { sharedAudioEngine } from './services/audioEngine';
 import { solanaService } from './services/solanaService';
 import {
@@ -73,7 +72,6 @@ import { MoodStrip } from './components/common/MoodStrip';
 import { Sidebar } from './components/layout/Sidebar';
 import { RightSidebar } from './components/layout/RightSidebar';
 import { BottomPlayerBar } from './components/layout/BottomPlayerBar';
-import { ThemeLanguageControls } from './components/layout/ThemeLanguageControls';
 import { ExpandedPlayerModal } from './components/player/ExpandedPlayerModal';
 import {
   FloatingMiniPlayer,
@@ -110,6 +108,7 @@ import { ArtistSpotlightModal } from './components/modals/ArtistSpotlightModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { LyricCardModal } from './components/modals/LyricCardModal';
 import { ShortcutsModal } from './components/modals/ShortcutsModal';
+import { SettingsModal } from './components/modals/SettingsModal';
 import { SolanaWalletModal } from './components/web3/SolanaWalletModal';
 import { PitchDeckModal } from './components/pitch/PitchDeckModal';
 import { getPrimaryArtistName } from './utils/coverColor';
@@ -123,26 +122,22 @@ import {
   Disc3,
   Heart,
   Home,
-  Keyboard,
   ListMusic,
   Loader2,
   Menu,
   Mic2,
-  Minimize2,
-  PictureInPicture2,
   Play,
   Presentation,
   Radio,
-  RefreshCw,
   Search,
+  Settings,
   Sparkles,
   Trash2,
   User,
   Users,
   Video,
   WifiOff,
-  X,
-  Zap
+  X
 } from 'lucide-react';
 
 export default function App() {
@@ -175,9 +170,7 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(0.85);
   const [lyricsStatus, setLyricsStatus] = useState<'idle' | 'loading' | 'loaded' | 'unavailable'>('idle');
-  const [lyricsSource, setLyricsSource] = useState<string>('');
   const [lyricsSynced, setLyricsSynced] = useState<boolean>(false);
-  const [lyricsMatchedDuration, setLyricsMatchedDuration] = useState<number | undefined>(undefined);
   const [lyricOffsetsByTrack, setLyricOffsetsByTrack] = useState<Record<string, number>>(() => {
     try {
       const raw = window.localStorage.getItem('sonacast_lyric_offsets_v1');
@@ -317,6 +310,7 @@ export default function App() {
     lineIndex: null
   });
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [initialBlendCode, setInitialBlendCode] = useState<string | null>(null);
   const [normalizationEnabled, setNormalizationEnabled] = useState(true);
   const [vocalReductionEnabled, setVocalReductionEnabled] = useState(false);
@@ -735,8 +729,6 @@ export default function App() {
           if (currentTrackRef.current.id !== active.id || res.lyrics.length === 0) return;
           if (res.synced || currentTrackRef.current.lyrics.length < 18) {
             setLyricsSynced(res.synced);
-            setLyricsSource(res.source);
-            setLyricsMatchedDuration(res.matchedDuration);
             setLyricsStatus('loaded');
             setCurrentTrack((prev) => (prev.id === active.id ? { ...prev, lyrics: res.lyrics } : prev));
             setQueue((prevQ) =>
@@ -1062,8 +1054,6 @@ export default function App() {
       resolvedLyricsMetaRef.current = { trackId: targetTrack.id, fetchDur: targetDur };
       if (!opts?.backgroundUpgrade) {
         setLyricsStatus('loading');
-        setLyricsSource('');
-        setLyricsMatchedDuration(undefined);
       }
       try {
         const res = await fetchLyricsWithMeta(
@@ -1080,8 +1070,6 @@ export default function App() {
             return;
           }
           setLyricsSynced(res.synced);
-          setLyricsSource(res.source);
-          setLyricsMatchedDuration(res.matchedDuration);
           setLyricsStatus('loaded');
           setCurrentTrack((prev) =>
             prev.id === targetTrack.id ? { ...prev, lyrics: res.lyrics } : prev
@@ -1091,8 +1079,6 @@ export default function App() {
           );
         } else if (!opts?.backgroundUpgrade || currentTrackRef.current.lyrics.length === 0) {
           setLyricsSynced(false);
-          setLyricsSource('');
-          setLyricsMatchedDuration(undefined);
           setLyricsStatus('unavailable');
         }
       } catch {
@@ -1126,7 +1112,6 @@ export default function App() {
       if (tr.lyrics.length > 0) {
         setLyricsStatus('loaded');
         setLyricsSynced(tr.lyrics.length > 4);
-        setLyricsSource('catalog');
       }
       resolveLyricsForTrack(tr, { backgroundUpgrade: tr.lyrics.length > 0 });
     }
@@ -1402,16 +1387,12 @@ export default function App() {
         if (track.lyrics.length > 0) {
           setLyricsStatus('loaded');
           setLyricsSynced(track.lyrics.length > 4);
-          setLyricsSource('catalog');
-          setLyricsMatchedDuration(undefined);
         }
         resolveLyricsForTrack(track, { backgroundUpgrade: track.lyrics.length > 0 });
       } else {
         resolvedLyricsMetaRef.current = { trackId: track.id, fetchDur: track.duration };
         setLyricsStatus('loaded');
         setLyricsSynced(track.lyrics.length > 4);
-        setLyricsSource('catalog');
-        setLyricsMatchedDuration(undefined);
       }
 
       // Silently pre-fetch lyrics for next track in queue so Up Next starts instantaneously
@@ -1439,12 +1420,19 @@ export default function App() {
           .catch(() => { });
       }
 
+      const fallbackYtIds =
+        track.candidateVideoIds && track.candidateVideoIds.length > 0
+          ? track.candidateVideoIds
+          : track.youtubeId
+            ? [track.youtubeId]
+            : undefined;
+
       // 1. Direct Studio Master MP3 or local user file
       if (track.audioUrl) {
         resolvingTrackIdRef.current = null;
         setResolvingTrackId(null);
         setIsYouTubeActive(false);
-        sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl);
+        sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl, fallbackYtIds);
         if (isVideoStageActive) {
           void activateMusicVideoForTrack(track, 0);
         }
@@ -1465,7 +1453,12 @@ export default function App() {
         };
         setCurrentTrack(updatedTrack);
         setQueue((prevQ) => prevQ.map((t) => (t.id === track.id ? updatedTrack : t)));
-        sharedAudioEngine.playTrack(updatedTrack.duration, updatedTrack.bpm, updatedTrack.audioUrl);
+        sharedAudioEngine.playTrack(
+          updatedTrack.duration,
+          updatedTrack.bpm,
+          updatedTrack.audioUrl,
+          fallbackYtIds
+        );
         if (isVideoStageActive) {
           void activateMusicVideoForTrack(updatedTrack, 0);
         }
@@ -1653,7 +1646,9 @@ export default function App() {
       album: episode.podcastName,
       duration: episode.duration,
       coverUrl: episode.coverUrl,
+      audioUrl: episode.audioUrl,
       videoUrl: episode.videoUrl,
+      streamSource: episode.audioUrl ? 'official-stream' : undefined,
       genre: 'Podcast',
       lyrics: episode.transcript,
       artistSolanaAddress: episode.hostSolanaAddress,
@@ -1713,10 +1708,6 @@ export default function App() {
     }
 
     if (sharedAudioEngine.getIsPlaying()) {
-      if (sharedAudioEngine.isPlaybackWedged()) {
-        sharedAudioEngine.resume(true);
-        return;
-      }
       sharedAudioEngine.pause();
       return;
     }
@@ -3152,7 +3143,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {!isOnline && (
                 <span
                   data-testid="offline-mode-badge"
@@ -3168,48 +3159,37 @@ export default function App() {
                 </span>
               )}
 
-              <ThemeLanguageControls variant="topbar" />
-
-              <button
-                type="button"
-                data-testid="topbar-auth-btn"
-                onClick={() => setIsAuthModalOpen(true)}
-                className="min-h-[36px] px-2.5 sm:px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--accent-emerald)] text-[var(--text-primary)] text-[11px] font-semibold inline-flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors"
-              >
-                <User size={13} className="text-[var(--accent-text)] shrink-0" />
-                <span className="hidden sm:inline max-w-[110px] truncate">
-                  {authUser ? authUser.displayName : t.authSignIn}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                data-testid="shortcuts-open-btn"
-                onClick={() => setIsShortcutsOpen(true)}
-                aria-label={t.keyboardShortcutsLabel}
-                title={t.keyboardShortcutsLabel}
-                className="hidden sm:flex w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] items-center justify-center shrink-0 cursor-pointer"
-              >
-                <Keyboard size={15} />
-              </button>
-
               <button
                 type="button"
                 onClick={() => setIsMobileQueueOpen(true)}
                 aria-label={t.queue}
-                className="min-[1380px]:hidden w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center shrink-0 cursor-pointer"
+                title={t.queue}
+                className="min-[1380px]:hidden w-9 h-9 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
                 <ListMusic size={15} />
               </button>
 
               <button
                 type="button"
-                onClick={handleHardRefresh}
-                className="hidden sm:flex min-h-[36px] px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] items-center gap-1 transition-colors cursor-pointer"
-                title={t.reloadLabel}
+                data-testid="topbar-settings-btn"
+                onClick={() => setIsSettingsOpen(true)}
+                aria-label="Settings"
+                title="Settings"
+                className="w-9 h-9 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
-                <RefreshCw size={12} />
-                <span className="hidden lg:inline">{t.reloadLabel}</span>
+                <Settings size={15} />
+              </button>
+
+              <button
+                type="button"
+                data-testid="topbar-auth-btn"
+                onClick={() => setIsAuthModalOpen(true)}
+                className="min-h-[36px] px-2.5 sm:px-3.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--accent-emerald)] text-[var(--text-primary)] text-[11px] font-semibold inline-flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors"
+              >
+                <User size={13} className="text-[var(--accent-text)] shrink-0" />
+                <span className="hidden sm:inline max-w-[110px] truncate">
+                  {authUser ? authUser.displayName : t.authSignIn}
+                </span>
               </button>
             </div>
           </header>
@@ -3298,14 +3278,6 @@ export default function App() {
                     >
                       <Search size={14} />
                       <span>{t.searchAction}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleTabChange('search')}
-                      className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium text-xs shrink-0 cursor-pointer transition-colors"
-                    >
-                      {ARTISTS_DIRECTORY.length} Artists
                     </button>
 
                     {currentTab !== 'visualizer' && (
@@ -3688,9 +3660,12 @@ export default function App() {
                 <div className="space-y-3" data-testid="stage-container">
                   <div
                     data-testid="stage-mode-bar"
-                    className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)]/85 backdrop-blur-md border border-[var(--border-subtle)]"
+                    className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)]/85 backdrop-blur-md border border-[var(--border-subtle)] overflow-hidden"
                   >
-                    <div className="inline-flex flex-wrap items-center gap-0.5 p-0.5 rounded-lg bg-[var(--bg-elevated)]/80">
+                    <div
+                      className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-[var(--bg-elevated)]/80 overflow-x-auto no-scrollbar min-w-0 flex-1"
+                      style={{ scrollbarWidth: 'none' }}
+                    >
                       {(
                         [
                           { id: 'music-only', label: t.modeMusicOnly, icon: <Disc size={13} /> },
@@ -3708,7 +3683,7 @@ export default function App() {
                             type="button"
                             data-stage-mode={modeOpt.id}
                             onClick={() => handleSelectStageMode(modeOpt.id)}
-                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer ${active
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all cursor-pointer ${active
                                 ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm ring-1 ring-[var(--accent-border)]'
                                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
                               }`}
@@ -3720,46 +3695,16 @@ export default function App() {
                       })}
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        data-testid="stage-low-cpu-btn"
-                        onClick={handleToggleLowCpu}
-                        aria-pressed={lowCpuMode}
-                        className={`px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors ${lowCpuMode
-                            ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
-                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
-                          }`}
-                      >
-                        <Zap size={12} />
-                        <span>{t.lowCpuShort}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        data-testid="stage-minimize-btn"
-                        onClick={() => {
-                          setIsFloatingMinimized(true);
-                          setIsStageOpen(false);
-                        }}
-                        title={t.minimizeFloating}
-                        className="px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer transition-colors"
-                      >
-                        <Minimize2 size={12} />
-                        <span className="hidden sm:inline">{t.minimizeFloating}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        data-testid="stage-pip-btn"
-                        onClick={handleOpenDesktopPip}
-                        title={t.desktopPip}
-                        className="px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer transition-colors"
-                      >
-                        <PictureInPicture2 size={12} />
-                        <span className="hidden sm:inline">{t.desktopPip}</span>
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      data-testid="stage-close-btn"
+                      onClick={() => setIsStageOpen(false)}
+                      aria-label={t.closeLabel}
+                      title={t.closeLabel}
+                      className="w-7 h-7 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] inline-flex items-center justify-center shrink-0 cursor-pointer transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[260px] sm:min-h-[300px] xl:min-h-[400px]">
@@ -3827,11 +3772,8 @@ export default function App() {
                           title={currentTrack.title}
                           artist={currentTrack.artist}
                           lyricsStatus={lyricsStatus}
-                          lyricsSource={lyricsSource}
                           lyricsSynced={lyricsSynced}
                           lyricsOffset={currentLyricsOffset}
-                          onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
-                          matchedDuration={lyricsMatchedDuration}
                           trackDuration={currentTrack.duration}
                           onRetryLyrics={handleRetryCurrentLyrics}
                           onOpenLyricCard={handleOpenLyricCard}
@@ -3874,11 +3816,8 @@ export default function App() {
                             title={currentTrack.title}
                             artist={currentTrack.artist}
                             lyricsStatus={lyricsStatus}
-                            lyricsSource={lyricsSource}
                             lyricsSynced={lyricsSynced}
                             lyricsOffset={currentLyricsOffset}
-                            onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
-                            matchedDuration={lyricsMatchedDuration}
                             trackDuration={currentTrack.duration}
                             onRetryLyrics={handleRetryCurrentLyrics}
                             onOpenLyricCard={handleOpenLyricCard}
@@ -3912,11 +3851,8 @@ export default function App() {
                             title={currentTrack.title}
                             artist={currentTrack.artist}
                             lyricsStatus={lyricsStatus}
-                            lyricsSource={lyricsSource}
                             lyricsSynced={lyricsSynced}
                             lyricsOffset={currentLyricsOffset}
-                            onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
-                            matchedDuration={lyricsMatchedDuration}
                             trackDuration={currentTrack.duration}
                             onRetryLyrics={handleRetryCurrentLyrics}
                             onOpenLyricCard={handleOpenLyricCard}
@@ -4159,10 +4095,7 @@ export default function App() {
               onExpandVideoStage={() => handleSelectStageMode('video-lyric')}
               onSaveQueueAsPlaylist={handleSaveQueueAsPlaylist}
               lyricsStatus={lyricsStatus}
-              lyricsSource={lyricsSource}
-              lyricsSynced={lyricsSynced}
               lyricsOffset={currentLyricsOffset}
-              onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
               onRetryLyrics={handleRetryCurrentLyrics}
               isMobileOpen={isMobileQueueOpen}
               onCloseMobile={() => setIsMobileQueueOpen(false)}
@@ -4191,10 +4124,6 @@ export default function App() {
             onToggleShuffle={handleToggleShuffle}
             repeatMode={recState.repeatMode}
             onCycleRepeat={handleCycleRepeat}
-            autoplayEnabled={autoplayEnabled}
-            onToggleAutoplay={handleToggleAutoplay}
-            lowCpuMode={lowCpuMode}
-            onToggleLowCpu={handleToggleLowCpu}
             isFloatingMinimized={isFloatingMinimized}
             onToggleFloating={() => setIsFloatingMinimized((prev) => !prev)}
             onTriggerDesktopPip={handleOpenDesktopPip}
@@ -4203,6 +4132,7 @@ export default function App() {
             onAddToAlbum={() => setAlbumModalTrack(currentTrack)}
             onStartRadio={() => handleStartRadio(currentTrack)}
             onOpenExpandedPlayer={() => setIsExpandedPlayerOpen(true)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
             eqPreset={recState.eqPreset}
             playbackRate={recState.playbackRate}
             crossfadeSeconds={recState.crossfadeSeconds}
@@ -4273,6 +4203,28 @@ export default function App() {
         onAddToQueue={handleAddToQueue}
       />
 
+      {/* Spotify-Style Preferences & Audio Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        autoplayEnabled={autoplayEnabled}
+        onToggleAutoplay={handleToggleAutoplay}
+        normalizationEnabled={normalizationEnabled}
+        onToggleNormalization={handleToggleNormalization}
+        lowCpuMode={lowCpuMode}
+        onToggleLowCpu={handleToggleLowCpu}
+        eqPreset={recState.eqPreset}
+        onSelectEqPreset={handleSelectEqPreset}
+        playbackRate={recState.playbackRate}
+        onSelectPlaybackRate={handleSelectPlaybackRate}
+        crossfadeSeconds={recState.crossfadeSeconds}
+        onSelectCrossfade={handleSelectCrossfade}
+        lyricsOffset={currentLyricsOffset}
+        onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
+        onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        onHardRefresh={handleHardRefresh}
+      />
+
       {/* Keyboard Shortcuts Reference Modal */}
       <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
 
@@ -4293,9 +4245,7 @@ export default function App() {
         sleepTimerMinutesRemaining={sleepMinutesRemaining}
         playlists={recState.playlists}
         lyricsStatus={lyricsStatus}
-        lyricsSource={lyricsSource}
         lyricsOffset={currentLyricsOffset}
-        onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
         onRetryLyrics={() => handleRetryCurrentLyrics()}
         onTogglePlay={handleTogglePlay}
         onNext={() => handleNext(false)}

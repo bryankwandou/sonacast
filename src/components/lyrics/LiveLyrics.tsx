@@ -4,15 +4,12 @@ import {
   Check,
   Clock,
   Copy,
-  Globe,
   Loader2,
   LocateFixed,
   Mic2,
   RefreshCw,
-  RotateCcw,
   Search,
-  Share2,
-  SlidersHorizontal
+  Share2
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 
@@ -23,11 +20,8 @@ interface LiveLyricsProps {
   title: string;
   artist: string;
   lyricsStatus?: 'idle' | 'loading' | 'loaded' | 'unavailable';
-  lyricsSource?: string;
   lyricsSynced?: boolean;
   lyricsOffset?: number;
-  onChangeLyricsOffset?: (offsetSeconds: number) => void;
-  matchedDuration?: number;
   trackDuration?: number;
   onRetryLyrics?: (customTitle?: string, customArtist?: string) => void;
   onOpenLyricCard?: (lineIndex?: number) => void;
@@ -42,12 +36,8 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
   title,
   artist,
   lyricsStatus = 'idle',
-  lyricsSource,
-  lyricsSynced,
   lyricsOffset = 0,
-  onChangeLyricsOffset,
-  matchedDuration,
-  trackDuration,
+  trackDuration = 210,
   onRetryLyrics,
   onOpenLyricCard,
   onOpenArtist,
@@ -57,8 +47,6 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const activeLineRef = useRef<HTMLDivElement | null>(null);
   const [showManualLookup, setShowManualLookup] = useState(false);
-  const [showSyncCalibrator, setShowSyncCalibrator] = useState(false);
-  const [snapArmed, setSnapArmed] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [manualTitle, setManualTitle] = useState(title);
   const [manualArtist, setManualArtist] = useState(artist);
@@ -67,14 +55,6 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
   const trackKey = `${title}::${artist}`;
   const manualScrollLocked = lockedTrackKey === trackKey;
   const effectiveTime = Math.max(0, currentTime + lyricsOffset);
-  const suggestedVersionShift =
-    matchedDuration &&
-    trackDuration &&
-    matchedDuration >= 60 &&
-    trackDuration >= 60 &&
-    Math.abs(matchedDuration - trackDuration) >= 10
-      ? Math.round((matchedDuration - trackDuration) * 2) / 2
-      : 0;
 
   // Determine active index against offset-adjusted playback clock
   let activeIndex = -1;
@@ -111,17 +91,6 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
   const handleResync = () => {
     setLockedTrackKey(null);
     scrollLineToCenter('smooth');
-  };
-
-  const formatSignedOffset = (secs: number) => {
-    if (Math.abs(secs) < 0.05) return '0.0s';
-    return `${secs > 0 ? '+' : ''}${secs.toFixed(1)}s`;
-  };
-
-  const adjustOffset = (delta: number) => {
-    if (!onChangeLyricsOffset) return;
-    const next = Math.max(-45, Math.min(45, Math.round((lyricsOffset + delta) * 10) / 10));
-    onChangeLyricsOffset(Math.abs(next) < 0.05 ? 0 : next);
   };
 
   const formatTime = (secs: number) => {
@@ -173,30 +142,26 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
               <span>{t.exportLyricCard}</span>
             </button>
           )}
-          {lyricsStatus === 'loading' ? (
+          {lyricsStatus === 'loading' && (
             <span className="inline-flex items-center gap-1 bg-[var(--bg-elevated)] px-2 py-1 rounded-full text-[var(--accent-text)] shrink-0">
               <Loader2 size={11} className="animate-spin" />
               <span>{t.lyricsLoading}</span>
             </span>
-          ) : lyrics.length > 0 ? (
-            <span className="inline-flex items-center gap-1 bg-[var(--bg-elevated)] px-2 py-1 rounded-full shrink-0">
-              <Globe size={11} className="text-[var(--accent-text)]" />
-              <span>{lyricsSynced ? t.lyricsSyncedLabel : t.lyricsTimedLabel}</span>
-              {lyricsSource && <span className="text-[10px] font-mono text-[var(--text-dim)]">&middot; {lyricsSource}</span>}
-            </span>
-          ) : null}
+          )}
 
           {onRetryLyrics && (
             <>
-              <button
-                type="button"
-                onClick={() => onRetryLyrics()}
-                title={t.lyricsRetry}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors shrink-0"
-              >
-                <RefreshCw size={11} className={lyricsStatus === 'loading' ? 'animate-spin' : ''} />
-                <span>{t.lyricsRetry}</span>
-              </button>
+              {lyricsStatus === 'unavailable' && (
+                <button
+                  type="button"
+                  onClick={() => onRetryLyrics()}
+                  title={t.lyricsRetry}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors shrink-0"
+                >
+                  <RefreshCw size={11} />
+                  <span>{t.lyricsRetry}</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -205,129 +170,19 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
                   setShowManualLookup((prev) => !prev);
                 }}
                 title={t.lyricsSearchPlaceholder}
-                className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-medium cursor-pointer transition-colors shrink-0 ${
+                aria-label={t.lyricsSearchPlaceholder}
+                className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-medium cursor-pointer transition-colors shrink-0 ${
                   showManualLookup
                     ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
                     : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
-                <Search size={11} />
+                <Search size={12} />
               </button>
             </>
           )}
-          {onChangeLyricsOffset && lyrics.length > 0 && (
-            <button
-              type="button"
-              data-testid="lyrics-sync-toggle"
-              onClick={() => setShowSyncCalibrator((prev) => !prev)}
-              title={t.syncOffsetLabel}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold cursor-pointer transition-colors shrink-0 ${
-                showSyncCalibrator || Math.abs(lyricsOffset) >= 0.05
-                  ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
-                  : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <SlidersHorizontal size={11} />
-              <span className="font-mono">{formatSignedOffset(lyricsOffset)}</span>
-            </button>
-          )}
         </div>
       </div>
-
-      {onChangeLyricsOffset &&
-        Math.abs(suggestedVersionShift) >= 10 &&
-        Math.abs(lyricsOffset) < 0.25 &&
-        !showSyncCalibrator && (
-          <div className="mb-3 px-3 py-2 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-border)] flex items-center justify-between gap-2 text-xs">
-            <span className="text-[var(--text-primary)] font-medium truncate">
-              {suggestedVersionShift > 0 ? t.syncTooLate : t.syncTooEarly} ({Math.round(matchedDuration || 0)}s LRC vs{' '}
-              {Math.round(trackDuration || 0)}s audio)
-            </span>
-            <button
-              type="button"
-              onClick={() => onChangeLyricsOffset(suggestedVersionShift)}
-              className="px-2.5 py-1 rounded-lg bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-[11px] font-bold shrink-0 cursor-pointer"
-            >
-              {formatSignedOffset(suggestedVersionShift)}
-            </button>
-          </div>
-        )}
-
-      {showSyncCalibrator && onChangeLyricsOffset && (
-        <div
-          data-testid="lyrics-sync-panel"
-          className="mb-3 p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] space-y-2.5"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="font-bold text-[var(--text-primary)]">{t.syncOffsetLabel}</span>
-              <span className="font-mono px-2 py-0.5 rounded-md bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--accent-text)] font-bold">
-                {formatSignedOffset(lyricsOffset)}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                data-testid="lyrics-snap-line-btn"
-                onClick={() => setSnapArmed((prev) => !prev)}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-colors ${
-                  snapArmed
-                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                    : 'bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--accent-border)]'
-                }`}
-              >
-                <LocateFixed size={11} />
-                <span>{t.syncSnapLine}</span>
-              </button>
-              <button
-                type="button"
-                data-testid="lyrics-offset-reset-btn"
-                onClick={() => {
-                  setSnapArmed(false);
-                  onChangeLyricsOffset(0);
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
-              >
-                <RotateCcw size={11} />
-                <span>{t.syncReset}</span>
-              </button>
-            </div>
-          </div>
-
-          {snapArmed && (
-            <div className="px-2.5 py-1.5 rounded-lg bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[11px] font-semibold text-[var(--accent-text)]">
-              {t.syncSnapArmedHint}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-[var(--text-dim)] mr-1">{t.syncTooEarly}</span>
-            {[-5, -2, -0.5].map((delta) => (
-              <button
-                key={delta}
-                type="button"
-                data-testid={`lyrics-offset-${String(delta).replace('.', '')}`}
-                onClick={() => adjustOffset(delta)}
-                className="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-[11px] font-mono font-semibold text-[var(--text-primary)] cursor-pointer"
-              >
-                {delta}s
-              </button>
-            ))}
-            {[0.5, 2, 5].map((delta) => (
-              <button
-                key={delta}
-                type="button"
-                data-testid={`lyrics-offset-+${String(delta).replace('.', '')}`}
-                onClick={() => adjustOffset(delta)}
-                className="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-[11px] font-mono font-semibold text-[var(--accent-text)] cursor-pointer"
-              >
-                +{delta}s
-              </button>
-            ))}
-            <span className="text-[11px] text-[var(--text-dim)] ml-1">{t.syncTooLate}</span>
-          </div>
-        </div>
-      )}
 
       {showManualLookup && onRetryLyrics && (
         <form
@@ -431,26 +286,17 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
                   key={idx}
                   ref={isActive ? activeLineRef : null}
                   onClick={() => {
-                    if (snapArmed && onChangeLyricsOffset) {
-                      const snapped = Math.max(-45, Math.min(45, Math.round((line.time - currentTime) * 10) / 10));
-                      onChangeLyricsOffset(Math.abs(snapped) < 0.05 ? 0 : snapped);
-                      setSnapArmed(false);
-                      setLockedTrackKey(null);
-                      return;
-                    }
                     onSeek(Math.max(0, line.time - lyricsOffset));
                   }}
                   className={`group relative overflow-hidden flex items-start gap-3 sm:gap-4 p-3 rounded-xl cursor-pointer transition-all duration-300 ${focusFade} ${
-                    snapArmed
-                      ? 'border border-dashed border-[var(--accent-border)] hover:bg-[var(--accent-soft)]'
-                      : isActive
-                        ? 'bg-[var(--accent-soft)] border-l-4 border-[var(--accent-emerald)] pl-4 scale-[1.01]'
-                        : isPast
-                          ? 'text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+                    isActive
+                      ? 'bg-[var(--accent-soft)] border-l-4 border-[var(--accent-emerald)] pl-4 scale-[1.01]'
+                      : isPast
+                        ? 'text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
                   }`}
                 >
-                  {isActive && !snapArmed && (
+                  {isActive && (
                     <span
                       className="pointer-events-none absolute left-0 bottom-0 h-[2px] bg-[var(--accent-emerald)] transition-all duration-100"
                       style={{ width: `${Math.round(activeProgress * 100)}%` }}

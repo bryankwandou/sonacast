@@ -9,7 +9,6 @@ import {
   FolderPlus,
   Gauge,
   Heart,
-  Infinity as InfinityIcon,
   ListMusic,
   Loader2,
   Maximize2,
@@ -23,6 +22,7 @@ import {
   Repeat1,
   RotateCcw,
   RotateCw,
+  Settings,
   Share2,
   Shuffle,
   SkipBack,
@@ -30,8 +30,7 @@ import {
   SlidersHorizontal,
   Video,
   Volume2,
-  VolumeX,
-  Zap
+  VolumeX
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { applyCoverFallback } from '../../utils/coverFallback';
@@ -62,13 +61,10 @@ interface BottomPlayerBarProps {
   onToggleShuffle?: () => void;
   repeatMode?: RepeatMode;
   onCycleRepeat?: () => void;
-  autoplayEnabled?: boolean;
-  onToggleAutoplay?: () => void;
-  lowCpuMode?: boolean;
-  onToggleLowCpu?: () => void;
   isFloatingMinimized?: boolean;
   onToggleFloating?: () => void;
   onTriggerDesktopPip?: () => void;
+  onOpenSettings?: () => void;
   isLiked?: boolean;
   onToggleLike?: () => void;
   onAddToAlbum?: () => void;
@@ -116,13 +112,10 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   onToggleShuffle,
   repeatMode = 'off',
   onCycleRepeat,
-  autoplayEnabled = true,
-  onToggleAutoplay,
-  lowCpuMode = false,
-  onToggleLowCpu,
   isFloatingMinimized = false,
   onToggleFloating,
   onTriggerDesktopPip,
+  onOpenSettings,
   isLiked = false,
   onToggleLike,
   onAddToAlbum,
@@ -265,8 +258,8 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] md:grid-cols-[minmax(200px,29fr)_minmax(280px,38fr)_minmax(240px,33fr)] items-center gap-1.5 sm:gap-3 max-w-full">
-        {/* Left: Cover Art, Clickable Title/Artist & Core Library Actions */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(180px,28fr)_minmax(290px,44fr)_minmax(180px,28fr)] items-center gap-2 sm:gap-3 max-w-full">
+        {/* Left: Cover Art, Clickable Title/Artist & Core Like / Add Actions */}
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
           <button
             type="button"
@@ -305,18 +298,13 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               ) : (
                 <span className="truncate">{currentTrack.artist}</span>
               )}
-              {currentTrack.sourceTag && (
-                <span className="hidden min-[1440px]:inline-block px-1.5 py-0.2 rounded bg-[var(--bg-tint)] text-[9px] font-mono text-[var(--accent-text)] uppercase shrink-0">
-                  {currentTrack.sourceTag}
-                </span>
-              )}
             </div>
             {streamError && (
               <div className="text-[10px] text-amber-400 truncate mt-0.5">{streamError}</div>
             )}
           </div>
 
-          <div className="hidden sm:flex items-center gap-0.5 shrink-0">
+          <div className="hidden md:flex items-center gap-0.5 shrink-0">
             {onToggleLike && (
               <button
                 type="button"
@@ -345,52 +333,78 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
                 <FolderPlus size={16} />
               </button>
             )}
-            {onStartRadio && (
-              <button
-                type="button"
-                onClick={onStartRadio}
-                data-testid="player-start-radio"
-                aria-label={t.startRadio}
-                title={t.startRadio}
-                className="hidden xl:inline-flex p-1.5 rounded-full text-[var(--text-dim)] hover:text-[var(--accent-text)] transition-colors cursor-pointer"
-              >
-                <Radio size={15} />
-              </button>
-            )}
-            {canSaveOffline && onToggleSaveOffline && (
-              <button
-                type="button"
-                onClick={onToggleSaveOffline}
-                data-testid="player-offline-btn"
-                aria-label={isSavedOffline ? t.savedOffline : t.saveOffline}
-                title={isSavedOffline ? t.savedOffline : t.saveOffline}
-                className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                  isSavedOffline
-                    ? 'text-[var(--accent-text)]'
-                    : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                {isSavedOffline ? <Check size={15} /> : <Download size={15} />}
-              </button>
-            )}
-            {onShareTrack && (
-              <button
-                type="button"
-                onClick={onShareTrack}
-                data-testid="player-share-btn"
-                aria-label={t.shareTrackLink}
-                title={t.shareTrackLink}
-                className="hidden min-[1440px]:inline-flex p-1.5 rounded-full text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-              >
-                <Share2 size={14} />
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Center: Spotify 5-Button Symmetrical Transport + Full-Width Seek Scrub Bar */}
-        <div className="flex flex-col items-center justify-center w-auto md:w-full md:max-w-[540px] mx-auto gap-1 shrink-0 md:shrink">
-          <div className="flex items-center justify-center gap-0.5 sm:gap-3 md:gap-4">
+        {/* Mobile Compact Actions (<768px): Spotify-Clean Video, Lyrics, Play/Pause, Next */}
+        <div className="flex md:hidden items-center gap-1 shrink-0">
+          <button
+            type="button"
+            data-testid="mobile-video-toggle"
+            onClick={() =>
+              onSelectStageMode(
+                isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
+                  ? 'music-only'
+                  : 'video-only'
+              )
+            }
+            aria-label={t.watchMusicVideo}
+            title={t.watchMusicVideo}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
+                ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Video size={15} />
+          </button>
+          <button
+            type="button"
+            data-testid="mobile-lyrics-toggle"
+            onClick={() =>
+              onSelectStageMode(
+                isStageOpen && (stageMode === 'lyrics-only' || stageMode === 'music-lyric')
+                  ? 'music-only'
+                  : 'lyrics-only'
+              )
+            }
+            aria-label={t.modeLyricsOnly}
+            title={t.modeLyricsOnly}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              isStageOpen && (stageMode === 'lyrics-only' || stageMode === 'music-lyric')
+                ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Mic2 size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={onTogglePlay}
+            aria-label={isPlaying ? 'Pause' : 'Play'}
+            className="w-9 h-9 rounded-full bg-[var(--text-primary)] text-[var(--bg-app)] flex items-center justify-center shadow-md active:scale-95 cursor-pointer"
+          >
+            {isResolvingStream ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : isPlaying ? (
+              <Pause size={16} className="fill-current" />
+            ) : (
+              <Play size={16} className="fill-current ml-0.5" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onNext}
+            aria-label="Next track"
+            className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+          >
+            <SkipForward size={17} className="fill-current" />
+          </button>
+        </div>
+
+        {/* Center (Desktop md+): Spotify 5-Button Symmetrical Transport + Scrubber */}
+        <div className="hidden md:flex flex-col items-center justify-center w-full max-w-[520px] mx-auto gap-1 min-w-0">
+          <div className="flex items-center justify-center gap-2.5 lg:gap-4">
             <button
               type="button"
               onClick={() => onToggleShuffle?.()}
@@ -398,7 +412,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               aria-label={t.shuffleLabel}
               aria-pressed={shuffle}
               title={t.shuffleLabel}
-              className={`hidden sm:inline-flex relative p-1.5 rounded-full transition-colors cursor-pointer ${
+              className={`relative p-1.5 rounded-full transition-colors cursor-pointer ${
                 shuffle
                   ? 'text-[var(--accent-text)]'
                   : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
@@ -410,15 +424,29 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               )}
             </button>
 
+            {currentTrack.genre === 'Podcast' && onSkipSeconds && (
+              <button
+                type="button"
+                onClick={() => onSkipSeconds(-15)}
+                data-testid="player-skip-back-15"
+                aria-label={t.skipBack15}
+                title={t.skipBack15}
+                className="inline-flex items-center justify-center gap-0.5 px-1 py-1 rounded-md text-[10px] font-mono font-bold text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              >
+                <RotateCcw size={11} />
+                <span>15</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onPrev}
               data-testid="player-prev-btn"
               aria-label="Previous track"
-              className="p-1 sm:p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
               title="Previous"
             >
-              <SkipBack size={16} className="sm:w-[18px] sm:h-[18px] fill-current" />
+              <SkipBack size={18} className="fill-current" />
             </button>
 
             <button
@@ -442,11 +470,25 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               onClick={onNext}
               data-testid="player-next-btn"
               aria-label="Next track"
-              className="p-1 sm:p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
               title="Next"
             >
-              <SkipForward size={16} className="sm:w-[18px] sm:h-[18px] fill-current" />
+              <SkipForward size={18} className="fill-current" />
             </button>
+
+            {currentTrack.genre === 'Podcast' && onSkipSeconds && (
+              <button
+                type="button"
+                onClick={() => onSkipSeconds(15)}
+                data-testid="player-skip-forward-15"
+                aria-label={t.skipForward15}
+                title={t.skipForward15}
+                className="inline-flex items-center justify-center gap-0.5 px-1 py-1 rounded-md text-[10px] font-mono font-bold text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              >
+                <span>15</span>
+                <RotateCw size={11} />
+              </button>
+            )}
 
             <button
               type="button"
@@ -454,7 +496,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               data-testid="player-repeat-toggle"
               aria-label={`${t.repeatLabel}: ${repeatMode}`}
               title={`${t.repeatLabel}: ${repeatMode}`}
-              className={`hidden sm:inline-flex relative p-1.5 rounded-full transition-colors cursor-pointer ${
+              className={`relative p-1.5 rounded-full transition-colors cursor-pointer ${
                 repeatMode !== 'off'
                   ? 'text-[var(--accent-text)]'
                   : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
@@ -526,383 +568,356 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
           </div>
         </div>
 
-        {/* Right: Clean Spotify Utility Icons (-15/+15, Autoplay, Views, DSP, PiP, Queue, Custom Volume, Expand) */}
-        <div className="flex items-center justify-end gap-0.5 sm:gap-1 min-w-0 justify-self-end">
-          {onSkipSeconds && (
-            <div className="hidden xl:flex items-center gap-0.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => onSkipSeconds(-15)}
-                data-testid="player-skip-back-15"
-                aria-label={t.skipBack15}
-                title={t.skipBack15}
-                className="inline-flex items-center justify-center gap-0.5 px-1 py-1.5 rounded-md text-[10px] font-mono font-bold text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-              >
-                <RotateCcw size={11} />
-                <span>15</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onSkipSeconds(15)}
-                data-testid="player-skip-forward-15"
-                aria-label={t.skipForward15}
-                title={t.skipForward15}
-                className="inline-flex items-center justify-center gap-0.5 px-1 py-1.5 rounded-md text-[10px] font-mono font-bold text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-              >
-                <span>15</span>
-                <RotateCw size={11} />
-              </button>
-            </div>
-          )}
-
-          {onToggleAutoplay && (
-            <button
-              type="button"
-              onClick={onToggleAutoplay}
-              data-testid="player-autoplay-toggle"
-              aria-label={`${t.autoplaySimilar}: ${autoplayEnabled ? 'ON' : 'OFF'}`}
-              aria-pressed={autoplayEnabled}
-              title={`${t.autoplaySimilar} (${autoplayEnabled ? 'ON' : 'OFF'})`}
-              className={`hidden sm:inline-flex relative items-center gap-1 p-1.5 min-[1520px]:px-2 rounded-full text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                autoplayEnabled
-                  ? 'text-[var(--accent-text)]'
-                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <InfinityIcon size={15} />
-              <span className="hidden min-[1520px]:inline whitespace-nowrap">{t.autoNextShort}</span>
-              {autoplayEnabled && (
-                <span className="min-[1520px]:hidden absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--accent-emerald)]" />
-              )}
-            </button>
-          )}
-
-          <div className="hidden md:flex items-center gap-0.5 shrink-0">
-            {(
-              [
-                { id: 'music-only', label: t.modeMusicOnly, icon: <Disc size={15} />, wideOnly: true },
-                { id: 'orbwave-only', label: t.modeOrbwaveOnly, icon: <Activity size={15} />, wideOnly: true },
-                { id: 'video-only', label: t.modeVideoOnly, icon: <Video size={15} />, wideOnly: false },
-                { id: 'lyrics-only', label: t.modeLyricsOnly, icon: <Mic2 size={15} />, wideOnly: false }
-              ] as const
-            ).map((item) => {
-              const active = isStageOpen && stageMode === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onSelectStageMode(item.id)}
-                  title={item.label}
-                  aria-label={item.label}
-                  className={`${item.wideOnly ? 'hidden min-[1440px]:inline-flex' : 'inline-flex'} relative p-1.5 rounded-lg transition-colors cursor-pointer ${
-                    active
-                      ? 'text-[var(--accent-text)]'
-                      : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-                  }`}
-                >
-                  {item.icon}
-                  {active && (
-                    <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--accent-emerald)]" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {onToggleLowCpu && (
-            <button
-              type="button"
-              onClick={onToggleLowCpu}
-              data-testid="player-low-cpu-toggle"
-              aria-pressed={lowCpuMode}
-              title={t.lowCpuMode}
-              aria-label={t.lowCpuMode}
-              className={`hidden sm:inline-flex relative items-center gap-1 p-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                lowCpuMode
-                  ? 'text-[var(--accent-text)]'
-                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Zap size={14} />
-              {lowCpuMode && (
-                <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--accent-emerald)]" />
-              )}
-            </button>
-          )}
-
-          {onToggleFloating && (
-            <button
-              type="button"
-              onClick={onToggleFloating}
-              data-testid="player-floating-toggle"
-              aria-pressed={isFloatingMinimized}
-              title={t.minimizeFloating}
-              aria-label={t.minimizeFloating}
-              className={`hidden min-[1360px]:inline-flex p-1.5 rounded-lg shrink-0 transition-colors cursor-pointer ${
-                isFloatingMinimized
-                  ? 'text-[var(--accent-text)]'
-                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Minimize2 size={14} />
-            </button>
-          )}
-
-          {onTriggerDesktopPip && (
-            <button
-              type="button"
-              onClick={onTriggerDesktopPip}
-              data-testid="player-pip-toggle"
-              title={t.desktopPip}
-              aria-label={t.desktopPip}
-              className="hidden xl:inline-flex p-1.5 rounded-lg shrink-0 text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-            >
-              <PictureInPicture2 size={15} />
-            </button>
-          )}
-
-          <div className="flex md:hidden items-center gap-0.5 shrink-0">
-            <button
-              type="button"
-              data-testid="mobile-video-toggle"
-              onClick={() =>
-                onSelectStageMode(
-                  isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
-                    ? 'music-only'
-                    : 'video-only'
-                )
-              }
-              aria-label={t.watchMusicVideo}
-              title={t.watchMusicVideo}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
-                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
-              }`}
-            >
-              <Video size={14} />
-            </button>
-            <button
-              type="button"
-              data-testid="mobile-lyrics-toggle"
-              onClick={() =>
-                onSelectStageMode(
-                  isStageOpen && (stageMode === 'lyrics-only' || stageMode === 'music-lyric')
-                    ? 'music-only'
-                    : 'lyrics-only'
-                )
-              }
-              aria-label={t.modeLyricsOnly}
-              title={t.modeLyricsOnly}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+        {/* Right (Desktop md+): Clean Spotify Cluster (Lyrics, Video, Sound & Tools, Queue, Volume, Expand) */}
+        <div className="hidden md:flex items-center justify-end gap-1 lg:gap-1.5 min-w-0 justify-self-end">
+          <button
+            type="button"
+            onClick={() =>
+              onSelectStageMode(
                 isStageOpen && (stageMode === 'lyrics-only' || stageMode === 'music-lyric')
-                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
+                  ? 'music-only'
+                  : 'lyrics-only'
+              )
+            }
+            data-testid="bottom-lyrics-btn"
+            title={t.modeLyricsOnly}
+            aria-label={t.modeLyricsOnly}
+            className={`relative p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
+              isStageOpen && (stageMode === 'lyrics-only' || stageMode === 'music-lyric')
+                ? 'text-[var(--accent-text)]'
+                : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Mic2 size={15} />
+            {isStageOpen && (stageMode === 'lyrics-only' || stageMode === 'music-lyric') && (
+              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--accent-emerald)]" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onSelectStageMode(
+                isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
+                  ? 'music-only'
+                  : 'video-only'
+              )
+            }
+            data-testid="bottom-video-btn"
+            title={t.modeVideoOnly}
+            aria-label={t.modeVideoOnly}
+            className={`relative p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
+              isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
+                ? 'text-[var(--accent-text)]'
+                : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Video size={15} />
+            {isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric') && (
+              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--accent-emerald)]" />
+            )}
+          </button>
+
+          <div className="relative shrink-0" ref={dspContainerRef}>
+            <button
+              type="button"
+              onClick={() => setIsDspMenuOpen((prev) => !prev)}
+              data-testid="bottom-dsp-toggle"
+              aria-expanded={isDspMenuOpen}
+              aria-label={t.soundAndSleep}
+              title={t.soundAndSleep}
+              className={`inline-flex items-center gap-1 p-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                isDspMenuOpen || sleepTimerMinutesRemaining !== null || eqPreset !== 'flat' || playbackRate !== 1
+                  ? 'text-[var(--accent-text)] bg-[var(--accent-soft)]'
+                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
               }`}
             >
-              <Mic2 size={14} />
+              <SlidersHorizontal size={15} />
+              {sleepTimerMinutesRemaining !== null && (
+                <span className="text-[10px] font-mono font-bold">
+                  {sleepTimerMinutesRemaining}m
+                </span>
+              )}
             </button>
-          </div>
 
-          {(onSelectEqPreset || onSetSleepTimer || onOpenLyricCard) && (
-            <div className="relative" ref={dspContainerRef}>
-              <button
-                type="button"
-                onClick={() => setIsDspMenuOpen((prev) => !prev)}
-                data-testid="bottom-dsp-toggle"
-                aria-expanded={isDspMenuOpen}
-                aria-label={t.soundAndSleep}
-                title={t.soundAndSleep}
-                className={`inline-flex items-center gap-1 p-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                  isDspMenuOpen || sleepTimerMinutesRemaining !== null || eqPreset !== 'flat' || playbackRate !== 1
-                    ? 'text-[var(--accent-text)] bg-[var(--accent-soft)]'
-                    : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-                }`}
+            {isDspMenuOpen && (
+              <div
+                data-testid="bottom-dsp-popover"
+                className="absolute bottom-12 right-0 w-72 sm:w-80 p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-medium)] shadow-2xl space-y-3.5 z-50 max-h-[75vh] overflow-y-auto"
               >
-                <SlidersHorizontal size={15} />
-                {sleepTimerMinutesRemaining !== null && (
-                  <span className="text-[10px] font-mono font-bold">
-                    {sleepTimerMinutesRemaining}m
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-extrabold text-[var(--text-primary)]">
+                    {t.soundAndSleep}
                   </span>
-                )}
-              </button>
+                  {onOpenSettings && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDspMenuOpen(false);
+                        onOpenSettings();
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[10px] font-semibold cursor-pointer transition-colors"
+                    >
+                      <Settings size={10} />
+                      <span>Settings</span>
+                    </button>
+                  )}
+                </div>
 
-              {isDspMenuOpen && (
-                <div
-                  data-testid="bottom-dsp-popover"
-                  className="absolute bottom-12 right-0 w-72 sm:w-80 p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-medium)] shadow-2xl space-y-3.5 z-50"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-[var(--text-primary)]">
-                      {t.soundAndSleep}
-                    </span>
-                    {onOpenLyricCard && (
+                {/* Quick Track & Stage Utilities */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {onStartRadio && (
+                    <button
+                      type="button"
+                      data-testid="player-start-radio"
+                      onClick={() => {
+                        setIsDspMenuOpen(false);
+                        onStartRadio();
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer"
+                    >
+                      <Radio size={12} className="text-[var(--accent-text)] shrink-0" />
+                      <span className="truncate">{t.startRadio}</span>
+                    </button>
+                  )}
+                  {canSaveOffline && onToggleSaveOffline && (
+                    <button
+                      type="button"
+                      data-testid="player-offline-btn"
+                      onClick={onToggleSaveOffline}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer ${
+                        isSavedOffline
+                          ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                          : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-primary)]'
+                      }`}
+                    >
+                      {isSavedOffline ? <Check size={12} /> : <Download size={12} />}
+                      <span className="truncate">{isSavedOffline ? t.savedOffline : t.saveOffline}</span>
+                    </button>
+                  )}
+                  {onShareTrack && (
+                    <button
+                      type="button"
+                      data-testid="player-share-btn"
+                      onClick={() => {
+                        setIsDspMenuOpen(false);
+                        onShareTrack();
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer"
+                    >
+                      <Share2 size={12} />
+                      <span className="truncate">{t.shareTrackLink}</span>
+                    </button>
+                  )}
+                  {onOpenLyricCard && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDspMenuOpen(false);
+                        onOpenLyricCard();
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer"
+                    >
+                      <Disc size={12} className="text-[var(--accent-text)]" />
+                      <span className="truncate">{t.exportLyricCard}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDspMenuOpen(false);
+                      onSelectStageMode('orbwave-only');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer"
+                  >
+                    <Activity size={12} className="text-[var(--accent-text)]" />
+                    <span className="truncate">{t.modeOrbwaveOnly}</span>
+                  </button>
+                  {onToggleFloating && (
+                    <button
+                      type="button"
+                      data-testid="player-floating-toggle"
+                      onClick={() => {
+                        setIsDspMenuOpen(false);
+                        onToggleFloating();
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer ${
+                        isFloatingMinimized
+                          ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                          : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <Minimize2 size={12} />
+                      <span className="truncate">{t.minimizeFloating}</span>
+                    </button>
+                  )}
+                  {onTriggerDesktopPip && (
+                    <button
+                      type="button"
+                      data-testid="player-pip-toggle"
+                      onClick={() => {
+                        setIsDspMenuOpen(false);
+                        onTriggerDesktopPip();
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer"
+                    >
+                      <PictureInPicture2 size={12} />
+                      <span className="truncate">{t.desktopPip}</span>
+                    </button>
+                  )}
+                </div>
+
+                {onSelectEqPreset && (
+                  <div className="space-y-1.5 pt-2 border-t border-[var(--border-subtle)]">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                      {t.equalizer}
+                    </div>
+                    <div className="grid grid-cols-5 gap-1">
+                      {EQ_LIST.map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => onSelectEqPreset(preset)}
+                          className={`py-1.5 rounded-lg text-[10px] font-bold uppercase cursor-pointer transition-colors ${
+                            eqPreset === preset
+                              ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                              : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {onSelectPlaybackRate && (
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                      {t.playbackSpeed}
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {SPEED_LIST.map((rate) => (
+                        <button
+                          key={rate}
+                          type="button"
+                          onClick={() => onSelectPlaybackRate(rate)}
+                          className={`py-1.5 rounded-lg text-[11px] font-mono font-bold cursor-pointer transition-colors ${
+                            Math.abs(playbackRate - rate) < 0.01
+                              ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                              : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {rate}x
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {onSelectCrossfade && (
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                      {t.crossfade}
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {CROSSFADE_LIST.map((sec) => (
+                        <button
+                          key={sec}
+                          type="button"
+                          onClick={() => onSelectCrossfade(sec)}
+                          className={`py-1.5 rounded-lg text-[11px] font-mono font-bold cursor-pointer transition-colors ${
+                            crossfadeSeconds === sec
+                              ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                              : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {sec}s
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(onToggleNormalization || onToggleVocalReduction) && (
+                  <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
+                    {onToggleNormalization && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setIsDspMenuOpen(false);
-                          onOpenLyricCard();
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)] text-[10px] font-bold hover:bg-[var(--accent-emerald)] hover:text-[var(--accent-fg)] cursor-pointer transition-colors"
+                        onClick={onToggleNormalization}
+                        data-testid="dsp-normalize-toggle"
+                        aria-pressed={normalizationEnabled}
+                        className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-[10px] font-bold cursor-pointer transition-colors border ${
+                          normalizationEnabled
+                            ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                            : 'bg-[var(--bg-tint)] border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
                       >
-                        <Share2 size={10} />
-                        <span>{t.exportLyricCard}</span>
+                        <Gauge size={12} />
+                        <span className="truncate">{t.normalizeVolume}</span>
+                      </button>
+                    )}
+                    {onToggleVocalReduction && (
+                      <button
+                        type="button"
+                        onClick={onToggleVocalReduction}
+                        data-testid="dsp-vocal-toggle"
+                        aria-pressed={vocalReductionEnabled}
+                        className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-[10px] font-bold cursor-pointer transition-colors border ${
+                          vocalReductionEnabled
+                            ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                            : 'bg-[var(--bg-tint)] border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        <Mic2 size={12} />
+                        <span className="truncate">{t.karaokeMode}</span>
                       </button>
                     )}
                   </div>
+                )}
 
-                  {onSelectEqPreset && (
-                    <div className="space-y-1.5">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
-                        {t.equalizer}
-                      </div>
-                      <div className="grid grid-cols-5 gap-1">
-                        {EQ_LIST.map((preset) => (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => onSelectEqPreset(preset)}
-                            className={`py-1.5 rounded-lg text-[10px] font-bold uppercase cursor-pointer transition-colors ${
-                              eqPreset === preset
-                                ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                                : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                            }`}
-                          >
-                            {preset}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {onSelectPlaybackRate && (
-                    <div className="space-y-1.5">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
-                        {t.playbackSpeed}
-                      </div>
-                      <div className="grid grid-cols-4 gap-1">
-                        {SPEED_LIST.map((rate) => (
-                          <button
-                            key={rate}
-                            type="button"
-                            onClick={() => onSelectPlaybackRate(rate)}
-                            className={`py-1.5 rounded-lg text-[11px] font-mono font-bold cursor-pointer transition-colors ${
-                              Math.abs(playbackRate - rate) < 0.01
-                                ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                                : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                            }`}
-                          >
-                            {rate}x
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {onSelectCrossfade && (
-                    <div className="space-y-1.5">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
-                        {t.crossfade}
-                      </div>
-                      <div className="grid grid-cols-4 gap-1">
-                        {CROSSFADE_LIST.map((sec) => (
-                          <button
-                            key={sec}
-                            type="button"
-                            onClick={() => onSelectCrossfade(sec)}
-                            className={`py-1.5 rounded-lg text-[11px] font-mono font-bold cursor-pointer transition-colors ${
-                              crossfadeSeconds === sec
-                                ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                                : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                            }`}
-                          >
-                            {sec}s
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(onToggleNormalization || onToggleVocalReduction) && (
-                    <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
-                      {onToggleNormalization && (
-                        <button
-                          type="button"
-                          onClick={onToggleNormalization}
-                          data-testid="dsp-normalize-toggle"
-                          aria-pressed={normalizationEnabled}
-                          className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-[10px] font-bold cursor-pointer transition-colors border ${
-                            normalizationEnabled
-                              ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
-                              : 'bg-[var(--bg-tint)] border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                          }`}
-                        >
-                          <Gauge size={12} />
-                          <span className="truncate">{t.normalizeVolume}</span>
-                        </button>
-                      )}
-                      {onToggleVocalReduction && (
-                        <button
-                          type="button"
-                          onClick={onToggleVocalReduction}
-                          data-testid="dsp-vocal-toggle"
-                          aria-pressed={vocalReductionEnabled}
-                          className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-[10px] font-bold cursor-pointer transition-colors border ${
-                            vocalReductionEnabled
-                              ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
-                              : 'bg-[var(--bg-tint)] border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                          }`}
-                        >
-                          <Mic2 size={12} />
-                          <span className="truncate">{t.karaokeMode}</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {onSetSleepTimer && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
-                        <span className="inline-flex items-center gap-1">
-                          <Clock size={10} />
-                          <span>{t.sleepTimer}</span>
+                {onSetSleepTimer && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock size={10} />
+                        <span>{t.sleepTimer}</span>
+                      </span>
+                      {sleepTimerMinutesRemaining !== null && (
+                        <span className="text-[var(--accent-text)] font-mono">
+                          {sleepTimerMinutesRemaining}m left
                         </span>
-                        {sleepTimerMinutesRemaining !== null && (
-                          <span className="text-[var(--accent-text)] font-mono">
-                            {sleepTimerMinutesRemaining}m left
-                          </span>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-4 gap-1">
-                        {SLEEP_LIST.map((mins) => {
-                          const isSelected =
-                            mins === null
-                              ? sleepTimerMinutesRemaining === null
-                              : sleepTimerMinutesRemaining !== null &&
-                                Math.abs(sleepTimerMinutesRemaining - mins) <= 1;
-                          return (
-                            <button
-                              key={String(mins)}
-                              type="button"
-                              data-testid={`sleep-timer-${mins === null ? 'off' : mins}`}
-                              onClick={() => onSetSleepTimer(mins)}
-                              className={`py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition-colors ${
-                                isSelected
-                                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                                  : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                              }`}
-                            >
-                              {mins === null ? t.sleepOff : `${mins}m`}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                    <div className="grid grid-cols-4 gap-1">
+                      {SLEEP_LIST.map((mins) => {
+                        const isSelected =
+                          mins === null
+                            ? sleepTimerMinutesRemaining === null
+                            : sleepTimerMinutesRemaining !== null &&
+                              Math.abs(sleepTimerMinutesRemaining - mins) <= 1;
+                        return (
+                          <button
+                            key={String(mins)}
+                            type="button"
+                            data-testid={`sleep-timer-${mins === null ? 'off' : mins}`}
+                            onClick={() => onSetSleepTimer(mins)}
+                            className={`py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                                : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            }`}
+                          >
+                            {mins === null ? t.sleepOff : `${mins}m`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <button
             type="button"

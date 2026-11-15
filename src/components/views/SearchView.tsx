@@ -24,7 +24,7 @@ import { MoodStrip } from '../common/MoodStrip';
 import { OrderedTracklistPanel } from '../common/OrderedTracklistPanel';
 import { TrackCard } from '../common/TrackCard';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
-import { Clock, Disc3, Globe, ListMusic, Loader2, Play, Search, Shuffle, Sparkles, Trash2, Users, X } from 'lucide-react';
+import { Clock, Disc3, Globe, ListMusic, Loader2, Play, Search, Sparkles, Trash2, Users, X } from 'lucide-react';
 
 interface SearchViewProps {
   curatedTracks: Track[];
@@ -303,14 +303,6 @@ export const SearchView: React.FC<SearchViewProps> = ({
     setSearchQuery(artistName);
     onRecordSearch?.(artistName, searchMode);
     executeSearch(artistName);
-  };
-
-  const handleRandomArtist = () => {
-    const pool = filteredArtists.length > 0 ? filteredArtists : ARTISTS_DIRECTORY;
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    if (pick) {
-      handleArtistClick(pick.name);
-    }
   };
 
   const handlePlayTrackWithLyrics = async (track: Track) => {
@@ -968,44 +960,34 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </div>
       )}
 
-      {/* Curated Global Artists Directory & Genre Browser */}
+      {/* Clean Genre & Artist Browser */}
       <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3.5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
             <Users size={15} className="text-[var(--accent-text)] shrink-0" />
-            <span>
-              Global Artists Directory ({filteredArtists.length} of {ARTISTS_DIRECTORY.length} Indexed)
-            </span>
+            <span>{t.popularArtists}</span>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="relative flex-1 sm:flex-initial">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" />
-              <input
-                type="text"
-                value={artistDirectoryFilter}
-                onChange={(e) => {
-                  setArtistDirectoryFilter(e.target.value);
-                  setShowAllArtists(true);
-                }}
-                placeholder={`Filter ${ARTISTS_DIRECTORY.length} artists...`}
-                className="pl-8 pr-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] w-full sm:w-48"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleRandomArtist}
-              className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--accent-text)] flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
-            >
-              <Shuffle size={12} />
-              <span>Random Artist</span>
-            </button>
+          <div className="relative w-full sm:w-56">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" />
+            <input
+              type="text"
+              value={artistDirectoryFilter}
+              onChange={(e) => {
+                setArtistDirectoryFilter(e.target.value);
+                setShowAllArtists(true);
+              }}
+              placeholder={t.searchAction + '...'}
+              className="pl-8 pr-3 py-1.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] w-full"
+            />
           </div>
         </div>
 
         {/* Genre Category Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+        <div
+          className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5"
+          style={{ scrollbarWidth: 'none' }}
+        >
           {ARTIST_GENRE_CATEGORIES.map((genre) => {
             const isActive = selectedGenre === genre;
             return (
@@ -1030,7 +1012,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
         {/* Clean Horizontal Artist Strip (Collapsed) or Filterable Grid (Expanded) */}
         {!showAllArtists && !artistDirectoryFilter ? (
-          <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-1">
+          <div
+            className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-1"
+            style={{ scrollbarWidth: 'none' }}
+          >
             {visibleArtists.map((artist) => {
               const isSelected = activeArtistFilter.toLowerCase() === artist.name.toLowerCase();
               const initial = artist.name.trim().charAt(0).toUpperCase() || 'A';
@@ -1104,9 +1089,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
               onClick={() => setShowAllArtists((prev) => !prev)}
               className="px-4 py-1.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--accent-text)] cursor-pointer transition-colors"
             >
-              {showAllArtists
-                ? `Show Top ${INITIAL_ARTIST_CHIP_LIMIT} Artists`
-                : `Browse All ${filteredArtists.length} Artists`}
+              {showAllArtists ? 'Show Less' : 'See All Artists'}
             </button>
           </div>
         )}

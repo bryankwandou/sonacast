@@ -43,8 +43,14 @@ export function parseLrcText(lrcText, translationText = '') {
     }
   }
 
+  const isOriginalCjk = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(lrcText);
+  const shouldUseTranslation =
+    Boolean(translationText) &&
+    typeof translationText === 'string' &&
+    (isOriginalCjk || !/[\u4e00-\u9fff]/.test(translationText));
+
   const transByBucket = new Map();
-  if (translationText && typeof translationText === 'string') {
+  if (shouldUseTranslation) {
     for (const rawLine of translationText.split(/\r?\n/)) {
       const tags = [...rawLine.matchAll(/\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
       const body = rawLine.replace(/\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g, '').trim();
@@ -156,14 +162,20 @@ function scoreLrcCandidate(cand, cleanTitle, cleanArtist, expectedDuration) {
 
   if (expectedDuration >= 40 && candDur >= 30) {
     const diff = Math.abs(candDur - expectedDuration);
-    if (diff <= 3) score += 55;
-    else if (diff <= 7) score += 35;
+    if (diff <= 2) score += 65;
+    else if (diff <= 4) score += 52;
+    else if (diff <= 8) score += 32;
     else if (diff <= 14) score += 12;
-    else if (diff <= 25) score -= 35;
-    else score -= 85;
+    else if (diff <= 25) score -= 40;
+    else score -= 90;
   }
   return score;
 }
+
+const LRCLIB_HEADERS = {
+  'User-Agent': 'Sonacast/1.0 (+https://sonacast-ten.vercel.app)',
+  Accept: 'application/json'
+};
 
 async function fetchFromLrclib(cleanTitle, rawTitle, cleanArtist, album, duration) {
   const candidates = [];
@@ -173,10 +185,10 @@ async function fetchFromLrclib(cleanTitle, rawTitle, cleanArtist, album, duratio
   const searchQueryUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanArtist} ${cleanTitle}`)}`;
 
   const [exactRes, pairRes, qRes] = await Promise.all([
-    fetch(getUrl, { signal: AbortSignal.timeout(4800) }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    fetch(searchPairUrl, { signal: AbortSignal.timeout(5600) }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+    fetch(getUrl, { headers: LRCLIB_HEADERS, signal: AbortSignal.timeout(6000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    fetch(searchPairUrl, { headers: LRCLIB_HEADERS, signal: AbortSignal.timeout(6200) }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
     rawTitle !== cleanTitle
-      ? fetch(searchQueryUrl, { signal: AbortSignal.timeout(5600) }).then((r) => (r.ok ? r.json() : [])).catch(() => [])
+      ? fetch(searchQueryUrl, { headers: LRCLIB_HEADERS, signal: AbortSignal.timeout(6200) }).then((r) => (r.ok ? r.json() : [])).catch(() => [])
       : Promise.resolve([])
   ]);
 
@@ -187,7 +199,7 @@ async function fetchFromLrclib(cleanTitle, rawTitle, cleanArtist, album, duratio
   }
 
   if (!Array.isArray(pairRes) || pairRes.length === 0) {
-    const fallbackRows = await fetch(searchQueryUrl, { signal: AbortSignal.timeout(5000) })
+    const fallbackRows = await fetch(searchQueryUrl, { headers: LRCLIB_HEADERS, signal: AbortSignal.timeout(5500) })
       .then((r) => (r.ok ? r.json() : []))
       .catch(() => []);
     if (Array.isArray(fallbackRows)) candidates.push(...fallbackRows);
@@ -375,7 +387,19 @@ export default async function handler(req, res) {
       fetchFromLyricsOvh(cleanTitle, cleanArtist, duration)
     ]);
 
+    const lrclibDiff =
+      lrclibRes?.synced && Number(lrclibRes.matchedDuration) > 0 && duration > 0
+        ? Math.abs(Number(lrclibRes.matchedDuration) - duration)
+        : 999;
+    const neteaseDiff =
+      neteaseRes?.synced && Number(neteaseRes.matchedDuration) > 0 && duration > 0
+        ? Math.abs(Number(neteaseRes.matchedDuration) - duration)
+        : 999;
+
     const best =
+      (lrclibRes?.synced && neteaseRes?.synced && lrclibDiff > 15 && neteaseDiff <= 5
+        ? neteaseRes
+        : null) ||
       (lrclibRes?.synced ? lrclibRes : null) ||
       (neteaseRes?.synced ? neteaseRes : null) ||
       lrclibRes ||

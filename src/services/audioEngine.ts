@@ -107,6 +107,9 @@ export class AudioEngine {
   private candidateIds: string[] = [];
   private candidateIndex = 0;
   private playGeneration = 0;
+  private ytPlayerGen = 0;
+  private ytTrackTransitionUntil = 0;
+  private lastPauseCalledAt = 0;
   private lastEndedGeneration = -1;
 
   private lastAudioUrl: string | undefined = undefined;
@@ -462,6 +465,15 @@ export class AudioEngine {
 
       this.audioElement.addEventListener('error', () => {
         if (this.activeBackend !== 'html5') return;
+        if (this.candidateIds.length > 0) {
+          this.playYouTubeTrack(
+            this.candidateIds,
+            this.duration,
+            this.currentTrackBpm,
+            this.currentTime
+          );
+          return;
+        }
         if (this.isPlaying) {
           this.isPlaying = false;
           this.notifyState();
@@ -651,6 +663,8 @@ export class AudioEngine {
     if (this.candidateIndex < this.candidateIds.length && this.ytPlayer && this.ytReady) {
       const nextId = this.candidateIds[this.candidateIndex];
       try {
+        this.ytPlayerGen = gen;
+        this.ytTrackTransitionUntil = performance.now() + 2600;
         this.notifyVideoId(nextId);
         this.ytPlayer.loadVideoById(nextId);
         this.ytPlayer.playVideo();
@@ -777,7 +791,8 @@ export class AudioEngine {
     const intervalMs = this.isDocumentHidden ? 1500 : this.lowCpuMode ? 350 : 100;
     const pollGen = this.playGeneration;
     this.html5PollInterval = window.setInterval(() => {
-      if (this.activeBackend !== 'html5' || !this.audioElement) {
+      if (this.activeBackend !== 'html5' || !this.audioElement || pollGen !== this.playGeneration) {
+        if (pollGen !== this.playGeneration) this.stopHtml5Poll();
         return;
       }
       if (this.audioElement.ended) {
@@ -788,6 +803,10 @@ export class AudioEngine {
         return;
       }
       this.currentTime = this.audioElement.currentTime;
+      if (this.duration >= 30 && this.currentTime >= this.duration - 0.35 && this.audioElement.ended) {
+        this.completeCurrentTrack(pollGen);
+        return;
+      }
       this.lastHtml5NotifyAt = performance.now();
       this.notifyTime();
     }, intervalMs);
@@ -805,7 +824,11 @@ export class AudioEngine {
     const intervalMs = this.isDocumentHidden ? 1500 : this.lowCpuMode ? 350 : 100;
     const pollGen = this.playGeneration;
     this.ytPollInterval = window.setInterval(() => {
-      if (this.activeBackend !== 'youtube' || !this.ytPlayer || !this.ytReady) {
+      if (pollGen !== this.playGeneration || this.activeBackend !== 'youtube') {
+        this.stopYouTubePoll();
+        return;
+      }
+      if (!this.ytPlayer || !this.ytReady) {
         return;
       }
       try {
@@ -823,9 +846,9 @@ export class AudioEngine {
           }
           if (
             this.isPlaying &&
-            (ytState === 2 || ytState === 5) &&
             this.duration >= 30 &&
-            pos >= this.duration - 1.2
+            (pos >= this.duration - 0.5 ||
+              ((ytState === 2 || ytState === 5) && pos >= this.duration - 1.2))
           ) {
             this.completeCurrentTrack(pollGen);
             return;
@@ -881,6 +904,7 @@ export class AudioEngine {
     this.duration = Math.max(60, duration);
     this.currentTrackBpm = bpm;
     this.currentTime = clampedStart;
+    this.lastPauseCalledAt = 0;
     this.isPlaying = true;
     this.wasPlayingBeforeSleep = true;
     this.notifyTime();
@@ -905,10 +929,13 @@ export class AudioEngine {
 
     if (this.ytPlayer && this.ytReady) {
       try {
+        this.ytPlayerGen = gen;
+        this.ytTrackTransitionUntil = performance.now() + 2600;
         this.applyYouTubeFadeIn(gen);
         this.ytPlayer.loadVideoById(
           clampedStart > 0 ? { videoId: firstVideoId, startSeconds: clampedStart } : firstVideoId
         );
+        this.ytPlayer.unMute?.();
         this.ytPlayer.setPlaybackRate?.(this.playbackRate);
         this.ytPlayer.playVideo();
         this.startYouTubePoll();
@@ -962,6 +989,8 @@ export class AudioEngine {
     }
 
     this.ytReady = false;
+    this.ytPlayerGen = gen;
+    this.ytTrackTransitionUntil = performance.now() + 2600;
     this.ytPlayer = new YT.Player(targetNode, {
       width: '100%',
       height: '100%',
@@ -969,10 +998,11 @@ export class AudioEngine {
       playerVars,
       events: {
         onReady: (event) => {
-          if (gen !== this.playGeneration || this.activeBackend !== 'youtube') return;
+          const activeGen = this.ytPlayerGen;
+          if (activeGen !== this.playGeneration || this.activeBackend !== 'youtube') return;
           this.ytReady = true;
           event.target.unMute?.();
-          this.applyYouTubeFadeIn(gen);
+          this.applyYouTubeFadeIn(activeGen);
           try {
             event.target.setPlaybackRate?.(this.playbackRate);
           } catch {
@@ -987,15 +1017,25 @@ export class AudioEngine {
           }
           event.target.playVideo();
           this.startYouTubePoll();
-          this.armYouTubeWatchdog(gen);
+          this.armYouTubeWatchdog(activeGen);
         },
         onStateChange: (event) => {
-          if (this.activeBackend !== 'youtube' || gen !== this.playGeneration) return;
+          const activeGen = this.ytPlayerGen;
+          if (this.activeBackend !== 'youtube' || activeGen !== this.playGeneration) return;
           const state = event.data;
           // 1 = PLAYING, 2 = PAUSED, 0 = ENDED, 5 = CUED
           if (state === 1) {
+            if (!this.isPlaying && performance.now() - this.lastPauseCalledAt < 600) {
+              try {
+                event.target.pauseVideo();
+              } catch {
+                // Ignore
+              }
+              return;
+            }
             this.isPlaying = true;
             this.wasPlayingBeforeSleep = true;
+            this.ytTrackTransitionUntil = 0;
             this.clearYouTubeResumeCheck();
             this.notifyState();
             this.startYouTubePoll();
@@ -1024,6 +1064,29 @@ export class AudioEngine {
               }
             }
           } else if (state === 2) {
+            // Ignore transient teardown pause emitted immediately after loadVideoById
+            if (this.isPlaying && performance.now() < this.ytTrackTransitionUntil) {
+              try {
+                event.target.playVideo();
+              } catch {
+                // Ignore
+              }
+              return;
+            }
+            try {
+              const curAtPause = event.target.getCurrentTime();
+              if (
+                this.isPlaying &&
+                typeof curAtPause === 'number' &&
+                this.duration >= 30 &&
+                curAtPause >= this.duration - 1.2
+              ) {
+                this.completeCurrentTrack(activeGen);
+                return;
+              }
+            } catch {
+              // Ignore
+            }
             this.clearYouTubeWatchdog();
             this.clearYouTubeResumeCheck();
             this.clearYouTubeFade();
@@ -1031,13 +1094,14 @@ export class AudioEngine {
             this.stopYouTubePoll();
             this.notifyState();
           } else if (state === 0) {
-            this.completeCurrentTrack(gen);
+            this.completeCurrentTrack(activeGen);
           }
         },
         onError: () => {
-          if (this.activeBackend !== 'youtube' || gen !== this.playGeneration) return;
+          const activeGen = this.ytPlayerGen;
+          if (this.activeBackend !== 'youtube' || activeGen !== this.playGeneration) return;
           this.clearYouTubeResumeCheck();
-          this.advanceToNextCandidate(gen);
+          this.advanceToNextCandidate(activeGen);
         }
       }
     });
@@ -1047,6 +1111,7 @@ export class AudioEngine {
     if (audioUrl) {
       const gen = ++this.playGeneration;
       this.activeBackend = 'html5';
+      this.lastPauseCalledAt = 0;
       this.lastAudioUrl = audioUrl;
       this.candidateIds = candidateVideoIds ? [...candidateVideoIds] : [];
       this.stopYouTubeBackend();
@@ -1139,6 +1204,8 @@ export class AudioEngine {
   }
 
   public pause() {
+    this.lastPauseCalledAt = performance.now();
+    this.ytTrackTransitionUntil = 0;
     this.isPlaying = false;
     this.wasPlayingBeforeSleep = false;
     this.clearYouTubeWatchdog();
@@ -1163,6 +1230,7 @@ export class AudioEngine {
 
   public resume(forceRecover = false, fromAutoWake = false) {
     if (!forceRecover && this.isPlaying && !this.isPlaybackWedged()) return;
+    this.lastPauseCalledAt = 0;
 
     if (this.ctx && this.ctx.state !== 'running') {
       this.ctx.resume().catch(() => {});
@@ -1307,7 +1375,7 @@ export class AudioEngine {
   }
 
   public togglePlay() {
-    if (this.isPlaying && !this.isPlaybackWedged()) {
+    if (this.isPlaying) {
       this.pause();
     } else {
       this.resume(true);

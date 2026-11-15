@@ -385,62 +385,53 @@ export const TRACK_CATALOG: Track[] = [
 export const PODCAST_CATALOG: PodcastEpisode[] = [
   {
     id: 'pod-1',
-    title: 'Architecting High-Throughput Media Protocols',
-    host: 'Dr. Marcus Vance',
-    podcastName: 'Silicon Valley Tech Horizon',
-    duration: 310,
-    coverUrl: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?q=80&w=800&auto=format&fit=crop',
-    description: 'Deep dive into decentralized CDN networks, browser-side audio rendering pipelines, and sub-second micropayment settlement.',
-    episodeNumber: 42,
+    title: 'How We Made Syntax.fm Faster',
+    host: 'Wes Bos & Scott Tolinski',
+    podcastName: 'Syntax - Tasty Web Development Treats',
+    duration: 1656,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/14/0a/50/140a50d8-f974-6542-e6d5-8362701cde23/mza_16091458091864441720.jpeg/600x600bb.jpg',
+    audioUrl: 'https://traffic.megaphone.fm/FSI5139601095.mp3?updated=1749229447',
+    description: 'Profiling initial TTFB, caching strategies, and database query bottlenecks in production web applications.',
+    episodeNumber: 708,
     hostSolanaAddress: '',
     transcript: [
-      { time: 0, text: 'Welcome back to Tech Horizon. Today we dissect browser-first audio streaming.' },
-      { time: 8, text: 'For years, audio streaming meant heavy server transcoding clusters.' },
-      { time: 16, text: 'With modern WebCodecs and the Web Audio API, decoding is shifted client-side.' },
-      { time: 25, text: 'Why push raw audio frames when client devices have multi-gigahertz processors?' },
-      { time: 35, text: 'When you eliminate transcoding bottlenecks, latency drops below human perception.' },
-      { time: 45, text: 'Coupled with high-speed blockchain state channels, micro-royalties happen per beat.' },
-      { time: 55, text: 'Artists receive transparent settlements without 90-day label delays.' },
-      { time: 65, text: 'This represents a structural paradigm shift for content distribution.' }
+      { time: 0, text: 'Syntax Episode 708: How We Made Syntax.fm Faster' },
+      { time: 18, text: 'Diagnosing real-world server latency and TTFB bottlenecks.' },
+      { time: 45, text: 'Optimizing asset delivery, caching headers, and frontend hydration.' }
     ]
   },
   {
     id: 'pod-2',
-    title: 'Real-Time Audio Reactivity & Spectrum Math',
-    host: 'Sarah Jenkins & Kaito Tanaka',
-    podcastName: 'DSP & Modern Web',
-    duration: 285,
-    coverUrl: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?q=80&w=800&auto=format&fit=crop',
-    description: 'Examining Blackman-Harris windowing, logarithmic frequency bucketing, and 60fps canvas spectrum algorithms.',
-    episodeNumber: 18,
+    title: 'Blocking Software Supply Chain Attacks',
+    host: 'Feross Aboukhadijeh',
+    podcastName: 'Software Engineering Daily',
+    duration: 2868,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/36/a1/dd/36a1dd7e-52ed-78f7-e13f-4261a65cfc58/mza_12039623462681143710.png/600x600bb.jpg',
+    audioUrl: 'https://media.transistor.fm/3e086147/136cb543.mp3',
+    description: 'Examining open-source dependency security, package behavior auditing, and automated supply chain defenses.',
+    episodeNumber: 402,
     hostSolanaAddress: '',
     transcript: [
-      { time: 0, text: 'Today on DSP & Modern Web: the mathematics behind visual spectrum rings.' },
-      { time: 9, text: 'Human hearing perceives pitch on a logarithmic scale, not linear.' },
-      { time: 18, text: 'If your FFT renders linear frequency bins, the low end looks starved.' },
-      { time: 28, text: 'We allocate 60 percent of visual canvas bins to 30 hertz through 2 kilohertz.' },
-      { time: 38, text: 'Adding asymmetric peak smoothing preserves snappy transient attack.' },
-      { time: 48, text: 'While allowing gentle release envelopes that feel organic to the eye.' },
-      { time: 58, text: 'No video pre-rendering needed; everything computes dynamically in real-time.' }
+      { time: 0, text: 'Software Engineering Daily: Supply Chain Security with Feross Aboukhadijeh' },
+      { time: 20, text: 'Identifying malicious postinstall scripts and compromised npm maintainers.' },
+      { time: 50, text: 'Runtime behavior analysis and defense-in-depth tooling for modern web stacks.' }
     ]
   },
   {
     id: 'pod-3',
-    title: 'The Creator Economy on High-Speed Blockchains',
-    host: 'Devon Miller',
-    podcastName: 'Decentralized Audio Journal',
-    duration: 330,
-    coverUrl: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?q=80&w=800&auto=format&fit=crop',
-    description: 'How verifiable on-chain stream proofs replace fraudulent streaming bots and ensure authentic listener compensation.',
-    episodeNumber: 64,
+    title: 'Lessons Learned & Bugs Fixed from Launching Syntax.fm',
+    host: 'Wes Bos & Scott Tolinski',
+    podcastName: 'Syntax - Tasty Web Development Treats',
+    duration: 3414,
+    coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/14/0a/50/140a50d8-f974-6542-e6d5-8362701cde23/mza_16091458091864441720.jpeg/600x600bb.jpg',
+    audioUrl: 'https://traffic.megaphone.fm/FSI6308167095.mp3?updated=1749229455',
+    description: 'Post-launch engineering retrospective covering transcripts, error monitoring, audio player polish, and production fixes.',
+    episodeNumber: 693,
     hostSolanaAddress: '',
     transcript: [
-      { time: 0, text: 'Streaming platforms report up to 15 percent fraudulent bot plays.' },
-      { time: 9, text: 'Proof-of-Stream cryptographically binds playback session hashes with client entropy.' },
-      { time: 19, text: 'Each 30 seconds of verified audio listening signs a micro-attestation.' },
-      { time: 29, text: 'Listeners accumulate loyalty tokens while artists receive direct compensation.' },
-      { time: 40, text: 'By removing predatory middlemen, indie musicians thrive on smaller dedicated fanbases.' },
-      { time: 50, text: 'The economics align incentives for quality rather than algorithmic clickbait.' }
+      { time: 0, text: 'Syntax Episode 693: Lessons Learned from Launching the New Syntax.fm' },
+      { time: 22, text: 'Tracking down edge-case media player states and transcription bugs.' },
+      { time: 55, text: 'Shipping iterative improvements without regressions in production.' }
     ]
   }
 ];

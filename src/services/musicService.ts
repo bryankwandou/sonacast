@@ -77,8 +77,19 @@ export interface LyricsLookupResult {
   matchedDuration?: number;
 }
 
-const LYRICS_CACHE_STORAGE_KEY = 'sonacast_lyrics_cache_v3';
+const LYRICS_CACHE_STORAGE_KEY = 'sonacast_lyrics_cache_v4';
 const memoryLyricsCache = new Map<string, LyricsLookupResult>();
+
+function sanitizeLyricsTranslations(lines: LyricLine[]): LyricLine[] {
+  const joinedText = lines.map((l) => l.text).join(' ');
+  const isOriginalCjk = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(joinedText);
+  if (isOriginalCjk) return lines;
+  return lines.map((line) =>
+    line.translation && /[\u4e00-\u9fff]/.test(line.translation)
+      ? { time: line.time, text: line.text }
+      : line
+  );
+}
 
 function makeLyricsCacheKey(title: string, artist: string, duration?: number): string {
   const durBucket = duration && duration >= 45 ? Math.round(duration / 5) * 5 : 0;
@@ -208,7 +219,8 @@ export async function fetchLyricsWithMeta(
     const params = new URLSearchParams({
       title: cleanTrack,
       artist: cleanArtist,
-      duration: String(Math.round(duration || 210))
+      duration: String(Math.round(duration || 210)),
+      v: '2'
     });
     if (albumName) params.set('album', albumName);
     const apiRes = await fetch(`${getApiEndpoint('/api/lyrics')}?${params.toString()}`, {
@@ -217,8 +229,12 @@ export async function fetchLyricsWithMeta(
     if (apiRes.ok) {
       const payload = (await apiRes.json()) as LyricsLookupResult;
       if (payload?.found && Array.isArray(payload.lyrics) && payload.lyrics.length > 0) {
-        writeCachedLyrics(cacheKey, payload);
-        return payload;
+        const cleanedPayload: LyricsLookupResult = {
+          ...payload,
+          lyrics: sanitizeLyricsTranslations(payload.lyrics)
+        };
+        writeCachedLyrics(cacheKey, cleanedPayload);
+        return cleanedPayload;
       }
     }
   } catch {
