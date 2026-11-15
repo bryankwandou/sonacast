@@ -136,6 +136,8 @@ export class AudioEngine {
   private currentYtVideoId = '';
   private ytVisualReady = false;
   private ytVisualGraceTimer: number | null = null;
+  private ytNearEndLastPos = -1;
+  private ytNearEndStallSince = 0;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -773,6 +775,8 @@ export class AudioEngine {
     this.clearYouTubeResumeCheck();
     this.clearYouTubeFade();
     this.stopYouTubePoll();
+    this.ytNearEndLastPos = -1;
+    this.ytNearEndStallSince = 0;
     this.setYtVisualReady(false);
     if (this.ytPlayer && this.ytReady) {
       try {
@@ -885,6 +889,19 @@ export class AudioEngine {
             this.completeCurrentTrack(pollGen);
             return;
           }
+          if (this.isPlaying && this.duration >= 30 && pos >= this.duration - 3.5) {
+            const nowMs = performance.now();
+            if (this.ytNearEndStallSince === 0 || pos - this.ytNearEndLastPos >= 0.35) {
+              this.ytNearEndLastPos = pos;
+              this.ytNearEndStallSince = nowMs;
+            } else if (nowMs - this.ytNearEndStallSince >= 2500) {
+              this.completeCurrentTrack(pollGen);
+              return;
+            }
+          } else {
+            this.ytNearEndLastPos = -1;
+            this.ytNearEndStallSince = 0;
+          }
         }
         if (!this.isPlaying) {
           return;
@@ -929,6 +946,8 @@ export class AudioEngine {
     this.currentTrackBpm = bpm;
     this.currentTime = clampedStart;
     this.lastPauseCalledAt = 0;
+    this.ytNearEndLastPos = -1;
+    this.ytNearEndStallSince = 0;
     this.isPlaying = true;
     this.wasPlayingBeforeSleep = true;
     this.notifyTime();
@@ -1234,6 +1253,8 @@ export class AudioEngine {
   public pause() {
     this.lastPauseCalledAt = performance.now();
     this.ytTrackTransitionUntil = 0;
+    this.ytNearEndLastPos = -1;
+    this.ytNearEndStallSince = 0;
     this.isPlaying = false;
     this.wasPlayingBeforeSleep = false;
     this.clearYouTubeWatchdog();
@@ -1413,6 +1434,19 @@ export class AudioEngine {
   public seek(seconds: number) {
     const clamped = Math.max(0, Math.min(this.duration, seconds));
     this.currentTime = clamped;
+    this.ytNearEndLastPos = clamped >= this.duration - 3.5 ? clamped : -1;
+    this.ytNearEndStallSince = clamped >= this.duration - 3.5 ? performance.now() : 0;
+
+    if (
+      this.activeBackend === 'youtube' &&
+      this.isPlaying &&
+      this.duration >= 30 &&
+      clamped >= this.duration - 0.8
+    ) {
+      this.notifyTime();
+      this.completeCurrentTrack(this.playGeneration);
+      return;
+    }
 
     if (this.activeBackend === 'html5' && this.audioElement && this.audioElement.src) {
       try {
