@@ -366,10 +366,52 @@ const PIPED_MIRRORS = [
   'https://pipedapi.adminforge.de'
 ];
 
-async function searchSinglePipedMirror(baseUrl: string, query: string): Promise<StreamCandidate[]> {
+function createLinkedAbortSignal(
+  timeoutMs: number,
+  parentSignal?: AbortSignal
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const onParentAbort = () => {
+    controller.abort();
+  };
+
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      controller.abort();
+    } else {
+      parentSignal.addEventListener('abort', onParentAbort, { once: true });
+    }
+  }
+
+  if (!controller.signal.aborted && timeoutMs > 0) {
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+  }
+
+  const cleanup = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (parentSignal) {
+      parentSignal.removeEventListener('abort', onParentAbort);
+    }
+  };
+
+  return { signal: controller.signal, cleanup };
+}
+
+async function searchSinglePipedMirror(
+  baseUrl: string,
+  query: string,
+  parentSignal?: AbortSignal
+): Promise<StreamCandidate[]> {
+  if (parentSignal?.aborted) return [];
+  const { signal, cleanup } = createLinkedAbortSignal(3600, parentSignal);
   try {
     const url = `${baseUrl}/search?q=${encodeURIComponent(query)}&filter=music_songs`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(4200) });
+    const res = await fetch(url, { signal });
     if (!res.ok) return [];
     const data = await res.json();
     const rawItems = Array.isArray(data?.items) ? data.items : [];
@@ -391,18 +433,32 @@ async function searchSinglePipedMirror(baseUrl: string, query: string): Promise<
       );
   } catch {
     return [];
+  } finally {
+    cleanup();
   }
 }
 
-async function searchPipedMusic(query: string): Promise<StreamCandidate[]> {
-  const primary = await searchSinglePipedMirror(PIPED_MIRRORS[0], query);
-  if (primary.length >= 3) return primary;
+async function searchPipedMusic(query: string, parentSignal?: AbortSignal): Promise<StreamCandidate[]> {
+  if (parentSignal?.aborted) return [];
+  const primary = await searchSinglePipedMirror(PIPED_MIRRORS[0], query, parentSignal);
+  if (primary.length >= 3 || parentSignal?.aborted) return primary;
 
-  for (const mirror of PIPED_MIRRORS.slice(1)) {
-    const alt = await searchSinglePipedMirror(mirror, query);
-    if (alt.length > 0) return alt;
+  const altBatches = await Promise.allSettled(
+    PIPED_MIRRORS.slice(1).map((mirror) => searchSinglePipedMirror(mirror, query, parentSignal))
+  );
+  const merged = [...primary];
+  const seen = new Set(primary.map((item) => item.videoId));
+  for (const batch of altBatches) {
+    if (batch.status === 'fulfilled') {
+      for (const item of batch.value) {
+        if (!seen.has(item.videoId)) {
+          seen.add(item.videoId);
+          merged.push(item);
+        }
+      }
+    }
   }
-  return primary;
+  return merged;
 }
 
 interface AudiusTrackItem {
@@ -460,12 +516,18 @@ async function searchAudiusTracks(query: string): Promise<Track[]> {
   }
 }
 
-async function searchVercelYtApi(query: string, mode?: 'yt'): Promise<StreamCandidate[]> {
+async function searchVercelYtApi(
+  query: string,
+  mode?: 'yt',
+  parentSignal?: AbortSignal
+): Promise<StreamCandidate[]> {
+  if (parentSignal?.aborted) return [];
+  const { signal, cleanup } = createLinkedAbortSignal(5500, parentSignal);
   try {
     const endpoint = getApiEndpoint('/api/yt-search');
     const modeParam = mode ? `&mode=${mode}` : '';
     const res = await fetch(`${endpoint}?q=${encodeURIComponent(query)}${modeParam}`, {
-      signal: AbortSignal.timeout(6500)
+      signal
     });
     if (!res.ok) return [];
     const data = await res.json();
@@ -481,6 +543,8 @@ async function searchVercelYtApi(query: string, mode?: 'yt'): Promise<StreamCand
       }));
   } catch {
     return [];
+  } finally {
+    cleanup();
   }
 }
 
@@ -579,42 +643,64 @@ export interface ResolvedFullStream {
 export async function resolveFullTrackStream(
   title: string,
   artist: string,
-  expectedDuration?: number
+  expectedDuration?: number,
+  parentSignal?: AbortSignal
 ): Promise<ResolvedFullStream | null> {
+  if (parentSignal?.aborted) return null;
+
   const cleanTitle = stripTitleModifiers(title);
   const cleanArtist = artist.split(/[,&]|ft\.?|feat\.?/i)[0].trim();
   const query = cleanArtist && !cleanTitle.toLowerCase().includes(cleanArtist.toLowerCase())
     ? `${cleanArtist} ${cleanTitle}`
     : cleanTitle;
 
-  const [piped, ytFallback] = await Promise.all([
-    searchPipedMusic(query),
-    searchVercelYtApi(`${query} official audio`, 'yt')
-  ]);
+  const { signal: linkedSignal, cleanup } = createLinkedAbortSignal(7500, parentSignal);
 
-  const seenIds = new Set<string>();
-  const combined: StreamCandidate[] = [];
-  for (const item of [...piped, ...ytFallback]) {
-    if (!seenIds.has(item.videoId)) {
-      seenIds.add(item.videoId);
-      combined.push(item);
+  try {
+    const abortFallback = new Promise<[StreamCandidate[], StreamCandidate[]]>((resolve) => {
+      if (linkedSignal.aborted) {
+        resolve([[], []]);
+        return;
+      }
+      linkedSignal.addEventListener('abort', () => resolve([[], []]), { once: true });
+    });
+
+    const [piped, ytFallback] = await Promise.race([
+      Promise.all([
+        searchPipedMusic(query, linkedSignal),
+        searchVercelYtApi(`${query} official audio`, 'yt', linkedSignal)
+      ]),
+      abortFallback
+    ]);
+
+    if (parentSignal?.aborted) return null;
+
+    const seenIds = new Set<string>();
+    const combined: StreamCandidate[] = [];
+    for (const item of [...piped, ...ytFallback]) {
+      if (!seenIds.has(item.videoId)) {
+        seenIds.add(item.videoId);
+        combined.push(item);
+      }
     }
+
+    if (combined.length === 0) return null;
+
+    const ranked = [...combined].sort(
+      (a, b) => scoreCandidate(b, title, artist, expectedDuration) - scoreCandidate(a, title, artist, expectedDuration)
+    );
+
+    const candidateIds = ranked.slice(0, 8).map((c) => c.videoId);
+    const best = ranked[0];
+
+    return {
+      youtubeId: candidateIds[0],
+      candidateIds,
+      duration: best.duration >= 60 ? best.duration : expectedDuration && expectedDuration >= 60 ? expectedDuration : 210
+    };
+  } finally {
+    cleanup();
   }
-
-  if (combined.length === 0) return null;
-
-  const ranked = [...combined].sort(
-    (a, b) => scoreCandidate(b, title, artist, expectedDuration) - scoreCandidate(a, title, artist, expectedDuration)
-  );
-
-  const candidateIds = ranked.slice(0, 8).map((c) => c.videoId);
-  const best = ranked[0];
-
-  return {
-    youtubeId: candidateIds[0],
-    candidateIds,
-    duration: best.duration >= 60 ? best.duration : expectedDuration && expectedDuration >= 60 ? expectedDuration : 210
-  };
 }
 
 interface ITunesItem {

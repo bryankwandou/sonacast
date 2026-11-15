@@ -264,7 +264,11 @@ export default function App() {
   const [streamError, setStreamError] = useState<string | null>(null);
 
   const handleNextRef = useRef<(fromEnded?: boolean) => void>(() => { });
+  const handleTogglePlayRef = useRef<() => void>(() => { });
   const selectionCounterRef = useRef(0);
+  const resolvingTrackIdRef = useRef<string | null>(null);
+  const resolvingStartedAtRef = useRef(0);
+  const resolveAbortRef = useRef<AbortController | null>(null);
   const loadedTrackIdRef = useRef<string | null>(null);
   const isRefillingRadioRef = useRef(false);
   const preResolvedIdsRef = useRef<Set<string>>(new Set());
@@ -553,12 +557,34 @@ export default function App() {
       }
     });
 
+    const handleWakeSync = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (resolvingTrackIdRef.current && Date.now() - resolvingStartedAtRef.current > 8500) {
+        resolveAbortRef.current?.abort();
+        resolveAbortRef.current = null;
+        resolvingTrackIdRef.current = null;
+        setResolvingTrackId(null);
+      }
+      setIsPlaying(sharedAudioEngine.getIsPlaying());
+    };
+
+    document.addEventListener('visibilitychange', handleWakeSync);
+    document.addEventListener('resume', handleWakeSync);
+    window.addEventListener('pageshow', handleWakeSync);
+    window.addEventListener('focus', handleWakeSync);
+    window.addEventListener('online', handleWakeSync);
+
     return () => {
       unsubTime();
       unsubState();
       unsubEnd();
       unsubDur();
       unsubErr();
+      document.removeEventListener('visibilitychange', handleWakeSync);
+      document.removeEventListener('resume', handleWakeSync);
+      window.removeEventListener('pageshow', handleWakeSync);
+      window.removeEventListener('focus', handleWakeSync);
+      window.removeEventListener('online', handleWakeSync);
     };
   }, []);
 
@@ -814,6 +840,10 @@ export default function App() {
       options?: { skipHistoryPush?: boolean; fromEnded?: boolean; fromContextList?: boolean }
     ) => {
       const selectionSeq = ++selectionCounterRef.current;
+      resolveAbortRef.current?.abort();
+      resolveAbortRef.current = null;
+      resolvingTrackIdRef.current = null;
+      setResolvingTrackId(null);
       loadedTrackIdRef.current = track.id;
       discoveredPoolRef.current.set(track.id, track);
       if (!options?.fromEnded) {
@@ -946,6 +976,7 @@ export default function App() {
 
       // 1. Direct Studio Master MP3 or local user file
       if (track.audioUrl) {
+        resolvingTrackIdRef.current = null;
         setResolvingTrackId(null);
         setIsYouTubeActive(false);
         sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl);
@@ -955,6 +986,7 @@ export default function App() {
       // 2. Check bundled master fallback by exact title + artist
       const masterMatch = findMasterAudio(track.title, track.artist);
       if (masterMatch) {
+        resolvingTrackIdRef.current = null;
         setResolvingTrackId(null);
         setIsYouTubeActive(false);
         const updatedTrack: Track = {
@@ -978,6 +1010,7 @@ export default function App() {
             : [];
 
       if (existingIds.length > 0) {
+        resolvingTrackIdRef.current = null;
         setResolvingTrackId(null);
         setIsYouTubeActive(true);
         sharedAudioEngine.playYouTubeTrack(existingIds, track.duration, track.bpm);
@@ -995,12 +1028,22 @@ export default function App() {
 
       // 4. Resolve 100% full-length official stream dynamically for 85M+ catalog search items
       sharedAudioEngine.pause();
+      const abortCtrl = new AbortController();
+      resolveAbortRef.current = abortCtrl;
+      resolvingStartedAtRef.current = Date.now();
+      resolvingTrackIdRef.current = track.id;
       setResolvingTrackId(track.id);
       setIsYouTubeActive(true);
       try {
-        const resolved = await resolveFullTrackStream(track.title, track.artist, track.duration);
-        if (selectionSeq !== selectionCounterRef.current) return;
+        const resolved = await resolveFullTrackStream(
+          track.title,
+          track.artist,
+          track.duration,
+          abortCtrl.signal
+        );
+        if (selectionSeq !== selectionCounterRef.current || abortCtrl.signal.aborted) return;
 
+        resolvingTrackIdRef.current = null;
         setResolvingTrackId(null);
 
         if (resolved && resolved.candidateIds.length > 0) {
@@ -1025,6 +1068,7 @@ export default function App() {
         }
       } catch {
         if (selectionSeq !== selectionCounterRef.current) return;
+        resolvingTrackIdRef.current = null;
         setResolvingTrackId(null);
         setIsYouTubeActive(false);
         setStreamError('Unable to resolve full-length stream. Try another release.');
@@ -1032,6 +1076,14 @@ export default function App() {
         if (options?.fromEnded && autoplayEnabledRef.current && autoRetryCountRef.current < 3) {
           autoRetryCountRef.current += 1;
           window.setTimeout(() => handleNextRef.current(true), 350);
+        }
+      } finally {
+        if (selectionSeq === selectionCounterRef.current) {
+          if (resolveAbortRef.current === abortCtrl) {
+            resolveAbortRef.current = null;
+          }
+          resolvingTrackIdRef.current = null;
+          setResolvingTrackId(null);
         }
       }
     }, [buildAutoSimilarContext, gatherLocalCandidatePool, refillRadioQueueIfNeeded, resolveLyricsForTrack]);
@@ -1095,22 +1147,46 @@ export default function App() {
     handleSelectTrack(newTrack);
   };
 
-  const handleTogglePlay = () => {
-    if (isPlaying) {
+  const handleTogglePlay = useCallback(() => {
+    if (resolvingTrackIdRef.current) {
+      resolveAbortRef.current?.abort();
+      resolveAbortRef.current = null;
+      resolvingTrackIdRef.current = null;
+      setResolvingTrackId(null);
+      handleSelectTrack(currentTrackRef.current, {
+        skipHistoryPush: true,
+        fromContextList: queueRef.current.some((q) => q.id === currentTrackRef.current.id)
+      });
+      return;
+    }
+
+    if (sharedAudioEngine.getIsPlaying()) {
+      if (sharedAudioEngine.isPlaybackWedged()) {
+        sharedAudioEngine.resume(true);
+        return;
+      }
       sharedAudioEngine.pause();
       return;
     }
 
+    const active = currentTrackRef.current;
     if (
       sharedAudioEngine.getActiveBackend() !== 'none' &&
-      loadedTrackIdRef.current === currentTrack.id &&
-      currentTime < currentTrack.duration
+      loadedTrackIdRef.current === active.id &&
+      currentTimeRef.current < Math.max(1, active.duration - 1)
     ) {
-      sharedAudioEngine.resume();
+      sharedAudioEngine.resume(true);
     } else {
-      handleSelectTrack(currentTrack);
+      handleSelectTrack(active, {
+        skipHistoryPush: true,
+        fromContextList: queueRef.current.some((q) => q.id === active.id)
+      });
     }
-  };
+  }, [handleSelectTrack]);
+
+  useEffect(() => {
+    handleTogglePlayRef.current = handleTogglePlay;
+  }, [handleTogglePlay]);
 
   const handleNext = useCallback(
     async (fromEnded = false) => {
@@ -1146,9 +1222,12 @@ export default function App() {
             if (pool.length === 0) {
               try {
                 const liveQueries = getClassMatchedSeedQueries(seed, activeMoodRef.current, 3);
-                const liveBatches = await Promise.allSettled(
-                  liveQueries.map((q) => searchTracksOnline(q))
-                );
+                const liveBatches = await Promise.race([
+                  Promise.allSettled(liveQueries.map((q) => searchTracksOnline(q))),
+                  new Promise<PromiseSettledResult<Track[]>[]>((resolve) =>
+                    window.setTimeout(() => resolve([]), 4200)
+                  )
+                ]);
                 const fetched: Track[] = [];
                 for (const b of liveBatches) {
                   if (b.status === 'fulfilled' && Array.isArray(b.value)) {
@@ -1729,7 +1808,11 @@ export default function App() {
           ? [{ src: currentTrack.coverUrl, sizes: '512x512', type: 'image/jpeg' }]
           : []
       });
-      ms.setActionHandler('play', () => sharedAudioEngine.resume());
+      ms.setActionHandler('play', () => {
+        if (!sharedAudioEngine.getIsPlaying() || sharedAudioEngine.isPlaybackWedged()) {
+          handleTogglePlayRef.current();
+        }
+      });
       ms.setActionHandler('pause', () => sharedAudioEngine.pause());
       ms.setActionHandler('nexttrack', () => handleNextRef.current(false));
       ms.setActionHandler('previoustrack', () => handlePrev());
@@ -1759,7 +1842,12 @@ export default function App() {
     const navWithWakeLock = navigator as unknown as {
       wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> };
     };
-    if (isPlaying && !lowCpuMode && !document.hidden && navWithWakeLock.wakeLock?.request) {
+
+    const requestWakeLock = () => {
+      if (released || !isPlaying || lowCpuMode || document.hidden || !navWithWakeLock.wakeLock?.request) {
+        return;
+      }
+      if (sentinel) return;
       navWithWakeLock.wakeLock
         .request('screen')
         .then((s) => {
@@ -1770,9 +1858,21 @@ export default function App() {
           }
         })
         .catch(() => {});
-    }
+    };
+
+    const handleVisibilityWakeLock = () => {
+      if (document.visibilityState === 'visible') {
+        sentinel = null;
+        requestWakeLock();
+      }
+    };
+
+    requestWakeLock();
+    document.addEventListener('visibilitychange', handleVisibilityWakeLock);
+
     return () => {
       released = true;
+      document.removeEventListener('visibilitychange', handleVisibilityWakeLock);
       sentinel?.release?.().catch(() => {});
     };
   }, [isPlaying, lowCpuMode]);
@@ -1793,11 +1893,14 @@ export default function App() {
     );
 
     win.__sonacastNativeMediaAction = (action: string) => {
-      if (action === 'play') sharedAudioEngine.resume();
-      else if (action === 'pause') sharedAudioEngine.pause();
-      else if (action === 'toggle') {
-        if (sharedAudioEngine.getIsPlaying()) sharedAudioEngine.pause();
-        else sharedAudioEngine.resume();
+      if (action === 'play') {
+        if (!sharedAudioEngine.getIsPlaying() || sharedAudioEngine.isPlaybackWedged()) {
+          handleTogglePlayRef.current();
+        }
+      } else if (action === 'pause') {
+        sharedAudioEngine.pause();
+      } else if (action === 'toggle') {
+        handleTogglePlayRef.current();
       } else if (action === 'next') {
         handleNextRef.current(false);
       } else if (action === 'prev') {
@@ -1837,10 +1940,7 @@ export default function App() {
       isPlaying: sharedAudioEngine.getIsPlaying(),
       activeLyricText: activeLine,
       lowCpuMode,
-      onTogglePlay: () => {
-        if (sharedAudioEngine.getIsPlaying()) sharedAudioEngine.pause();
-        else sharedAudioEngine.resume();
-      },
+      onTogglePlay: () => handleTogglePlayRef.current(),
       onNext: () => handleNextRef.current(false),
       onPrev: () => handlePrev(),
       onClosed: () => {
