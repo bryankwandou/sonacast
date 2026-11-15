@@ -17,6 +17,7 @@ import type {
   ListenerProfile,
   ListeningStats,
   PlaybackContextInfo,
+  UserPlaylist,
   AuthUser,
   AuthProvidersMeta
 } from './types';
@@ -163,6 +164,19 @@ export default function App() {
   const [lyricsStatus, setLyricsStatus] = useState<'idle' | 'loading' | 'loaded' | 'unavailable'>('idle');
   const [lyricsSource, setLyricsSource] = useState<string>('');
   const [lyricsSynced, setLyricsSynced] = useState<boolean>(false);
+  const [lyricsMatchedDuration, setLyricsMatchedDuration] = useState<number | undefined>(undefined);
+  const [lyricOffsetsByTrack, setLyricOffsetsByTrack] = useState<Record<string, number>>(() => {
+    try {
+      const raw = window.localStorage.getItem('sonacast_lyric_offsets_v1');
+      return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+    } catch {
+      return {};
+    }
+  });
+  const resolvedLyricsMetaRef = useRef<{ trackId: string; fetchDur: number }>({
+    trackId: currentTrack.id,
+    fetchDur: currentTrack.duration
+  });
 
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
@@ -639,6 +653,27 @@ export default function App() {
     });
     const unsubDur = sharedAudioEngine.subscribeDurationChange((realDur) => {
       setCurrentTrack((prev) => ({ ...prev, duration: realDur }));
+      const active = currentTrackRef.current;
+      if (
+        realDur >= 45 &&
+        resolvedLyricsMetaRef.current.trackId === active.id &&
+        Math.abs(realDur - resolvedLyricsMetaRef.current.fetchDur) >= 5
+      ) {
+        resolvedLyricsMetaRef.current.fetchDur = realDur;
+        void fetchLyricsWithMeta(active.title, active.artist, realDur, active.album).then((res) => {
+          if (currentTrackRef.current.id !== active.id || res.lyrics.length === 0) return;
+          if (res.synced || currentTrackRef.current.lyrics.length < 18) {
+            setLyricsSynced(res.synced);
+            setLyricsSource(res.source);
+            setLyricsMatchedDuration(res.matchedDuration);
+            setLyricsStatus('loaded');
+            setCurrentTrack((prev) => (prev.id === active.id ? { ...prev, lyrics: res.lyrics } : prev));
+            setQueue((prevQ) =>
+              prevQ.map((item) => (item.id === active.id ? { ...item, lyrics: res.lyrics } : item))
+            );
+          }
+        });
+      }
     });
     const unsubErr = sharedAudioEngine.subscribeError((msg) => {
       setStreamError(msg);
@@ -881,22 +916,38 @@ export default function App() {
   const resolveLyricsForTrack = useCallback(
     async (
       targetTrack: Track,
-      opts?: { customTitle?: string; customArtist?: string; forceRefresh?: boolean }
+      opts?: {
+        customTitle?: string;
+        customArtist?: string;
+        forceRefresh?: boolean;
+        backgroundUpgrade?: boolean;
+        overrideDuration?: number;
+      }
     ) => {
-      setLyricsStatus('loading');
-      setLyricsSource('');
+      const targetDur = opts?.overrideDuration || targetTrack.duration;
+      resolvedLyricsMetaRef.current = { trackId: targetTrack.id, fetchDur: targetDur };
+      if (!opts?.backgroundUpgrade) {
+        setLyricsStatus('loading');
+        setLyricsSource('');
+        setLyricsMatchedDuration(undefined);
+      }
       try {
         const res = await fetchLyricsWithMeta(
           opts?.customTitle || targetTrack.title,
           opts?.customArtist || targetTrack.artist,
-          targetTrack.duration,
+          targetDur,
           targetTrack.album,
           opts?.forceRefresh
         );
         if (currentTrackRef.current.id !== targetTrack.id) return;
         if (res.lyrics.length > 0) {
+          const existingLen = currentTrackRef.current.lyrics.length;
+          if (opts?.backgroundUpgrade && !res.synced && res.lyrics.length <= existingLen) {
+            return;
+          }
           setLyricsSynced(res.synced);
           setLyricsSource(res.source);
+          setLyricsMatchedDuration(res.matchedDuration);
           setLyricsStatus('loaded');
           setCurrentTrack((prev) =>
             prev.id === targetTrack.id ? { ...prev, lyrics: res.lyrics } : prev
@@ -904,13 +955,17 @@ export default function App() {
           setQueue((prevQ) =>
             prevQ.map((item) => (item.id === targetTrack.id ? { ...item, lyrics: res.lyrics } : item))
           );
-        } else {
+        } else if (!opts?.backgroundUpgrade || currentTrackRef.current.lyrics.length === 0) {
           setLyricsSynced(false);
           setLyricsSource('');
+          setLyricsMatchedDuration(undefined);
           setLyricsStatus('unavailable');
         }
       } catch {
-        if (currentTrackRef.current.id === targetTrack.id) {
+        if (
+          currentTrackRef.current.id === targetTrack.id &&
+          (!opts?.backgroundUpgrade || currentTrackRef.current.lyrics.length === 0)
+        ) {
           setLyricsStatus('unavailable');
         }
       }
@@ -930,10 +985,16 @@ export default function App() {
     [resolveLyricsForTrack]
   );
 
-  // Hydrate initial track lyrics quietly if initial catalog entry has sparse/no lines
+  // Hydrate initial track lyrics quietly if initial catalog entry has sparse or teaser lines
   useEffect(() => {
-    if (currentTrackRef.current.lyrics.length <= 2) {
-      resolveLyricsForTrack(currentTrackRef.current);
+    const tr = currentTrackRef.current;
+    if (tr.lyrics.length < 18) {
+      if (tr.lyrics.length > 0) {
+        setLyricsStatus('loaded');
+        setLyricsSynced(tr.lyrics.length > 4);
+        setLyricsSource('catalog');
+      }
+      resolveLyricsForTrack(tr, { backgroundUpgrade: tr.lyrics.length > 0 });
     }
   }, [resolveLyricsForTrack]);
 
@@ -1044,12 +1105,20 @@ export default function App() {
         }
       }
 
-      if (track.lyrics.length <= 2) {
-        resolveLyricsForTrack(track);
+      if (track.lyrics.length < 18) {
+        if (track.lyrics.length > 0) {
+          setLyricsStatus('loaded');
+          setLyricsSynced(track.lyrics.length > 4);
+          setLyricsSource('catalog');
+          setLyricsMatchedDuration(undefined);
+        }
+        resolveLyricsForTrack(track, { backgroundUpgrade: track.lyrics.length > 0 });
       } else {
+        resolvedLyricsMetaRef.current = { trackId: track.id, fetchDur: track.duration };
         setLyricsStatus('loaded');
         setLyricsSynced(track.lyrics.length > 4);
         setLyricsSource('catalog');
+        setLyricsMatchedDuration(undefined);
       }
 
       // Silently pre-fetch lyrics for next track in queue so Up Next starts instantaneously
@@ -1157,9 +1226,31 @@ export default function App() {
             duration: resolved.duration,
             streamSource: 'official-stream'
           };
-          setCurrentTrack((prev) => (prev.id === track.id ? updatedTrack : prev));
-          setQueue((prevQ) => prevQ.map((t) => (t.id === track.id ? updatedTrack : t)));
+          setCurrentTrack((prev) =>
+            prev.id === track.id
+              ? {
+                  ...updatedTrack,
+                  lyrics: prev.lyrics.length > updatedTrack.lyrics.length ? prev.lyrics : updatedTrack.lyrics
+                }
+              : prev
+          );
+          setQueue((prevQ) =>
+            prevQ.map((t) =>
+              t.id === track.id
+                ? {
+                    ...updatedTrack,
+                    lyrics: t.lyrics.length > updatedTrack.lyrics.length ? t.lyrics : updatedTrack.lyrics
+                  }
+                : t
+            )
+          );
           sharedAudioEngine.playYouTubeTrack(resolved.candidateIds, resolved.duration, track.bpm);
+          if (Math.abs(resolved.duration - track.duration) >= 5) {
+            resolveLyricsForTrack(updatedTrack, {
+              backgroundUpgrade: currentTrackRef.current.lyrics.length > 0,
+              overrideDuration: resolved.duration
+            });
+          }
         } else {
           setIsYouTubeActive(false);
           setStreamError('Full official stream unavailable for this release. Try another track.');
@@ -1468,6 +1559,113 @@ export default function App() {
   const handleRemoveFromManualQueue = useCallback((index: number) => {
     setManualQueue((prev) => prev.filter((_, i) => i !== index));
   }, []);
+
+  const handleRemoveUpcomingTrack = useCallback((trackId: string) => {
+    setQueue((prev) => prev.filter((item) => item.id !== trackId));
+  }, []);
+
+  const currentTrackOffsetKey = `${currentTrack.artist.trim().toLowerCase()}::${currentTrack.title
+    .trim()
+    .toLowerCase()}`;
+  const currentLyricsOffset = lyricOffsetsByTrack[currentTrackOffsetKey] || 0;
+
+  const handleChangeCurrentLyricsOffset = useCallback(
+    (nextOffset: number) => {
+      const clamped = Math.max(-45, Math.min(45, Math.round(nextOffset * 10) / 10));
+      setLyricOffsetsByTrack((prev) => {
+        const copy = { ...prev };
+        if (Math.abs(clamped) < 0.05) {
+          delete copy[currentTrackOffsetKey];
+        } else {
+          copy[currentTrackOffsetKey] = clamped;
+        }
+        try {
+          window.localStorage.setItem('sonacast_lyric_offsets_v1', JSON.stringify(copy));
+        } catch {
+          // Ignore storage quota errors
+        }
+        return copy;
+      });
+    },
+    [currentTrackOffsetKey]
+  );
+
+  const handleImportLibrary = useCallback(
+    (payload: {
+      favorites?: FavoriteTrack[];
+      albums?: UserPlaylist[];
+      followedArtists?: FollowedArtist[];
+    }) => {
+      let importedAlbums = 0;
+      let importedFavorites = 0;
+      const incomingFavs = Array.isArray(payload.favorites)
+        ? payload.favorites.filter((item) => Boolean(item?.id && item?.title))
+        : [];
+      const incomingAlbums = Array.isArray(payload.albums)
+        ? payload.albums.filter((alb) => alb?.id && alb?.name && Array.isArray(alb.tracks))
+        : [];
+      const incomingArtists = Array.isArray(payload.followedArtists)
+        ? payload.followedArtists.filter((art) => Boolean(art?.name))
+        : [];
+
+      if (incomingFavs.length > 0) {
+        setFavoritesMeta((prev) => {
+          const map = new Map<string, FavoriteTrack>(prev.map((item) => [item.id, item]));
+          for (const fav of incomingFavs) {
+            if (!map.has(fav.id)) importedFavorites += 1;
+            map.set(fav.id, fav);
+          }
+          return Array.from(map.values());
+        });
+      }
+
+      if (incomingAlbums.length > 0 || incomingFavs.length > 0) {
+        setRecState((prev) => {
+          const likedMap = new Map<string, Track>(prev.likedTracks.map((tr) => [tr.id, tr]));
+          for (const fav of incomingFavs) {
+            if (!likedMap.has(fav.id)) {
+              likedMap.set(fav.id, fav);
+            }
+          }
+          const playlistMap = new Map<string, UserPlaylist>(
+            prev.playlists.map((pl) => [pl.id, pl])
+          );
+          for (const alb of incomingAlbums) {
+            if (!playlistMap.has(alb.id)) {
+              importedAlbums += 1;
+            }
+            playlistMap.set(alb.id, alb);
+          }
+          const next = {
+            ...prev,
+            likedTracks: Array.from(likedMap.values()),
+            playlists: Array.from(playlistMap.values())
+          };
+          saveRecommendationState(next);
+          return next;
+        });
+      }
+
+      if (incomingArtists.length > 0) {
+        setFollowedArtists((prev) => {
+          const map = new Map<string, FollowedArtist>(
+            prev.map((art) => [art.name.toLowerCase(), art])
+          );
+          for (const art of incomingArtists) {
+            map.set(art.name.toLowerCase(), art);
+          }
+          return Array.from(map.values());
+        });
+      }
+
+      showToast(
+        `Imported ${importedAlbums} album(s), ${importedFavorites} favorite(s)`,
+        'success'
+      );
+      return { importedAlbums, importedFavorites };
+    },
+    [showToast]
+  );
 
   const handleClearManualQueue = useCallback(() => {
     setManualQueue([]);
@@ -2384,6 +2582,7 @@ export default function App() {
           currentTrack={currentTrack}
           isPlaying={isPlaying}
           currentTime={currentTime}
+          lyricsOffset={currentLyricsOffset}
           resolvingTrackId={resolvingTrackId}
           onSelectTrack={handleSelectTrack}
           onTogglePlay={handleTogglePlay}
@@ -2804,6 +3003,10 @@ export default function App() {
                           lyricsStatus={lyricsStatus}
                           lyricsSource={lyricsSource}
                           lyricsSynced={lyricsSynced}
+                          lyricsOffset={currentLyricsOffset}
+                          onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
+                          matchedDuration={lyricsMatchedDuration}
+                          trackDuration={currentTrack.duration}
                           onRetryLyrics={handleRetryCurrentLyrics}
                           onOpenLyricCard={handleOpenLyricCard}
                           onOpenArtist={handleOpenArtistSpotlight}
@@ -2838,6 +3041,10 @@ export default function App() {
                             lyricsStatus={lyricsStatus}
                             lyricsSource={lyricsSource}
                             lyricsSynced={lyricsSynced}
+                            lyricsOffset={currentLyricsOffset}
+                            onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
+                            matchedDuration={lyricsMatchedDuration}
+                            trackDuration={currentTrack.duration}
                             onRetryLyrics={handleRetryCurrentLyrics}
                             onOpenLyricCard={handleOpenLyricCard}
                             onOpenArtist={handleOpenArtistSpotlight}
@@ -2872,6 +3079,10 @@ export default function App() {
                             lyricsStatus={lyricsStatus}
                             lyricsSource={lyricsSource}
                             lyricsSynced={lyricsSynced}
+                            lyricsOffset={currentLyricsOffset}
+                            onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
+                            matchedDuration={lyricsMatchedDuration}
+                            trackDuration={currentTrack.duration}
                             onRetryLyrics={handleRetryCurrentLyrics}
                             onOpenLyricCard={handleOpenLyricCard}
                             onOpenArtist={handleOpenArtistSpotlight}
@@ -2928,6 +3139,7 @@ export default function App() {
                     duration={currentTrack.duration}
                     lyrics={currentTrack.lyrics || []}
                     lyricsSynced={lyricsSynced}
+                    lyricsOffset={currentLyricsOffset}
                     isLiked={likedTrackIds.has(currentTrack.id)}
                     isSavedOffline={isTrackSavedOffline(offlineAudioKeys, currentTrack.audioUrl)}
                     canSaveOffline={isCacheableAudioUrl(currentTrack.audioUrl)}
@@ -2979,6 +3191,7 @@ export default function App() {
                     onSearchArtist={(name) => handleOpenArtistSpotlight(name)}
                     onUpdateProfile={handleUpdateProfile}
                     onCloneSharedAlbum={handleCloneSharedAlbum}
+                    onImportLibrary={handleImportLibrary}
                     onClearHistory={handleClearHistory}
                     onOpenBlend={() => handleTabChange('blend')}
                   />
@@ -3078,6 +3291,8 @@ export default function App() {
               onRemoveFromManualQueue={handleRemoveFromManualQueue}
               onClearManualQueue={handleClearManualQueue}
               onMoveManualQueueItem={handleMoveManualQueueItem}
+              onRemoveUpcomingTrack={handleRemoveUpcomingTrack}
+              onPlayNextFromQueue={handlePlayNext}
               onRefreshRadioMix={handleRefreshRadioMix}
               playbackContext={playbackContext}
               autoplayEnabled={autoplayEnabled}
@@ -3100,6 +3315,8 @@ export default function App() {
               lyricsStatus={lyricsStatus}
               lyricsSource={lyricsSource}
               lyricsSynced={lyricsSynced}
+              lyricsOffset={currentLyricsOffset}
+              onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
               onRetryLyrics={handleRetryCurrentLyrics}
               isMobileOpen={isMobileQueueOpen}
               onCloseMobile={() => setIsMobileQueueOpen(false)}
@@ -3231,6 +3448,8 @@ export default function App() {
         playlists={recState.playlists}
         lyricsStatus={lyricsStatus}
         lyricsSource={lyricsSource}
+        lyricsOffset={currentLyricsOffset}
+        onChangeLyricsOffset={handleChangeCurrentLyricsOffset}
         onRetryLyrics={() => handleRetryCurrentLyrics()}
         onTogglePlay={handleTogglePlay}
         onNext={() => handleNext(false)}

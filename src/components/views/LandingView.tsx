@@ -37,6 +37,7 @@ interface LandingViewProps {
   likedTrackIds?: Set<string>;
   onToggleLike?: (track: Track) => void;
   onOpenAddToAlbum?: (track: Track) => void;
+  lyricsOffset?: number;
 }
 
 const FEATURED_ARTIST_LINKS: string[] = [
@@ -75,7 +76,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
   authUser = null,
   likedTrackIds,
   onToggleLike,
-  onOpenAddToAlbum
+  onOpenAddToAlbum,
+  lyricsOffset = 0
 }) => {
   const { t } = useAppPreferences();
   const { popularCharts, isLoadingCharts } = usePopularCharts();
@@ -141,16 +143,17 @@ export const LandingView: React.FC<LandingViewProps> = ({
   const activeLyricText = useMemo(() => {
     const lines = currentTrack.lyrics || [];
     if (lines.length === 0) return `${currentTrack.artist} · ${currentTrack.album}`;
+    const effective = Math.max(0, currentTime + lyricsOffset);
     let matched = lines[0]?.text || '';
     for (let i = 0; i < lines.length; i += 1) {
-      if (currentTime >= lines[i].time) {
+      if (effective >= lines[i].time) {
         matched = lines[i].text;
       } else {
         break;
       }
     }
     return matched || `${currentTrack.artist} · ${currentTrack.album}`;
-  }, [currentTrack.lyrics, currentTrack.artist, currentTrack.album, currentTime]);
+  }, [currentTrack.lyrics, currentTrack.artist, currentTrack.album, currentTime, lyricsOffset]);
 
   const isCurrentResolving = resolvingTrackId === currentTrack.id;
   const isLiked = likedTrackIds?.has(currentTrack.id) ?? false;
@@ -354,13 +357,15 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 {collageArtworks.map((artTrack, idx) => (
                   <div
                     key={`${artTrack.id}-${idx}`}
-                    className={`aspect-square rounded-lg overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-elevated)] shadow-lg ${
+                    className={`relative aspect-square rounded-lg overflow-hidden border border-[var(--border-subtle)] bg-gradient-to-br from-emerald-500/20 via-[var(--bg-elevated)] to-[var(--bg-surface)] shadow-lg ${
                       idx === 1 ? '-translate-y-4' : idx === 2 ? 'translate-y-1' : ''
                     }`}
                   >
                     <img
                       src={artTrack.coverUrl || DEFAULT_COVER_DATA_URI}
                       alt={artTrack.title}
+                      loading="eager"
+                      decoding="sync"
                       onError={(e) => applyCoverFallback(e, artTrack.title, artTrack.artist)}
                       className="w-full h-full object-cover"
                     />

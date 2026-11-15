@@ -4,17 +4,27 @@ import { ARTISTS_DIRECTORY } from '../data/artists800';
 export function parseLrc(lrcText: string): LyricLine[] {
   const lines = lrcText.split(/\r?\n/);
   const result: LyricLine[] = [];
+  let offsetSeconds = 0;
 
-  for (const line of lines) {
-    const tags = [...line.matchAll(/\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
+  for (const rawLine of lines) {
+    const offsetMatch = rawLine.match(/^\s*\[offset\s*:\s*([+-]?\d+)\s*\]/i);
+    if (offsetMatch) {
+      const ms = parseInt(offsetMatch[1], 10);
+      if (Number.isFinite(ms)) {
+        offsetSeconds = -ms / 1000;
+      }
+      continue;
+    }
+
+    const tags = [...rawLine.matchAll(/\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
     if (tags.length === 0) continue;
-    const text = line.replace(/\[[^\]]*\]/g, '').trim();
+    const text = rawLine.replace(/\[[^\]]*\]/g, '').trim();
     if (!text) continue;
     for (const match of tags) {
       const minutes = parseInt(match[1], 10);
       const seconds = parseInt(match[2], 10);
       const frac = match[3] ? parseFloat(`0.${match[3]}`) : 0;
-      const time = Math.round((minutes * 60 + seconds + frac) * 100) / 100;
+      const time = Math.max(0, Math.round((minutes * 60 + seconds + frac + offsetSeconds) * 100) / 100);
       result.push({ time, text });
     }
   }
@@ -64,13 +74,15 @@ export interface LyricsLookupResult {
   synced: boolean;
   source: string;
   lyrics: LyricLine[];
+  matchedDuration?: number;
 }
 
-const LYRICS_CACHE_STORAGE_KEY = 'sonacast_lyrics_cache_v2';
+const LYRICS_CACHE_STORAGE_KEY = 'sonacast_lyrics_cache_v3';
 const memoryLyricsCache = new Map<string, LyricsLookupResult>();
 
-function makeLyricsCacheKey(title: string, artist: string): string {
-  return `${cleanLyricsArtist(artist).toLowerCase()}::${cleanLyricsTitle(title).toLowerCase()}`;
+function makeLyricsCacheKey(title: string, artist: string, duration?: number): string {
+  const durBucket = duration && duration >= 45 ? Math.round(duration / 5) * 5 : 0;
+  return `${cleanLyricsArtist(artist).toLowerCase()}::${cleanLyricsTitle(title).toLowerCase()}::d${durBucket}`;
 }
 
 function readCachedLyrics(key: string): LyricsLookupResult | null {
@@ -110,6 +122,71 @@ function writeCachedLyrics(key: string, result: LyricsLookupResult): void {
   }
 }
 
+interface BrowserLrcItem {
+  syncedLyrics?: string;
+  plainLyrics?: string;
+  trackName?: string;
+  artistName?: string;
+  duration?: number;
+}
+
+function scoreBrowserLrcCandidate(
+  item: BrowserLrcItem,
+  parsed: LyricLine[],
+  expectedTitle: string,
+  expectedArtist: string,
+  expectedDuration?: number
+): number {
+  let score = 0;
+  const candTitle = String(item?.trackName || '').toLowerCase();
+  const candArtist = String(item?.artistName || '').toLowerCase();
+  const qTitle = expectedTitle.toLowerCase();
+  const qArtist = expectedArtist.toLowerCase();
+  const candDur = Number(item?.duration) || 0;
+  const refDur = Number(expectedDuration) || 0;
+
+  if (qTitle && (candTitle === qTitle || candTitle.includes(qTitle) || qTitle.includes(candTitle))) {
+    score += 18;
+  }
+  if (qArtist && (candArtist === qArtist || candArtist.includes(qArtist) || qArtist.includes(candArtist))) {
+    score += 18;
+  }
+
+  const wantsVariant = /(live|acoustic|remix|karaoke|instrumental|sped up|slowed)/i.test(qTitle);
+  if (!wantsVariant && /(live|karaoke|instrumental|sped up|slowed up|8d audio)/i.test(candTitle)) {
+    score -= 70;
+  }
+
+  if (parsed.length > 0) {
+    const firstTime = parsed[0].time;
+    const lastTime = parsed[parsed.length - 1].time;
+    const effectiveDur = candDur > 40 ? candDur : refDur;
+    if (effectiveDur >= 140 && lastTime < effectiveDur * 0.68) {
+      score -= 65;
+    }
+    if (effectiveDur > 0 && lastTime > effectiveDur + 12) {
+      score -= 40;
+    }
+    if (firstTime > 90 && parsed.length < 20) {
+      score -= 30;
+    }
+  }
+
+  if (refDur > 40 && candDur > 40) {
+    const diff = Math.abs(candDur - refDur);
+    if (diff <= 3) score += 55;
+    else if (diff <= 7) score += 35;
+    else if (diff <= 14) score += 12;
+    else if (diff <= 25) score -= 35;
+    else score -= 85;
+  }
+
+  if (parsed.length >= 25) score += 10;
+  else if (parsed.length < 10) score -= 18;
+
+  return score;
+}
+
 export async function fetchLyricsWithMeta(
   trackName: string,
   artistName: string,
@@ -117,7 +194,7 @@ export async function fetchLyricsWithMeta(
   albumName?: string,
   forceRefresh = false
 ): Promise<LyricsLookupResult> {
-  const cacheKey = makeLyricsCacheKey(trackName, artistName);
+  const cacheKey = makeLyricsCacheKey(trackName, artistName, duration);
   if (!forceRefresh) {
     const cached = readCachedLyrics(cacheKey);
     if (cached) return cached;
@@ -177,19 +254,31 @@ export async function fetchLyricsWithMeta(
         .catch(() => null)
     ]);
 
-    const pool = [
-      ...(lrGet ? [lrGet] : []),
+    const pool: BrowserLrcItem[] = [
       ...(Array.isArray(lrPair) ? lrPair : []),
-      ...(Array.isArray(lrQ) ? lrQ : [])
+      ...(Array.isArray(lrQ) ? lrQ : []),
+      ...(lrGet ? [lrGet] : [])
     ];
-    const withSynced = pool.find((s: { syncedLyrics?: string }) => Boolean(s?.syncedLyrics));
-    if (withSynced?.syncedLyrics) {
-      const parsed = parseLrc(withSynced.syncedLyrics);
-      if (parsed.length > 0) {
-        const hit: LyricsLookupResult = { found: true, synced: true, source: 'lrclib', lyrics: parsed };
-        writeCachedLyrics(cacheKey, hit);
-        return hit;
+    let bestSynced: { item: BrowserLrcItem; parsed: LyricLine[]; score: number } | null = null;
+    for (const candidate of pool) {
+      if (!candidate?.syncedLyrics) continue;
+      const parsed = parseLrc(candidate.syncedLyrics);
+      if (parsed.length === 0) continue;
+      const score = scoreBrowserLrcCandidate(candidate, parsed, cleanTrack, cleanArtist, duration);
+      if (!bestSynced || score > bestSynced.score) {
+        bestSynced = { item: candidate, parsed, score };
       }
+    }
+    if (bestSynced && bestSynced.score > -25) {
+      const hit: LyricsLookupResult = {
+        found: true,
+        synced: true,
+        source: 'lrclib',
+        lyrics: bestSynced.parsed,
+        matchedDuration: Number(bestSynced.item.duration) || undefined
+      };
+      writeCachedLyrics(cacheKey, hit);
+      return hit;
     }
 
     const withPlain = pool.find((s: { plainLyrics?: string }) => Boolean(s?.plainLyrics && s.plainLyrics.trim().length > 30));
@@ -609,14 +698,15 @@ function scoreCandidate(
     artistMatched &&
     (candAuthorLower.includes('- topic') ||
       candRawLower.includes('official audio') ||
+      candRawLower.includes('audio only') ||
       candRawLower.includes('lyrics'))
   ) {
-    score += 16;
+    score += 28;
   } else if (
     artistMatched &&
-    (candAuthorLower.includes('vevo') || candRawLower.includes('official video'))
+    (candAuthorLower.includes('vevo') || candRawLower.includes('official video') || candRawLower.includes('music video'))
   ) {
-    score += 8;
+    score += 2;
   }
 
   if (!rawLowerTitle.includes('live') && (candRawLower.includes('(live') || candRawLower.includes('live in ') || candRawLower.includes('concert'))) {
@@ -625,9 +715,10 @@ function scoreCandidate(
 
   if (expectedDuration && expectedDuration >= 60 && candidate.duration >= 60) {
     const diff = Math.abs(candidate.duration - expectedDuration);
-    if (diff <= 10) score += 45;
-    else if (diff <= 25) score += 25;
-    else if (diff > 90) score -= 35;
+    if (diff <= 5) score += 55;
+    else if (diff <= 10) score += 42;
+    else if (diff <= 25) score += 18;
+    else if (diff > 60) score -= 40;
   }
 
   if ((candidate.duration > 0 && candidate.duration < 60) || candidate.duration > 1800) score -= 100;

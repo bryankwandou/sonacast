@@ -98,6 +98,7 @@ export class AudioEngine {
   private ytApiPromise: Promise<void> | null = null;
   private ytApiStartedAt = 0;
   private ytPollInterval: number | null = null;
+  private html5PollInterval: number | null = null;
   private ytWatchdogTimer: number | null = null;
   private ytResumeCheckTimer: number | null = null;
   private wakeRecoverTimer: number | null = null;
@@ -137,6 +138,8 @@ export class AudioEngine {
           }
           if (this.activeBackend === 'youtube' && this.isPlaying) {
             this.startYouTubePoll();
+          } else if (this.activeBackend === 'html5' && this.isPlaying) {
+            this.startHtml5Poll();
           }
           return;
         }
@@ -148,6 +151,7 @@ export class AudioEngine {
           this.wasPlayingBeforeSleep = true;
         }
         this.stopYouTubePoll();
+        this.stopHtml5Poll();
         this.clearYouTubeWatchdog();
         this.clearYouTubeResumeCheck();
       });
@@ -267,6 +271,8 @@ export class AudioEngine {
     this.lowCpuMode = Boolean(enabled);
     if (this.activeBackend === 'youtube' && this.isPlaying) {
       this.startYouTubePoll();
+    } else if (this.activeBackend === 'html5' && this.isPlaying) {
+      this.startHtml5Poll();
     }
   }
 
@@ -413,11 +419,21 @@ export class AudioEngine {
         if (this.activeBackend !== 'html5' || !this.audioElement || !this.isPlaying) return;
         this.currentTime = this.audioElement.currentTime;
         const now = performance.now();
-        const minInterval = this.lowCpuMode || this.isDocumentHidden ? 1000 : 200;
+        const minInterval = this.lowCpuMode || this.isDocumentHidden ? 350 : 90;
         if (now - this.lastHtml5NotifyAt >= minInterval) {
           this.lastHtml5NotifyAt = now;
           this.notifyTime();
         }
+      });
+
+      this.audioElement.addEventListener('play', () => {
+        if (this.activeBackend === 'html5') {
+          this.startHtml5Poll();
+        }
+      });
+
+      this.audioElement.addEventListener('pause', () => {
+        this.stopHtml5Poll();
       });
 
       this.audioElement.addEventListener('playing', () => {
@@ -468,6 +484,7 @@ export class AudioEngine {
       this.audioElement.addEventListener('durationchange', syncHtml5Duration);
 
       this.audioElement.addEventListener('ended', () => {
+        this.stopHtml5Poll();
         if (this.activeBackend !== 'html5' || !this.isPlaying) return;
         this.isPlaying = false;
         this.wasPlayingBeforeSleep = false;
@@ -683,6 +700,7 @@ export class AudioEngine {
   }
 
   private stopHtml5Backend() {
+    this.stopHtml5Poll();
     if (this.audioElement) {
       try {
         this.audioElement.pause();
@@ -692,9 +710,29 @@ export class AudioEngine {
     }
   }
 
+  private startHtml5Poll() {
+    this.stopHtml5Poll();
+    const intervalMs = this.isDocumentHidden ? 1500 : this.lowCpuMode ? 350 : 100;
+    this.html5PollInterval = window.setInterval(() => {
+      if (this.activeBackend !== 'html5' || !this.audioElement || !this.isPlaying || this.audioElement.paused) {
+        return;
+      }
+      this.currentTime = this.audioElement.currentTime;
+      this.lastHtml5NotifyAt = performance.now();
+      this.notifyTime();
+    }, intervalMs);
+  }
+
+  private stopHtml5Poll() {
+    if (this.html5PollInterval !== null) {
+      clearInterval(this.html5PollInterval);
+      this.html5PollInterval = null;
+    }
+  }
+
   private startYouTubePoll() {
     this.stopYouTubePoll();
-    const intervalMs = this.lowCpuMode || this.isDocumentHidden ? 1200 : 250;
+    const intervalMs = this.isDocumentHidden ? 1500 : this.lowCpuMode ? 350 : 100;
     this.ytPollInterval = window.setInterval(() => {
       if (this.activeBackend !== 'youtube' || !this.ytPlayer || !this.ytReady || !this.isPlaying) {
         return;
@@ -1023,6 +1061,7 @@ export class AudioEngine {
     this.clearYouTubeWatchdog();
     this.clearYouTubeResumeCheck();
     this.stopYouTubePoll();
+    this.stopHtml5Poll();
     if (this.activeBackend === 'html5' && this.audioElement) {
       try {
         this.audioElement.pause();

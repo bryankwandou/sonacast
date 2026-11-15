@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
   Check,
@@ -19,6 +19,7 @@ import {
   Shuffle,
   Sparkles,
   Trash2,
+  Upload,
   UserCheck,
   UserCog
 } from 'lucide-react';
@@ -63,6 +64,11 @@ interface FavoritesViewProps {
   onSearchArtist: (artistName: string) => void;
   onUpdateProfile: (displayName: string, bio: string) => void;
   onCloneSharedAlbum: (shareCode: string) => Promise<boolean>;
+  onImportLibrary?: (payload: {
+    favorites?: FavoriteTrack[];
+    albums?: UserPlaylist[];
+    followedArtists?: FollowedArtist[];
+  }) => { importedAlbums: number; importedFavorites: number };
   onClearHistory: () => void;
   onOpenBlend: () => void;
 }
@@ -93,6 +99,7 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
   onSearchArtist,
   onUpdateProfile,
   onCloneSharedAlbum,
+  onImportLibrary,
   onClearHistory,
   onOpenBlend
 }) => {
@@ -108,6 +115,8 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [importShareCode, setImportShareCode] = useState('');
   const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle');
+  const [jsonImportNotice, setJsonImportNotice] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const [editingProfile, setEditingProfile] = useState(false);
@@ -186,6 +195,38 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleImportJsonFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !onImportLibrary) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setJsonImportNotice('File too large (max 5 MB).');
+      return;
+    }
+    try {
+      const rawText = await file.text();
+      const parsed = JSON.parse(rawText) as {
+        favorites?: unknown;
+        albums?: unknown;
+        followedArtists?: unknown;
+      };
+      if (!parsed || typeof parsed !== 'object') {
+        setJsonImportNotice('Invalid JSON backup format.');
+        return;
+      }
+      const res = onImportLibrary({
+        favorites: Array.isArray(parsed.favorites) ? (parsed.favorites as FavoriteTrack[]) : [],
+        albums: Array.isArray(parsed.albums) ? (parsed.albums as UserPlaylist[]) : [],
+        followedArtists: Array.isArray(parsed.followedArtists)
+          ? (parsed.followedArtists as FollowedArtist[])
+          : []
+      });
+      setJsonImportNotice(`Imported ${res.importedAlbums} album(s), ${res.importedFavorites} track(s).`);
+    } catch {
+      setJsonImportNotice('Could not read JSON backup file.');
+    }
+  };
+
   return (
     <div className="space-y-6 pb-8" data-testid="favorites-hub-view">
       {/* Header + Neon Cloud Status + Profile Card */}
@@ -237,8 +278,29 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
               className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
             >
               <Download size={14} />
-              <span>Export JSON</span>
+              <span>{t.exportLibrary}</span>
             </button>
+
+            {onImportLibrary && (
+              <>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={handleImportJsonFile}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  data-testid="hub-import-json-btn"
+                  onClick={() => importInputRef.current?.click()}
+                  className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Upload size={14} />
+                  <span>{t.importLibrary}</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -250,6 +312,12 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
             </button>
           </div>
         </div>
+
+        {jsonImportNotice && (
+          <div className="px-3 py-2 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-border)] text-xs font-semibold text-[var(--accent-text)]">
+            {jsonImportNotice}
+          </div>
+        )}
 
         {editingProfile && (
           <form

@@ -5,6 +5,7 @@ import {
   Heart,
   Infinity as InfinityIcon,
   ListMusic,
+  ListPlus,
   Mic2,
   Play,
   Radio,
@@ -31,6 +32,8 @@ interface RightSidebarProps {
   onRemoveFromManualQueue?: (index: number) => void;
   onClearManualQueue?: () => void;
   onMoveManualQueueItem?: (index: number, delta: -1 | 1) => void;
+  onRemoveUpcomingTrack?: (trackId: string) => void;
+  onPlayNextFromQueue?: (track: Track) => void;
   onRefreshRadioMix?: () => void;
   playbackContext?: PlaybackContextInfo;
   autoplayEnabled?: boolean;
@@ -41,6 +44,8 @@ interface RightSidebarProps {
   onToggleLike?: (track: Track) => void;
   onSeek?: (seconds: number) => void;
   currentTime?: number;
+  lyricsOffset?: number;
+  onChangeLyricsOffset?: (offset: number) => void;
   radioStations: RadioStation[];
   onSelectRadio: (station: RadioStation) => void;
   onOpenTipModal: () => void;
@@ -65,6 +70,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onRemoveFromManualQueue,
   onClearManualQueue,
   onMoveManualQueueItem,
+  onRemoveUpcomingTrack,
+  onPlayNextFromQueue,
   onRefreshRadioMix,
   playbackContext,
   autoplayEnabled = true,
@@ -75,6 +82,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onToggleLike,
   onSeek,
   currentTime = 0,
+  lyricsOffset = 0,
+  onChangeLyricsOffset,
   radioStations,
   onSelectRadio,
   onOpenTipModal,
@@ -114,13 +123,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   ? 'Radio'
                   : 'Catalog';
   const lyrics = currentTrack.lyrics || [];
+  const effectiveLyricTime = Math.max(0, currentTime + lyricsOffset);
   let activeLyricIdx = -1;
   for (let i = lyrics.length - 1; i >= 0; i--) {
-    if (currentTime >= lyrics[i].time) {
+    if (effectiveLyricTime >= lyrics[i].time) {
       activeLyricIdx = i;
       break;
     }
   }
+  const upcomingMinutes = Math.round(
+    upNextTracks.reduce((sum, item) => sum + (Number(item.duration) || 210), 0) / 60
+  );
 
   return (
     <aside
@@ -366,12 +379,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
             {/* Tier-2: Next From Active Context */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between px-1">
+              <div className="flex items-center justify-between px-1 gap-2">
                 <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] truncate">
                   <span className="truncate">
                     {upNextTracks.length > 0 ? `${t.upNext} · ${playbackContext?.title || t.queue}` : t.queue}
                   </span>
                 </div>
+                {upNextTracks.length > 0 && (
+                  <span className="text-[10px] font-mono text-[var(--text-dim)] shrink-0">
+                    {upNextTracks.length} · ~{upcomingMinutes}m
+                  </span>
+                )}
               </div>
 
               {upNextTracks.length === 0 ? (
@@ -420,20 +438,46 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         </div>
                       </button>
 
-                      {onToggleLike && (
-                        <button
-                          type="button"
-                          onClick={() => onToggleLike(item)}
-                          aria-label={t.likedSongs}
-                          className={`p-1 rounded transition-colors cursor-pointer ${
-                            isLiked
-                              ? 'text-[var(--accent-text)] opacity-100'
-                              : 'text-[var(--text-dim)] opacity-0 group-hover:opacity-100 hover:text-[var(--text-primary)]'
-                          }`}
-                        >
-                          <Heart size={12} className={isLiked ? 'fill-current' : ''} />
-                        </button>
-                      )}
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        {onPlayNextFromQueue && (
+                          <button
+                            type="button"
+                            onClick={() => onPlayNextFromQueue(item)}
+                            data-testid="queue-play-next-btn"
+                            title={t.playNext}
+                            aria-label={t.playNext}
+                            className="p-1 rounded text-[var(--text-dim)] opacity-0 group-hover:opacity-100 hover:text-[var(--accent-text)] transition-colors cursor-pointer"
+                          >
+                            <ListPlus size={12} />
+                          </button>
+                        )}
+                        {onToggleLike && (
+                          <button
+                            type="button"
+                            onClick={() => onToggleLike(item)}
+                            aria-label={t.likedSongs}
+                            className={`p-1 rounded transition-colors cursor-pointer ${
+                              isLiked
+                                ? 'text-[var(--accent-text)] opacity-100'
+                                : 'text-[var(--text-dim)] opacity-0 group-hover:opacity-100 hover:text-[var(--text-primary)]'
+                            }`}
+                          >
+                            <Heart size={12} className={isLiked ? 'fill-current' : ''} />
+                          </button>
+                        )}
+                        {onRemoveUpcomingTrack && (
+                          <button
+                            type="button"
+                            onClick={() => onRemoveUpcomingTrack(item.id)}
+                            data-testid="queue-remove-btn"
+                            title="Remove from upcoming"
+                            aria-label="Remove from upcoming"
+                            className="p-1 rounded text-[var(--text-dim)] opacity-0 group-hover:opacity-100 hover:text-rose-500 transition-colors cursor-pointer"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -533,26 +577,52 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 )}
               </div>
             ) : (
-              lyrics.map((line, idx) => {
-                const isActive = idx === activeLyricIdx;
-                return (
-                  <button
-                    key={`${idx}-${line.time}`}
-                    type="button"
-                    onClick={() => onSeek?.(line.time)}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                      isActive
-                        ? 'bg-[var(--accent-soft)] text-[var(--text-primary)] font-bold text-sm'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] text-xs'
-                    }`}
-                  >
-                    <div>{line.text}</div>
-                    {line.translation && (
-                      <div className="text-[11px] text-[var(--accent-text)] mt-0.5">{line.translation}</div>
-                    )}
-                  </button>
-                );
-              })
+              <>
+                {onChangeLyricsOffset && (
+                  <div className="flex items-center justify-between gap-1 mb-2 px-2 py-1.5 rounded-lg bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-[10px]">
+                    <span className="font-semibold text-[var(--text-dim)]">{t.syncOffsetLabel}</span>
+                    <div className="flex items-center gap-1 font-mono">
+                      <button
+                        type="button"
+                        onClick={() => onChangeLyricsOffset(Math.round((lyricsOffset - 0.5) * 10) / 10)}
+                        className="px-1.5 py-0.5 rounded bg-[var(--bg-surface)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-primary)] cursor-pointer"
+                      >
+                        -0.5s
+                      </button>
+                      <span className="px-1 text-[var(--accent-text)] font-bold">
+                        {Math.abs(lyricsOffset) < 0.05 ? '0.0s' : `${lyricsOffset > 0 ? '+' : ''}${lyricsOffset.toFixed(1)}s`}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onChangeLyricsOffset(Math.round((lyricsOffset + 0.5) * 10) / 10)}
+                        className="px-1.5 py-0.5 rounded bg-[var(--bg-surface)] hover:bg-[var(--bg-tint-hover)] text-[var(--accent-text)] cursor-pointer"
+                      >
+                        +0.5s
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {lyrics.map((line, idx) => {
+                  const isActive = idx === activeLyricIdx;
+                  return (
+                    <button
+                      key={`${idx}-${line.time}`}
+                      type="button"
+                      onClick={() => onSeek?.(Math.max(0, line.time - lyricsOffset))}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                        isActive
+                          ? 'bg-[var(--accent-soft)] text-[var(--text-primary)] font-bold text-sm'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] text-xs'
+                      }`}
+                    >
+                      <div>{line.text}</div>
+                      {line.translation && (
+                        <div className="text-[11px] text-[var(--accent-text)] mt-0.5">{line.translation}</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </>
             )}
           </div>
         )}

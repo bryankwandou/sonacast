@@ -26,6 +26,7 @@ interface VibeFeedViewProps {
   duration: number;
   lyrics: LyricLine[];
   lyricsSynced?: boolean;
+  lyricsOffset?: number;
   isLiked: boolean;
   isSavedOffline: boolean;
   canSaveOffline: boolean;
@@ -53,6 +54,7 @@ export const VibeFeedView: React.FC<VibeFeedViewProps> = ({
   duration,
   lyrics,
   lyricsSynced,
+  lyricsOffset = 0,
   isLiked,
   isSavedOffline,
   canSaveOffline,
@@ -83,11 +85,12 @@ export const VibeFeedView: React.FC<VibeFeedViewProps> = ({
   );
 
   const activeLyricIdx = useMemo(() => {
+    const effective = Math.max(0, currentTime + lyricsOffset);
     for (let i = lyrics.length - 1; i >= 0; i--) {
-      if (currentTime >= lyrics[i].time) return i;
+      if (effective >= lyrics[i].time) return i;
     }
     return lyrics.length > 0 ? 0 : -1;
-  }, [lyrics, currentTime]);
+  }, [lyrics, currentTime, lyricsOffset]);
 
   const previewLines = useMemo(() => {
     if (lyrics.length === 0) return [];

@@ -192,6 +192,16 @@ export interface TranslationKeys {
   skipForward15: string;
   offlineReadyBadge: string;
   filterBelowPlaceholder: string;
+  syncOffsetLabel: string;
+  syncTooLate: string;
+  syncTooEarly: string;
+  syncSnapLine: string;
+  syncSnapArmedHint: string;
+  syncReset: string;
+  copyLine: string;
+  copiedLabel: string;
+  exportLibrary: string;
+  importLibrary: string;
 }
 
 export interface LanguageOption {
@@ -419,7 +429,17 @@ const EN_BASE: TranslationKeys = {
   skipBack15: 'Back 15s',
   skipForward15: 'Forward 15s',
   offlineReadyBadge: 'Offline Mode',
-  filterBelowPlaceholder: 'Filter shelves below by title, artist, or mood...'
+  filterBelowPlaceholder: 'Filter shelves below by title, artist, or mood...',
+  syncOffsetLabel: 'Lyric Sync',
+  syncTooLate: 'Lyrics Late',
+  syncTooEarly: 'Lyrics Early',
+  syncSnapLine: 'Snap Line',
+  syncSnapArmedHint: 'Click the lyric line you hear right now to snap timing',
+  syncReset: 'Reset',
+  copyLine: 'Copy line',
+  copiedLabel: 'Copied',
+  exportLibrary: 'Export Playlists (.json)',
+  importLibrary: 'Import (.json)'
 };
 
 const loc = (overrides: Partial<TranslationKeys>): TranslationKeys => ({
@@ -619,7 +639,17 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     skipBack15: 'Mundur 15d',
     skipForward15: 'Maju 15d',
     offlineReadyBadge: 'Mode Offline',
-    filterBelowPlaceholder: 'Filter katalog di bawah berdasarkan judul, artis, atau mood...'
+    filterBelowPlaceholder: 'Filter katalog di bawah berdasarkan judul, artis, atau mood...',
+    syncOffsetLabel: 'Kalibrasi Lirik',
+    syncTooLate: 'Lirik Telat',
+    syncTooEarly: 'Lirik Terlalu Cepat',
+    syncSnapLine: 'Pas-kan Baris',
+    syncSnapArmedHint: 'Klik baris lirik yang sedang terdengar untuk langsung sinkron',
+    syncReset: 'Reset',
+    copyLine: 'Salin baris',
+    copiedLabel: 'Tersalin',
+    exportLibrary: 'Ekspor Koleksi (.json)',
+    importLibrary: 'Impor (.json)'
   }),
   ms: loc({
     navLanding: 'Halaman Utama',

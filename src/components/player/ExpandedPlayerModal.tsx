@@ -72,6 +72,8 @@ interface ExpandedPlayerModalProps {
   isSavedOffline?: boolean;
   onToggleSaveOffline?: () => void;
   onShareTrack?: () => void;
+  lyricsOffset?: number;
+  onChangeLyricsOffset?: (offsetSeconds: number) => void;
 }
 
 const EQ_OPTIONS: { id: EqPreset; label: string }[] = [
@@ -127,20 +129,24 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   canSaveOffline = false,
   isSavedOffline = false,
   onToggleSaveOffline,
-  onShareTrack
+  onShareTrack,
+  lyricsOffset = 0,
+  onChangeLyricsOffset
 }) => {
   const { t } = useAppPreferences();
   const [showDsp, setShowDsp] = useState(false);
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const lyricsPaneRef = useRef<HTMLDivElement | null>(null);
   const activeLyricRef = useRef<HTMLDivElement | null>(null);
   const accentRgb = useCoverAccentRgb(track.coverUrl, track.title, track.artist, lowCpuMode);
 
   const lyrics: LyricLine[] = track.lyrics || [];
+  const effectiveTime = Math.max(0, currentTime + lyricsOffset);
   let activeIndex = -1;
   for (let i = lyrics.length - 1; i >= 0; i--) {
-    if (currentTime >= lyrics[i].time) {
+    if (effectiveTime >= lyrics[i].time) {
       activeIndex = i;
       break;
     }
@@ -148,8 +154,14 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    if (activeLyricRef.current) {
-      activeLyricRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const container = lyricsPaneRef.current;
+    const lineEl = activeLyricRef.current;
+    if (container && lineEl) {
+      const cRect = container.getBoundingClientRect();
+      const lRect = lineEl.getBoundingClientRect();
+      const offsetInside = lRect.top - cRect.top + container.scrollTop;
+      const targetTop = Math.max(0, offsetInside - container.clientHeight / 2 + lineEl.offsetHeight / 2);
+      container.scrollTo({ top: targetTop, behavior: 'smooth' });
     }
   }, [isOpen, activeIndex]);
 
@@ -634,7 +646,10 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
 
           {/* Right: Resso-style Interactive Synced Lyrics */}
           <div className="lg:col-span-7">
-            <div className="rounded-2xl bg-[var(--bg-tint)] p-5 sm:p-8 min-h-[380px] max-h-[68vh] overflow-y-auto space-y-4">
+            <div
+              ref={lyricsPaneRef}
+              className="rounded-2xl bg-[var(--bg-tint)] p-5 sm:p-8 min-h-[380px] max-h-[68vh] overflow-y-auto space-y-4"
+            >
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--accent-text)]">
                   {lyricsStatus === 'loading' ? (
@@ -649,8 +664,36 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-[var(--text-dim)]">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {onChangeLyricsOffset && lyrics.length > 0 && (
+                    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-mono">
+                      <button
+                        type="button"
+                        onClick={() => onChangeLyricsOffset(Math.round((lyricsOffset - 0.5) * 10) / 10)}
+                        className="px-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                      >
+                        -0.5s
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onChangeLyricsOffset(0)}
+                        title={t.syncReset}
+                        className="px-1 text-[var(--accent-text)] font-bold cursor-pointer"
+                      >
+                        {Math.abs(lyricsOffset) < 0.05
+                          ? '0.0s'
+                          : `${lyricsOffset > 0 ? '+' : ''}${lyricsOffset.toFixed(1)}s`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onChangeLyricsOffset(Math.round((lyricsOffset + 0.5) * 10) / 10)}
+                        className="px-1 text-[var(--accent-text)] hover:opacity-80 cursor-pointer"
+                      >
+                        +0.5s
+                      </button>
+                    </div>
+                  )}
+                  <span className="text-[11px] font-mono text-[var(--text-dim)] hidden sm:inline">
                     Tap line to seek
                   </span>
                   {onRetryLyrics && (
@@ -702,11 +745,11 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                         role="button"
                         tabIndex={0}
                         ref={isActive ? activeLyricRef : null}
-                        onClick={() => onSeek(line.time)}
+                        onClick={() => onSeek(Math.max(0, line.time - lyricsOffset))}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
-                            onSeek(line.time);
+                            onSeek(Math.max(0, line.time - lyricsOffset));
                           }
                         }}
                         className={`group flex items-start justify-between gap-3 w-full text-left py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${fadeCls} ${

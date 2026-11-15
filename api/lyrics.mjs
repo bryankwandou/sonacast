@@ -34,6 +34,15 @@ const CREDIT_LINE_RE =
 export function parseLrcText(lrcText, translationText = '') {
   if (!lrcText || typeof lrcText !== 'string') return [];
 
+  let offsetSeconds = 0;
+  const offsetMatch = lrcText.match(/\[offset\s*:\s*([+-]?\d+)\]/i);
+  if (offsetMatch) {
+    const offsetMs = parseInt(offsetMatch[1], 10);
+    if (Number.isFinite(offsetMs)) {
+      offsetSeconds = -offsetMs / 1000;
+    }
+  }
+
   const transByBucket = new Map();
   if (translationText && typeof translationText === 'string') {
     for (const rawLine of translationText.split(/\r?\n/)) {
@@ -41,10 +50,13 @@ export function parseLrcText(lrcText, translationText = '') {
       const body = rawLine.replace(/\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g, '').trim();
       if (!body || tags.length === 0 || CREDIT_LINE_RE.test(body)) continue;
       for (const m of tags) {
-        const secs =
+        const secs = Math.max(
+          0,
           parseInt(m[1], 10) * 60 +
-          parseInt(m[2], 10) +
-          (m[3] ? parseFloat(`0.${m[3]}`) : 0);
+            parseInt(m[2], 10) +
+            (m[3] ? parseFloat(`0.${m[3]}`) : 0) +
+            offsetSeconds
+        );
         transByBucket.set(Math.round(secs * 2), body);
       }
     }
@@ -60,7 +72,8 @@ export function parseLrcText(lrcText, translationText = '') {
       const mins = parseInt(m[1], 10);
       const secs = parseInt(m[2], 10);
       const ms = m[3] ? parseFloat(`0.${m[3]}`) : 0;
-      const time = Math.round((mins * 60 + secs + ms) * 100) / 100;
+      const rawTime = mins * 60 + secs + ms + offsetSeconds;
+      const time = Math.max(0, Math.round(rawTime * 100) / 100);
       const translation = transByBucket.get(Math.round(time * 2));
       parsed.push(translation && translation !== text ? { time, text, translation } : { time, text });
     }
@@ -112,20 +125,36 @@ function scoreLrcCandidate(cand, cleanTitle, cleanArtist, expectedDuration) {
   if (titleScore < 0.45 || artistScore < 0.35) return -50;
 
   let score = titleScore * 50 + artistScore * 40;
-  if (cand.syncedLyrics && parseLrcText(cand.syncedLyrics).length >= 5) {
-    score += 35;
+  const parsedSynced = cand.syncedLyrics ? parseLrcText(cand.syncedLyrics) : [];
+  const candDur = Number(cand.duration) || 0;
+
+  if (parsedSynced.length >= 5) {
+    score += 38;
+    const firstTime = parsedSynced[0]?.time ?? 0;
+    const lastTime = parsedSynced[parsedSynced.length - 1]?.time ?? 0;
+    const refDur = candDur >= 60 ? candDur : expectedDuration >= 60 ? expectedDuration : 0;
+    if (refDur >= 140 && lastTime > 0 && lastTime < refDur * 0.68) {
+      // Penalize truncated / wrong-tempo / sped-up LRC uploads with early cutoff
+      score -= 65;
+    } else if (refDur >= 120 && lastTime >= refDur * 0.8) {
+      score += 10;
+    }
+    if (firstTime >= 2.5) {
+      score += 4;
+    }
   } else if (cand.plainLyrics && cand.plainLyrics.trim().length > 40) {
     score += 10;
   } else {
     return -100;
   }
 
-  const candDur = Number(cand.duration) || 0;
-  if (expectedDuration >= 40 && candDur >= 40) {
+  if (expectedDuration >= 40 && candDur >= 30) {
     const diff = Math.abs(candDur - expectedDuration);
-    if (diff <= 5) score += 20;
-    else if (diff <= 15) score += 10;
-    else if (diff > 75) score -= 25;
+    if (diff <= 3) score += 55;
+    else if (diff <= 7) score += 35;
+    else if (diff <= 14) score += 12;
+    else if (diff <= 25) score -= 35;
+    else score -= 85;
   }
   return score;
 }
@@ -145,11 +174,11 @@ async function fetchFromLrclib(cleanTitle, rawTitle, cleanArtist, album, duratio
       : Promise.resolve([])
   ]);
 
+  if (Array.isArray(pairRes)) candidates.push(...pairRes);
+  if (Array.isArray(qRes)) candidates.push(...qRes);
   if (exactRes && (exactRes.syncedLyrics || exactRes.plainLyrics)) {
     candidates.push(exactRes);
   }
-  if (Array.isArray(pairRes)) candidates.push(...pairRes);
-  if (Array.isArray(qRes)) candidates.push(...qRes);
 
   if (candidates.length === 0) {
     const fallbackRows = await fetch(searchQueryUrl, { signal: AbortSignal.timeout(4000) })
@@ -159,7 +188,7 @@ async function fetchFromLrclib(cleanTitle, rawTitle, cleanArtist, album, duratio
   }
 
   let bestSynced = null;
-  let bestSyncedScore = 30;
+  let bestSyncedScore = -Infinity;
   let bestPlain = null;
   let bestPlainScore = 25;
 
@@ -178,16 +207,29 @@ async function fetchFromLrclib(cleanTitle, rawTitle, cleanArtist, album, duratio
     }
   }
 
-  if (bestSynced) {
+  if (bestSynced && bestSyncedScore > 20) {
     const lines = parseLrcText(bestSynced.syncedLyrics);
     if (lines.length >= 4) {
-      return { found: true, synced: true, source: 'lrclib', lyrics: lines };
+      return {
+        found: true,
+        synced: true,
+        source: 'lrclib',
+        matchedDuration: Number(bestSynced.duration) || duration,
+        lyrics: lines
+      };
     }
   }
   if (bestPlain) {
-    const lines = buildTimedPlainLyrics(bestPlain.plainLyrics, Number(bestPlain.duration) || duration);
+    const plainDur = Number(bestPlain.duration) || duration;
+    const lines = buildTimedPlainLyrics(bestPlain.plainLyrics, plainDur);
     if (lines.length >= 4) {
-      return { found: true, synced: false, source: 'lrclib-plain', lyrics: lines };
+      return {
+        found: true,
+        synced: false,
+        source: 'lrclib-plain',
+        matchedDuration: plainDur,
+        lyrics: lines
+      };
     }
   }
   return null;
@@ -196,7 +238,7 @@ async function fetchFromLrclib(cleanTitle, rawTitle, cleanArtist, album, duratio
 async function fetchFromNetease(cleanTitle, cleanArtist, duration) {
   try {
     const searchRes = await fetch(
-      `https://music.163.com/api/search/get?s=${encodeURIComponent(`${cleanArtist} ${cleanTitle}`)}&type=1&limit=5`,
+      `https://music.163.com/api/search/get?s=${encodeURIComponent(`${cleanArtist} ${cleanTitle}`)}&type=1&limit=6`,
       {
         headers: { Referer: 'https://music.163.com' },
         signal: AbortSignal.timeout(4000)
@@ -211,7 +253,21 @@ async function fetchFromNetease(cleanTitle, cleanArtist, duration) {
         const artistJoined = Array.isArray(s?.artists) ? s.artists.map((a) => a.name).join(' ') : '';
         const tOverlap = tokenOverlapScore(s?.name || '', cleanTitle);
         const aOverlap = tokenOverlapScore(artistJoined, cleanArtist);
-        return { id: s?.id, tOverlap, aOverlap, score: tOverlap * 55 + aOverlap * 45 };
+        const songDur = s?.duration ? Math.round(Number(s.duration) / 1000) : 0;
+        let durScore = 0;
+        if (duration >= 40 && songDur >= 30) {
+          const diff = Math.abs(songDur - duration);
+          if (diff <= 4) durScore = 35;
+          else if (diff <= 10) durScore = 18;
+          else if (diff > 20) durScore = -40;
+        }
+        return {
+          id: s?.id,
+          dur: songDur,
+          tOverlap,
+          aOverlap,
+          score: tOverlap * 55 + aOverlap * 45 + durScore
+        };
       })
       .filter((x) => x.id && x.tOverlap >= 0.55 && x.aOverlap >= 0.45)
       .sort((a, b) => b.score - a.score);
@@ -231,12 +287,24 @@ async function fetchFromNetease(cleanTitle, cleanArtist, duration) {
       if (rawLrc && /\[\d{1,3}:\d{2}/.test(rawLrc)) {
         const parsed = parseLrcText(rawLrc, rawTrans);
         if (parsed.length >= 5) {
-          return { found: true, synced: true, source: 'netease', lyrics: parsed };
+          return {
+            found: true,
+            synced: true,
+            source: 'netease',
+            matchedDuration: match.dur || duration,
+            lyrics: parsed
+          };
         }
       } else if (rawLrc && rawLrc.trim().length > 40) {
-        const lines = buildTimedPlainLyrics(rawLrc, duration);
+        const lines = buildTimedPlainLyrics(rawLrc, match.dur || duration);
         if (lines.length >= 4) {
-          return { found: true, synced: false, source: 'netease-plain', lyrics: lines };
+          return {
+            found: true,
+            synced: false,
+            source: 'netease-plain',
+            matchedDuration: match.dur || duration,
+            lyrics: lines
+          };
         }
       }
     }

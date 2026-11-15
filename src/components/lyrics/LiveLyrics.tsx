@@ -1,6 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { LyricLine } from '../../types';
-import { Clock, Globe, Loader2, LocateFixed, Mic2, RefreshCw, Search, Share2 } from 'lucide-react';
+import {
+  Check,
+  Clock,
+  Copy,
+  Globe,
+  Loader2,
+  LocateFixed,
+  Mic2,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Share2,
+  SlidersHorizontal
+} from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 
 interface LiveLyricsProps {
@@ -12,6 +25,10 @@ interface LiveLyricsProps {
   lyricsStatus?: 'idle' | 'loading' | 'loaded' | 'unavailable';
   lyricsSource?: string;
   lyricsSynced?: boolean;
+  lyricsOffset?: number;
+  onChangeLyricsOffset?: (offsetSeconds: number) => void;
+  matchedDuration?: number;
+  trackDuration?: number;
   onRetryLyrics?: (customTitle?: string, customArtist?: string) => void;
   onOpenLyricCard?: (lineIndex?: number) => void;
   onOpenArtist?: (artistName: string) => void;
@@ -27,6 +44,10 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
   lyricsStatus = 'idle',
   lyricsSource,
   lyricsSynced,
+  lyricsOffset = 0,
+  onChangeLyricsOffset,
+  matchedDuration,
+  trackDuration,
   onRetryLyrics,
   onOpenLyricCard,
   onOpenArtist,
@@ -35,34 +56,50 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
   const { t } = useAppPreferences();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const activeLineRef = useRef<HTMLDivElement | null>(null);
-  const programmaticScrollUntilRef = useRef<number>(0);
   const [showManualLookup, setShowManualLookup] = useState(false);
+  const [showSyncCalibrator, setShowSyncCalibrator] = useState(false);
+  const [snapArmed, setSnapArmed] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [manualTitle, setManualTitle] = useState(title);
   const [manualArtist, setManualArtist] = useState(artist);
   const [lockedTrackKey, setLockedTrackKey] = useState<string | null>(null);
 
   const trackKey = `${title}::${artist}`;
   const manualScrollLocked = lockedTrackKey === trackKey;
+  const effectiveTime = Math.max(0, currentTime + lyricsOffset);
+  const suggestedVersionShift =
+    matchedDuration &&
+    trackDuration &&
+    matchedDuration >= 60 &&
+    trackDuration >= 60 &&
+    Math.abs(matchedDuration - trackDuration) >= 10
+      ? Math.round((matchedDuration - trackDuration) * 2) / 2
+      : 0;
 
-  // Determine active index
+  // Determine active index against offset-adjusted playback clock
   let activeIndex = -1;
   for (let i = lyrics.length - 1; i >= 0; i--) {
-    if (currentTime >= lyrics[i].time) {
+    if (effectiveTime >= lyrics[i].time) {
       activeIndex = i;
       break;
     }
   }
 
-  // Smooth auto-scroll active lyric into center view unless paused by manual browse
+  const scrollLineToCenter = (behavior: ScrollBehavior = 'smooth') => {
+    const container = containerRef.current;
+    const lineEl = activeLineRef.current;
+    if (!container || !lineEl) return;
+    const cRect = container.getBoundingClientRect();
+    const lRect = lineEl.getBoundingClientRect();
+    const offsetInside = lRect.top - cRect.top + container.scrollTop;
+    const targetTop = Math.max(0, offsetInside - container.clientHeight / 2 + lineEl.offsetHeight / 2);
+    container.scrollTo({ top: targetTop, behavior });
+  };
+
+  // Smooth auto-scroll inside the lyrics pane unless paused by genuine user scroll
   useEffect(() => {
     if (manualScrollLocked) return;
-    if (activeLineRef.current && containerRef.current) {
-      programmaticScrollUntilRef.current = performance.now() + 900;
-      activeLineRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center'
-      });
-    }
+    scrollLineToCenter('smooth');
   }, [activeIndex, manualScrollLocked]);
 
   const handleManualScrollIntent = () => {
@@ -73,13 +110,18 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
 
   const handleResync = () => {
     setLockedTrackKey(null);
-    if (activeLineRef.current) {
-      programmaticScrollUntilRef.current = performance.now() + 900;
-      activeLineRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center'
-      });
-    }
+    scrollLineToCenter('smooth');
+  };
+
+  const formatSignedOffset = (secs: number) => {
+    if (Math.abs(secs) < 0.05) return '0.0s';
+    return `${secs > 0 ? '+' : ''}${secs.toFixed(1)}s`;
+  };
+
+  const adjustOffset = (delta: number) => {
+    if (!onChangeLyricsOffset) return;
+    const next = Math.max(-45, Math.min(45, Math.round((lyricsOffset + delta) * 10) / 10));
+    onChangeLyricsOffset(Math.abs(next) < 0.05 ? 0 : next);
   };
 
   const formatTime = (secs: number) => {
@@ -173,8 +215,119 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
               </button>
             </>
           )}
+          {onChangeLyricsOffset && lyrics.length > 0 && (
+            <button
+              type="button"
+              data-testid="lyrics-sync-toggle"
+              onClick={() => setShowSyncCalibrator((prev) => !prev)}
+              title={t.syncOffsetLabel}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-semibold cursor-pointer transition-colors ${
+                showSyncCalibrator || Math.abs(lyricsOffset) >= 0.05
+                  ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                  : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <SlidersHorizontal size={11} />
+              <span className="font-mono">{formatSignedOffset(lyricsOffset)}</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {onChangeLyricsOffset &&
+        Math.abs(suggestedVersionShift) >= 10 &&
+        Math.abs(lyricsOffset) < 0.25 &&
+        !showSyncCalibrator && (
+          <div className="mb-3 px-3 py-2 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-border)] flex items-center justify-between gap-2 text-xs">
+            <span className="text-[var(--text-primary)] font-medium truncate">
+              {suggestedVersionShift > 0 ? t.syncTooLate : t.syncTooEarly} ({Math.round(matchedDuration || 0)}s LRC vs{' '}
+              {Math.round(trackDuration || 0)}s audio)
+            </span>
+            <button
+              type="button"
+              onClick={() => onChangeLyricsOffset(suggestedVersionShift)}
+              className="px-2.5 py-1 rounded-lg bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-[11px] font-bold shrink-0 cursor-pointer"
+            >
+              {formatSignedOffset(suggestedVersionShift)}
+            </button>
+          </div>
+        )}
+
+      {showSyncCalibrator && onChangeLyricsOffset && (
+        <div
+          data-testid="lyrics-sync-panel"
+          className="mb-3 p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] space-y-2.5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-bold text-[var(--text-primary)]">{t.syncOffsetLabel}</span>
+              <span className="font-mono px-2 py-0.5 rounded-md bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--accent-text)] font-bold">
+                {formatSignedOffset(lyricsOffset)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                data-testid="lyrics-snap-line-btn"
+                onClick={() => setSnapArmed((prev) => !prev)}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-colors ${
+                  snapArmed
+                    ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                    : 'bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--accent-border)]'
+                }`}
+              >
+                <LocateFixed size={11} />
+                <span>{t.syncSnapLine}</span>
+              </button>
+              <button
+                type="button"
+                data-testid="lyrics-offset-reset-btn"
+                onClick={() => {
+                  setSnapArmed(false);
+                  onChangeLyricsOffset(0);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <RotateCcw size={11} />
+                <span>{t.syncReset}</span>
+              </button>
+            </div>
+          </div>
+
+          {snapArmed && (
+            <div className="px-2.5 py-1.5 rounded-lg bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[11px] font-semibold text-[var(--accent-text)]">
+              {t.syncSnapArmedHint}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-[var(--text-dim)] mr-1">{t.syncTooEarly}</span>
+            {[-5, -2, -0.5].map((delta) => (
+              <button
+                key={delta}
+                type="button"
+                data-testid={`lyrics-offset-${String(delta).replace('.', '')}`}
+                onClick={() => adjustOffset(delta)}
+                className="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-[11px] font-mono font-semibold text-[var(--text-primary)] cursor-pointer"
+              >
+                {delta}s
+              </button>
+            ))}
+            {[0.5, 2, 5].map((delta) => (
+              <button
+                key={delta}
+                type="button"
+                data-testid={`lyrics-offset-+${String(delta).replace('.', '')}`}
+                onClick={() => adjustOffset(delta)}
+                className="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-[11px] font-mono font-semibold text-[var(--accent-text)] cursor-pointer"
+              >
+                +{delta}s
+              </button>
+            ))}
+            <span className="text-[11px] text-[var(--text-dim)] ml-1">{t.syncTooLate}</span>
+          </div>
+        </div>
+      )}
 
       {showManualLookup && onRetryLyrics && (
         <form
@@ -213,12 +366,13 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
         data-testid="live-lyrics-container"
         onWheel={handleManualScrollIntent}
         onTouchMove={handleManualScrollIntent}
-        onScroll={() => {
-          if (performance.now() > programmaticScrollUntilRef.current) {
+        onPointerDown={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          if (e.clientX >= rect.right - 20) {
             handleManualScrollIntent();
           }
         }}
-        className="flex-1 overflow-y-auto space-y-2.5 pr-2 scroll-smooth focus:outline-none"
+        className="flex-1 overflow-y-auto space-y-2.5 pr-2 focus:outline-none"
       >
         {lyricsStatus === 'loading' && lyrics.length === 0 ? (
           <div className="py-12 space-y-3 animate-pulse">
@@ -245,77 +399,129 @@ export const LiveLyrics: React.FC<LiveLyricsProps> = ({
             )}
           </div>
         ) : (
-          lyrics.map((line, idx) => {
-            const isActive = idx === activeIndex;
-            const isPast = idx < activeIndex;
-            const distance = activeIndex >= 0 ? Math.abs(idx - activeIndex) : 0;
-            const focusFade =
-              activeIndex >= 0 && !isActive && distance > 3 ? 'opacity-55 hover:opacity-95' : '';
+          <>
+            {lyrics.length > 0 && lyrics[0].time >= 4 && effectiveTime < lyrics[0].time && (
+              <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)]">
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-emerald)] animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-emerald)] animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-emerald)] animate-pulse" />
+                </div>
+                <span className="font-mono text-[11px] font-semibold text-[var(--accent-text)]">
+                  -{Math.ceil(lyrics[0].time - effectiveTime)}s
+                </span>
+              </div>
+            )}
+            {lyrics.map((line, idx) => {
+              const isActive = idx === activeIndex;
+              const isPast = idx < activeIndex;
+              const distance = activeIndex >= 0 ? Math.abs(idx - activeIndex) : 0;
+              const focusFade =
+                activeIndex >= 0 && !isActive && distance > 3 ? 'opacity-55 hover:opacity-95' : '';
+              const nextTime =
+                idx + 1 < lyrics.length
+                  ? lyrics[idx + 1].time
+                  : Math.max(line.time + 5, trackDuration || line.time + 5);
+              const activeProgress = isActive
+                ? Math.max(0, Math.min(1, (effectiveTime - line.time) / Math.max(0.5, nextTime - line.time)))
+                : 0;
 
-            return (
-              <div
-                key={idx}
-                ref={isActive ? activeLineRef : null}
-                onClick={() => onSeek(line.time)}
-                className={`group flex items-start gap-3 sm:gap-4 p-3 rounded-xl cursor-pointer transition-all duration-300 ${focusFade} ${
-                  isActive
-                    ? 'bg-[var(--accent-soft)] border-l-4 border-[var(--accent-emerald)] pl-4 scale-[1.01]'
-                    : isPast
-                    ? 'text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
-                }`}
-              >
-                <span
-                  className={`text-[11px] font-mono mt-1 px-1.5 py-0.5 rounded transition-colors shrink-0 ${
-                    isActive
-                      ? 'text-[var(--accent-text)] bg-[var(--bg-surface)] border border-[var(--accent-border)] font-semibold'
-                      : 'text-[var(--text-dim)]'
+              return (
+                <div
+                  key={idx}
+                  ref={isActive ? activeLineRef : null}
+                  onClick={() => {
+                    if (snapArmed && onChangeLyricsOffset) {
+                      const snapped = Math.max(-45, Math.min(45, Math.round((line.time - currentTime) * 10) / 10));
+                      onChangeLyricsOffset(Math.abs(snapped) < 0.05 ? 0 : snapped);
+                      setSnapArmed(false);
+                      setLockedTrackKey(null);
+                      return;
+                    }
+                    onSeek(Math.max(0, line.time - lyricsOffset));
+                  }}
+                  className={`group relative overflow-hidden flex items-start gap-3 sm:gap-4 p-3 rounded-xl cursor-pointer transition-all duration-300 ${focusFade} ${
+                    snapArmed
+                      ? 'border border-dashed border-[var(--accent-border)] hover:bg-[var(--accent-soft)]'
+                      : isActive
+                        ? 'bg-[var(--accent-soft)] border-l-4 border-[var(--accent-emerald)] pl-4 scale-[1.01]'
+                        : isPast
+                          ? 'text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
                   }`}
                 >
-                  {formatTime(line.time)}
-                </span>
-
-                <div className="flex-1 min-w-0">
-                  <p
-                    className={`${fullWidth ? 'text-base sm:text-xl' : 'text-sm sm:text-base'} font-semibold tracking-wide transition-all ${
+                  {isActive && !snapArmed && (
+                    <span
+                      className="pointer-events-none absolute left-0 bottom-0 h-[2px] bg-[var(--accent-emerald)] transition-all duration-100"
+                      style={{ width: `${Math.round(activeProgress * 100)}%` }}
+                    />
+                  )}
+                  <span
+                    className={`text-[11px] font-mono mt-1 px-1.5 py-0.5 rounded transition-colors shrink-0 ${
                       isActive
-                        ? 'text-[var(--accent-text)] font-bold'
-                        : isPast
-                        ? 'text-[var(--text-dim)]'
-                        : 'text-[var(--text-primary)]'
+                        ? 'text-[var(--accent-text)] bg-[var(--bg-surface)] border border-[var(--accent-border)] font-semibold'
+                        : 'text-[var(--text-dim)]'
                     }`}
                   >
-                    {line.text}
-                  </p>
-                  {line.translation && (
-                    <p className="text-xs text-[var(--text-dim)] mt-0.5 font-normal">
-                      {line.translation}
-                    </p>
-                  )}
-                </div>
+                    {formatTime(line.time)}
+                  </span>
 
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity mt-0.5 shrink-0">
-                  {onOpenLyricCard && (
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={`${fullWidth ? 'text-base sm:text-xl' : 'text-sm sm:text-base'} font-semibold tracking-wide transition-all ${
+                        isActive
+                          ? 'text-[var(--accent-text)] font-bold'
+                          : isPast
+                            ? 'text-[var(--text-dim)]'
+                            : 'text-[var(--text-primary)]'
+                      }`}
+                    >
+                      {line.text}
+                    </p>
+                    {line.translation && (
+                      <p className="text-xs text-[var(--text-dim)] mt-0.5 font-normal">
+                        {line.translation}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity mt-0.5 shrink-0">
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onOpenLyricCard(idx);
+                        navigator.clipboard?.writeText(line.text).catch(() => {});
+                        setCopiedIdx(idx);
+                        window.setTimeout(() => setCopiedIdx((prev) => (prev === idx ? null : prev)), 1500);
                       }}
-                      title={t.lyricCardStudio}
-                      aria-label={t.lyricCardStudio}
+                      title={copiedIdx === idx ? t.copiedLabel : t.copyLine}
+                      aria-label={t.copyLine}
                       className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--accent-soft)] text-[var(--text-dim)] hover:text-[var(--accent-text)] cursor-pointer transition-colors"
                     >
-                      <Share2 size={12} />
+                      {copiedIdx === idx ? <Check size={12} /> : <Copy size={12} />}
                     </button>
-                  )}
-                  <span className="p-1 text-[var(--text-dim)]">
-                    <Clock size={14} />
-                  </span>
+                    {onOpenLyricCard && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenLyricCard(idx);
+                        }}
+                        title={t.lyricCardStudio}
+                        aria-label={t.lyricCardStudio}
+                        className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--accent-soft)] text-[var(--text-dim)] hover:text-[var(--accent-text)] cursor-pointer transition-colors"
+                      >
+                        <Share2 size={12} />
+                      </button>
+                    )}
+                    <span className="p-1 text-[var(--text-dim)]">
+                      <Clock size={14} />
+                    </span>
+                  </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </>
         )}
       </div>
 
