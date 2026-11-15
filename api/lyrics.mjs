@@ -53,9 +53,9 @@ export function parseLrcText(lrcText, translationText = '') {
         const secs = Math.max(
           0,
           parseInt(m[1], 10) * 60 +
-            parseInt(m[2], 10) +
-            (m[3] ? parseFloat(`0.${m[3]}`) : 0) +
-            offsetSeconds
+          parseInt(m[2], 10) +
+          (m[3] ? parseFloat(`0.${m[3]}`) : 0) +
+          offsetSeconds
         );
         transByBucket.set(Math.round(secs * 2), body);
       }
@@ -133,9 +133,15 @@ function scoreLrcCandidate(cand, cleanTitle, cleanArtist, expectedDuration) {
     const firstTime = parsedSynced[0]?.time ?? 0;
     const lastTime = parsedSynced[parsedSynced.length - 1]?.time ?? 0;
     const refDur = candDur >= 60 ? candDur : expectedDuration >= 60 ? expectedDuration : 0;
-    if (refDur >= 140 && lastTime > 0 && lastTime < refDur * 0.68) {
-      // Penalize truncated / wrong-tempo / sped-up LRC uploads with early cutoff
-      score -= 65;
+    const spanRatio = refDur >= 120 && lastTime > 0 ? lastTime / refDur : 1;
+    const avgSecPerLine = (lastTime - firstTime) / Math.max(1, parsedSynced.length - 1);
+    if (refDur >= 140 && lastTime > 0 && spanRatio < 0.68) {
+      // Reject truncated / sped-up LRC uploads that end way before track ends
+      score -= 165;
+    } else if (refDur >= 120 && spanRatio < 0.74 && firstTime < 1.5) {
+      score -= 140;
+    } else if (parsedSynced.length >= 25 && avgSecPerLine < 0.95) {
+      score -= 130;
     } else if (refDur >= 120 && lastTime >= refDur * 0.8) {
       score += 10;
     }
@@ -167,10 +173,10 @@ async function fetchFromLrclib(cleanTitle, rawTitle, cleanArtist, album, duratio
   const searchQueryUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanArtist} ${cleanTitle}`)}`;
 
   const [exactRes, pairRes, qRes] = await Promise.all([
-    fetch(getUrl, { signal: AbortSignal.timeout(4200) }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    fetch(searchPairUrl, { signal: AbortSignal.timeout(4200) }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+    fetch(getUrl, { signal: AbortSignal.timeout(4800) }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    fetch(searchPairUrl, { signal: AbortSignal.timeout(5600) }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
     rawTitle !== cleanTitle
-      ? fetch(searchQueryUrl, { signal: AbortSignal.timeout(4200) }).then((r) => (r.ok ? r.json() : [])).catch(() => [])
+      ? fetch(searchQueryUrl, { signal: AbortSignal.timeout(5600) }).then((r) => (r.ok ? r.json() : [])).catch(() => [])
       : Promise.resolve([])
   ]);
 
@@ -180,8 +186,8 @@ async function fetchFromLrclib(cleanTitle, rawTitle, cleanArtist, album, duratio
     candidates.push(exactRes);
   }
 
-  if (candidates.length === 0) {
-    const fallbackRows = await fetch(searchQueryUrl, { signal: AbortSignal.timeout(4000) })
+  if (!Array.isArray(pairRes) || pairRes.length === 0) {
+    const fallbackRows = await fetch(searchQueryUrl, { signal: AbortSignal.timeout(5000) })
       .then((r) => (r.ok ? r.json() : []))
       .catch(() => []);
     if (Array.isArray(fallbackRows)) candidates.push(...fallbackRows);
@@ -207,7 +213,7 @@ async function fetchFromLrclib(cleanTitle, rawTitle, cleanArtist, album, duratio
     }
   }
 
-  if (bestSynced && bestSyncedScore > 20) {
+  if (bestSynced && bestSyncedScore > 45) {
     const lines = parseLrcText(bestSynced.syncedLyrics);
     if (lines.length >= 4) {
       return {

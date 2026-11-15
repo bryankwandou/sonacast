@@ -422,19 +422,25 @@ export default async function handler(req, res) {
 
   if (mode === 'charts') {
     try {
-      const [dzGlobal, usRss, idRss, dzChartAlbums, dzChartPlaylists] = await Promise.all([
+      const [dzGlobal, usRss, idRss, dzChartAlbums, dzChartPlaylists, dzTopPlaylists] = await Promise.all([
         fetch('https://api.deezer.com/chart/0/tracks?limit=35', { signal: AbortSignal.timeout(3800) })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
         fetchAppleRssWithDurations('us', 25).catch(() => []),
         fetchAppleRssWithDurations('id', 25).catch(() => []),
-        fetch('https://api.deezer.com/chart/0/albums?limit=16', { signal: AbortSignal.timeout(3800) })
+        fetch('https://api.deezer.com/chart/0/albums?limit=24', { signal: AbortSignal.timeout(3800) })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
-        fetch('https://api.deezer.com/chart/0/playlists?limit=16', { signal: AbortSignal.timeout(3800) })
+        fetch('https://api.deezer.com/chart/0/playlists?limit=20', { signal: AbortSignal.timeout(3800) })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        fetch('https://api.deezer.com/search/playlist?q=Top%20Hits&limit=10', { signal: AbortSignal.timeout(3800) })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null)
       ]);
+
+      const BLOCKED_EXPLICIT_RE = /\b(cunt|fuck|shit|shat|bitch|whore|porn|xxx)\b/i;
+      const SEASONAL_RE = /\b(christmas|xmas|natal|holiday)\b/i;
 
       const dzItems = Array.isArray(dzGlobal?.data)
         ? dzGlobal.data
@@ -444,7 +450,14 @@ export default async function handler(req, res) {
 
       const featuredAlbums = Array.isArray(dzChartAlbums?.data)
         ? dzChartAlbums.data
-            .filter((a) => a?.id && a?.title)
+            .filter(
+              (a) =>
+                a?.id &&
+                a?.title &&
+                a.explicit_lyrics !== true &&
+                !BLOCKED_EXPLICIT_RE.test(`${a.title} ${a.artist?.name || ''}`)
+            )
+            .slice(0, 16)
             .map((a) => ({
               id: `dz-alb-${a.id}`,
               title: String(a.title || ''),
@@ -456,11 +469,27 @@ export default async function handler(req, res) {
             }))
         : [];
 
-      const featuredPlaylists = Array.isArray(dzChartPlaylists?.data)
-        ? dzChartPlaylists.data
-            .filter((p) => p?.id && p?.title && (Number(p.nb_tracks) || 0) >= 2)
-            .map(mapDeezerPlaylist)
-        : [];
+      const rawPlaylists = [
+        ...(Array.isArray(dzTopPlaylists?.data) ? dzTopPlaylists.data : []),
+        ...(Array.isArray(dzChartPlaylists?.data) ? dzChartPlaylists.data : [])
+      ];
+      const plSeen = new Set();
+      const featuredPlaylists = [];
+      for (const p of rawPlaylists) {
+        if (
+          !p?.id ||
+          !p?.title ||
+          (Number(p.nb_tracks) || 0) < 5 ||
+          BLOCKED_EXPLICIT_RE.test(String(p.title))
+        ) {
+          continue;
+        }
+        const mappedPl = mapDeezerPlaylist(p);
+        if (plSeen.has(mappedPl.id)) continue;
+        plSeen.add(mappedPl.id);
+        featuredPlaylists.push(mappedPl);
+      }
+      featuredPlaylists.sort((a, b) => Number(SEASONAL_RE.test(a.title)) - Number(SEASONAL_RE.test(b.title)));
 
       res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
       res.status(200).json({

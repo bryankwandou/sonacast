@@ -104,16 +104,26 @@ async function fetchAppleRssWithDurations(country, limit) {
   }));
 }
 
+const BLOCKED_EXPLICIT_RE = /\b(cunt|fuck|shit|shat|bitch|whore|porn|xxx)\b/i;
+const SEASONAL_RE = /\b(christmas|xmas|natal|holiday)\b/i;
+
 async function fetchChartAlbums() {
   try {
-    const res = await fetch('https://api.deezer.com/chart/0/albums?limit=16', {
+    const res = await fetch('https://api.deezer.com/chart/0/albums?limit=24', {
       signal: AbortSignal.timeout(5000)
     });
     if (!res.ok) return [];
     const data = await res.json();
     const list = Array.isArray(data?.data) ? data.data : [];
     return list
-      .filter((a) => a?.id && a?.title && a?.artist?.name)
+      .filter(
+        (a) =>
+          a?.id &&
+          a?.title &&
+          a?.artist?.name &&
+          a.explicit_lyrics !== true &&
+          !BLOCKED_EXPLICIT_RE.test(`${a.title} ${a.artist.name}`)
+      )
       .slice(0, 12)
       .map((a) => ({
         id: String(a.id),
@@ -156,23 +166,41 @@ async function main() {
 
   const fetchChartPlaylists = async () => {
     try {
-      const res = await fetch('https://api.deezer.com/chart/0/playlists?limit=16', {
-        signal: AbortSignal.timeout(5500)
-      });
-      if (!res.ok) return [];
-      const json = await res.json();
-      return Array.isArray(json?.data)
-        ? json.data
-            .filter((p) => p?.id && p?.title && (Number(p.nb_tracks) || 0) >= 2)
-            .map((p) => ({
-              id: `dz-pl-${p.id}`,
-              title: String(p.title || '').trim(),
-              creator: String(p.user?.name || 'Editorial Charts').trim(),
-              coverUrl: String(p.picture_xl || p.picture_big || p.picture_medium || ''),
-              nbTracks: Number(p.nb_tracks) || 0,
-              description: p.creation_date ? `Updated ${String(p.creation_date).slice(0, 10)}` : ''
-            }))
-        : [];
+      const [chartRes, topRes] = await Promise.all([
+        fetch('https://api.deezer.com/chart/0/playlists?limit=20', { signal: AbortSignal.timeout(5500) }),
+        fetch('https://api.deezer.com/search/playlist?q=Top%20Hits&limit=10', { signal: AbortSignal.timeout(5500) })
+      ]);
+      const chartJson = chartRes.ok ? await chartRes.json() : null;
+      const topJson = topRes.ok ? await topRes.json() : null;
+      const combined = [
+        ...(Array.isArray(topJson?.data) ? topJson.data : []),
+        ...(Array.isArray(chartJson?.data) ? chartJson.data : [])
+      ];
+      const seen = new Set();
+      const mapped = [];
+      for (const p of combined) {
+        if (
+          !p?.id ||
+          !p?.title ||
+          (Number(p.nb_tracks) || 0) < 5 ||
+          BLOCKED_EXPLICIT_RE.test(String(p.title))
+        ) {
+          continue;
+        }
+        const id = `dz-pl-${p.id}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        mapped.push({
+          id,
+          title: String(p.title || '').trim(),
+          creator: String(p.user?.name || 'Editorial Charts').trim(),
+          coverUrl: String(p.picture_xl || p.picture_big || p.picture_medium || ''),
+          nbTracks: Number(p.nb_tracks) || 0,
+          description: p.creation_date ? `Updated ${String(p.creation_date).slice(0, 10)}` : ''
+        });
+      }
+      mapped.sort((a, b) => Number(SEASONAL_RE.test(a.title)) - Number(SEASONAL_RE.test(b.title)));
+      return mapped.slice(0, 16);
     } catch {
       return [];
     }

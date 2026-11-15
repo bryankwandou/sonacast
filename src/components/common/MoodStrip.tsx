@@ -25,7 +25,7 @@ export function MoodStrip({
       className={
         wrap
           ? 'flex flex-wrap items-center gap-1.5'
-          : 'flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1'
+          : 'flex items-center md:flex-wrap gap-1.5 overflow-x-auto no-scrollbar pb-1'
       }
     >
       {MOOD_PRESETS.map((preset) => {
@@ -51,3 +51,4 @@ export function MoodStrip({
     </div>
   );
 }
+
