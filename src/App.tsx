@@ -1348,7 +1348,6 @@ export default function App() {
 
       const isSingleStandalonePlay =
         !options?.fromContextList &&
-        autoplayEnabledRef.current &&
         track.sourceTag !== 'live-radio' &&
         track.genre !== 'Podcast';
 
@@ -1878,7 +1877,11 @@ export default function App() {
           if (fromEnded) {
             setRecState((prev) => recordTrackSignal(prev, currentTrackRef.current, 'complete'));
           }
-          if (autoplayEnabledRef.current) {
+          const curCtx = playbackContextRef.current;
+          const isExplicitFiniteList =
+            Boolean(curCtx?.ordered) &&
+            (curCtx?.type === 'album' || curCtx?.type === 'playlist');
+          if (autoplayEnabledRef.current || !isExplicitFiniteList) {
             const seed = currentTrackRef.current;
             const autoCtx = buildAutoSimilarContext(seed);
             playbackContextRef.current = autoCtx;

@@ -251,7 +251,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             }`}
           >
             <Film size={11} />
-            <span>{t.musicVideoBadge}</span>
+            <span>{track.genre === 'Podcast' ? 'PODCAST VIDEO' : t.musicVideoBadge}</span>
           </span>
           <div className="min-w-0">
             <div className="text-xs font-semibold text-white truncate">

@@ -511,7 +511,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onEnterApp('visualizer')}
-                      className="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                      className="hidden sm:inline-block text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
                     >
                       {t.lyrics} &amp; {t.modeOrbwave}
                     </button>
