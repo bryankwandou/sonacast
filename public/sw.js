@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sonacast-shell-v3';
+const CACHE_NAME = 'sonacast-shell-v4';
 const OFFLINE_AUDIO_CACHE = 'sonacast-offline-audio-v1';
 
 async function serveAudioFromCache(req) {
@@ -66,7 +66,13 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/downloads/')) return;
+  if (
+    url.pathname === '/sw.js' ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/downloads/')
+  ) {
+    return;
+  }
 
   if (url.pathname.startsWith('/audio/')) {
     event.respondWith(
@@ -77,9 +83,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (req.mode === 'navigate') {
+  if (req.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
     event.respondWith(
-      fetch(req).catch(() => caches.match('/index.html'))
+      fetch(req, { cache: 'no-store' }).catch(() => caches.match('/index.html'))
     );
     return;
   }
@@ -87,7 +93,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(req)
       .then((res) => {
-        if (res && res.ok && res.type === 'basic') {
+        if (res && res.ok && res.type === 'basic' && url.pathname.startsWith('/assets/')) {
           const clone = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(req, clone)).catch(() => {});
         }

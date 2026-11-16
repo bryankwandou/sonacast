@@ -303,7 +303,7 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
       <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
         <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Left: Artwork, Scrubber, Controls & DSP */}
-          <div className="lg:col-span-5 space-y-5 lg:sticky lg:top-0">
+          <div className="lg:col-span-5 min-w-0 space-y-5 lg:sticky lg:top-0">
             <div className="max-w-[340px] mx-auto lg:mx-0">
               <div className="aspect-square rounded-2xl overflow-hidden bg-[var(--bg-surface)] shadow-2xl border border-[var(--border-subtle)]">
                 <img
@@ -715,10 +715,10 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
           </div>
 
           {/* Right: Resso-style Interactive Synced Lyrics */}
-          <div className="lg:col-span-7">
+          <div className="lg:col-span-7 min-w-0">
             <div
               ref={lyricsPaneRef}
-              className="rounded-2xl bg-[var(--bg-tint)] p-5 sm:p-8 min-h-[380px] max-h-[68vh] overflow-y-auto space-y-4"
+              className="rounded-2xl bg-[var(--bg-tint)] p-5 sm:p-8 min-h-[380px] max-h-[68vh] overflow-y-auto overflow-x-hidden space-y-4"
             >
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--accent-text)]">
@@ -786,15 +786,15 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                             onSeek(Math.max(0, line.time - lyricsOffset));
                           }
                         }}
-                        className={`group flex items-start justify-between gap-3 w-full text-left py-2.5 px-3.5 rounded-xl transition-all cursor-pointer ${fadeCls} ${
+                        className={`group flex items-start justify-between gap-3 w-full text-left py-2.5 px-3.5 rounded-xl origin-left transition-all cursor-pointer ${fadeCls} ${
                           isActive
-                            ? 'bg-[var(--accent-soft)] text-[var(--text-primary)] scale-[1.01]'
+                            ? 'bg-[var(--accent-soft)] text-[var(--text-primary)]'
                             : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint-hover)]'
                         }`}
                       >
                         <div className="min-w-0 flex-1">
                           <div
-                            className={`leading-snug ${
+                            className={`leading-snug break-words ${
                               isActive ? 'text-xl sm:text-2xl font-extrabold' : 'text-base sm:text-lg font-medium'
                             }`}
                           >

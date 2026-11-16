@@ -1323,10 +1323,16 @@ export class AudioEngine {
           if (pos >= 0.3) {
             this.clearYouTubeWatchdog();
           }
+          const ytEndedNearRealDur =
+            typeof realDur === 'number' &&
+            isFinite(realDur) &&
+            realDur >= 30 &&
+            pos >= realDur - 0.6;
           if (
             this.isPlaying &&
             this.duration >= 30 &&
             (effectivePos >= this.duration - 0.6 ||
+              ytEndedNearRealDur ||
               ((ytState === 2 || ytState === 3 || ytState === 5 || ytState === -1) &&
                 effectivePos >= this.duration - 2.5))
           ) {
@@ -1551,6 +1557,14 @@ export class AudioEngine {
               // Ignore
             }
           } else if (state === 5 || state === -1) {
+            if (
+              this.isPlaying &&
+              this.duration >= 30 &&
+              (this.ytMaxPosSeen >= this.duration - 3.5 || this.currentTime >= this.duration - 2.5)
+            ) {
+              this.completeCurrentTrack(activeGen);
+              return;
+            }
             if (this.isPlaying) {
               try {
                 event.target.playVideo();
@@ -1786,6 +1800,9 @@ export class AudioEngine {
   public resume(forceRecover = false, fromAutoWake = false) {
     if (!forceRecover && this.isPlaying && !this.isPlaybackWedged()) return;
     this.lastPauseCalledAt = 0;
+    if (this.currentTime < Math.max(1, this.duration - 2)) {
+      this.lastEndedGeneration = -1;
+    }
 
     if (!this.usingPassthroughStream && this.ctx && this.ctx.state !== 'running') {
       this.ctx.resume().catch(() => {});
@@ -1982,12 +1999,26 @@ export class AudioEngine {
     this.ytMaxPosSeen = clamped;
     this.ytNearEndLastPos = clamped >= this.duration - 3.5 ? clamped : -1;
     this.ytNearEndStallSince = clamped >= this.duration - 3.5 ? performance.now() : 0;
+    if (clamped < Math.max(1, this.duration - 2)) {
+      this.lastEndedGeneration = -1;
+    }
 
     if (
       this.activeBackend === 'youtube' &&
       this.isPlaying &&
       this.duration >= 30 &&
       clamped >= this.duration - 0.8
+    ) {
+      this.notifyTime();
+      this.completeCurrentTrack(this.playGeneration);
+      return;
+    }
+    if (
+      this.activeBackend === 'html5' &&
+      !this.isLiveStream &&
+      (this.isPlaying || this.html5PlayPending) &&
+      this.duration >= 10 &&
+      clamped >= this.duration - 0.25
     ) {
       this.notifyTime();
       this.completeCurrentTrack(this.playGeneration);

@@ -1897,33 +1897,19 @@ export default function App() {
             });
 
             if (pool.length === 0) {
-              try {
-                const liveQueries = getClassMatchedSeedQueries(seed, activeMoodRef.current, 3);
-                const liveBatches = await Promise.race([
-                  Promise.allSettled(liveQueries.map((q) => searchTracksOnline(q))),
-                  new Promise<PromiseSettledResult<Track[]>[]>((resolve) =>
-                    window.setTimeout(() => resolve([]), 4200)
-                  )
-                ]);
-                const fetched: Track[] = [];
-                for (const b of liveBatches) {
+              pool = gatherLocalCandidatePool(seed.id);
+              const liveQueries = getClassMatchedSeedQueries(seed, activeMoodRef.current, 2);
+              void Promise.allSettled(liveQueries.map((q) => searchTracksOnline(q))).then((batches) => {
+                for (const b of batches) {
                   if (b.status === 'fulfilled' && Array.isArray(b.value)) {
                     for (const item of b.value) {
-                      if (item && item.id && item.id !== seed.id) {
+                      if (item && item.id) {
                         discoveredPoolRef.current.set(item.id, item);
-                        fetched.push(item);
                       }
                     }
                   }
                 }
-                pool = fetched;
-              } catch {
-                // Fall back to full local pool below
-              }
-            }
-
-            if (pool.length === 0) {
-              pool = gatherLocalCandidatePool(seed.id);
+              });
             }
 
             const rankedPool = buildSmartQueueFromPool(
