@@ -102,6 +102,7 @@ import { DiscoverView } from './components/views/DiscoverView';
 import { VibeFeedView } from './components/views/VibeFeedView';
 import { FavoritesView } from './components/views/FavoritesView';
 import { BlendView } from './components/views/BlendView';
+import { MusicView } from './components/views/MusicView';
 import { SearchView } from './components/views/SearchView';
 import { RadioView } from './components/views/RadioView';
 import { PodcastsView } from './components/views/PodcastsView';
@@ -118,6 +119,7 @@ import { SolanaWalletModal } from './components/web3/SolanaWalletModal';
 import { PitchDeckModal } from './components/pitch/PitchDeckModal';
 import { getPrimaryArtistName } from './utils/coverColor';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from './utils/coverFallback';
+import { parseTabFromUrl, syncUrlForTab } from './utils/routes';
 import {
   Activity,
   Clock,
@@ -130,6 +132,7 @@ import {
   Loader2,
   Menu,
   Mic2,
+  Music,
   Play,
   Radio,
   Search,
@@ -147,11 +150,28 @@ export default function App() {
   const { t } = useAppPreferences();
   const [currentTab, setCurrentTab] = useState<TabType>(() => {
     if (typeof window !== 'undefined') {
-      const p = new URLSearchParams(window.location.search);
-      if (p.get('track')?.trim()) return 'discover';
+      return parseTabFromUrl(window.location.pathname, window.location.search);
     }
     return 'landing';
   });
+  const isInitialRouteMountRef = useRef(true);
+  const skipNextHistoryPushRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isInitialRouteMountRef.current) {
+      isInitialRouteMountRef.current = false;
+      syncUrlForTab(currentTab, 'replace');
+      return;
+    }
+    if (skipNextHistoryPushRef.current) {
+      skipNextHistoryPushRef.current = false;
+      syncUrlForTab(currentTab, 'replace');
+      return;
+    }
+    syncUrlForTab(currentTab, 'push');
+  }, [currentTab]);
+
   const [currentTrack, setCurrentTrack] = useState<Track>(() => {
     if (typeof window !== 'undefined') {
       const trackParam = new URLSearchParams(window.location.search).get('track')?.trim();
@@ -166,7 +186,19 @@ export default function App() {
   });
   const [queue, setQueue] = useState<Track[]>(TRACK_CATALOG);
   const [stageMode, setStageMode] = useState<StageExperienceMode>('orbwave-only');
-  const [isStageOpen, setIsStageOpen] = useState(false);
+  const [isStageOpen, setIsStageOpen] = useState(() => currentTab === 'visualizer');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPopState = () => {
+      const parsed = parseTabFromUrl(window.location.pathname, window.location.search);
+      skipNextHistoryPushRef.current = true;
+      setCurrentTab(parsed);
+      setIsStageOpen(parsed === 'visualizer');
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isMobileQueueOpen, setIsMobileQueueOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -3256,6 +3288,7 @@ export default function App() {
 
   const mobileNavChips: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'landing', label: t.navLanding, icon: <Home size={13} /> },
+    { id: 'music', label: t.navMusic, icon: <Music size={13} /> },
     { id: 'discover', label: t.navDiscover, icon: <Compass size={13} /> },
     { id: 'favorites', label: t.navFavorites, icon: <Heart size={13} /> },
     { id: 'blend', label: t.navBlend, icon: <Users size={13} /> },
@@ -4082,6 +4115,31 @@ export default function App() {
 
               {/* Sub-Views by Tab */}
               <div className="flex-1 pb-6 min-w-0">
+                {currentTab === 'music' && (
+                  <MusicView
+                    tracks={TRACK_CATALOG}
+                    currentTrack={currentTrack}
+                    resolvingTrackId={resolvingTrackId}
+                    onSelectTrack={handleSelectTrack}
+                    onNavigateSearch={navigateToSearch}
+                    likedTracks={recState.likedTracks}
+                    recentTracks={recState.recentTracks}
+                    playlists={recState.playlists}
+                    followedArtists={followedArtists}
+                    likedTrackIds={likedTrackIds}
+                    onToggleLike={handleToggleLike}
+                    onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+                    onPlayNext={handlePlayNext}
+                    onAddToQueue={handleAddToQueue}
+                    onStartRadio={handleStartRadio}
+                    onOpenArtist={handleOpenArtistSpotlight}
+                    onPlayTrackList={handlePlayTrackList}
+                    onSaveCatalogAlbum={handleSaveCatalogAlbum}
+                    activeMood={activeMood}
+                    onSelectMood={handleSelectMood}
+                  />
+                )}
+
                 {currentTab === 'discover' && (
                   <DiscoverView
                     tracks={TRACK_CATALOG}

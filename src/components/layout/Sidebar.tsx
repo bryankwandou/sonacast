@@ -13,6 +13,7 @@ import {
   ListMusic,
   LogIn,
   Mic2,
+  Music,
   Play,
   Radio,
   Search,
@@ -60,6 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: t.navGroupDiscover,
       items: [
         { id: 'landing', label: t.navLanding, icon: <Home size={16} /> },
+        { id: 'music', label: t.navMusic, icon: <Music size={16} /> },
         { id: 'discover', label: t.navDiscover, icon: <Compass size={16} /> },
         { id: 'vibe', label: t.navVibeFeed, icon: <Flame size={16} /> },
         { id: 'search', label: t.navSearch, icon: <Search size={16} /> },

@@ -5,6 +5,7 @@ export interface TranslationKeys {
   tagline: string;
   brandSubtitle: string;
   navLanding: string;
+  navMusic: string;
   navDiscover: string;
   navSearch: string;
   navRadio: string;
@@ -262,6 +263,7 @@ const EN_BASE: TranslationKeys = {
   tagline: 'Music Streaming, Live Lyrics & Real-Time Audio Visualizer',
   brandSubtitle: 'Music & Live Radio',
   navLanding: 'Home',
+  navMusic: 'Music',
   navDiscover: 'Your Library',
   navSearch: 'Search Catalog',
   navRadio: 'Live Radio',
@@ -491,6 +493,7 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     tagline: 'Streaming Musik, Lirik Live & Visualizer Audio Real-Time',
     brandSubtitle: 'Musik & Radio Live',
     navLanding: 'Beranda',
+    navMusic: 'Musik',
     navDiscover: 'Pustaka Saya',
     navSearch: 'Cari Katalog',
     navRadio: 'Radio Langsung',

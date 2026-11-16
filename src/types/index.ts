@@ -188,6 +188,7 @@ export type StageExperienceMode =
   | 'music-lyric';
 export type TabType =
   | 'landing'
+  | 'music'
   | 'discover'
   | 'vibe'
   | 'favorites'

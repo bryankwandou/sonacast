@@ -739,7 +739,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => onEnterApp('discover')}
+                data-testid="landing-browse-music-btn"
+                onClick={() => onEnterApp('music')}
                 className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <span>Browse All {popularCharts.albums.length} Albums</span>
@@ -853,6 +854,14 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 {t.footerExplore}
               </p>
               <div className="flex flex-col items-start gap-1.5">
+                <button
+                  type="button"
+                  data-testid="footer-music-link"
+                  onClick={() => onEnterApp('music')}
+                  className="py-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                >
+                  {t.navMusic}
+                </button>
                 <button
                   type="button"
                   onClick={() => onEnterApp('discover')}
