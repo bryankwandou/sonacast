@@ -1,4 +1,12 @@
-import type { Track, LyricLine, CatalogAlbum, CatalogPlaylist, MusicVideoCandidate } from '../types';
+import type {
+  Track,
+  LyricLine,
+  CatalogAlbum,
+  CatalogPlaylist,
+  MusicVideoCandidate,
+  RadioStation,
+  PodcastEpisode
+} from '../types';
 import { ARTISTS_DIRECTORY } from '../data/artists800';
 
 export function parseLrc(lrcText: string): LyricLine[] {
@@ -2290,6 +2298,271 @@ export async function fetchPlaylistTracksOnline(
   const searchFallback = await searchTracksOnline(playlist.title);
   const filtered = searchFallback.slice(0, Math.min(18, searchFallback.length));
   return { playlist, tracks: filtered };
+}
+
+const RADIO_BROWSER_MIRRORS = [
+  'https://de1.api.radio-browser.info',
+  'https://nl1.api.radio-browser.info',
+  'https://at1.api.radio-browser.info'
+];
+
+const RADIO_PALETTE = [
+  { color: '#06B6D4', accent: '#0284C7' },
+  { color: '#10B981', accent: '#059669' },
+  { color: '#8B5CF6', accent: '#6D28D9' },
+  { color: '#F43F5E', accent: '#BE123C' },
+  { color: '#EC4899', accent: '#DB2777' },
+  { color: '#F59E0B', accent: '#D97706' }
+];
+
+function inferRadioCategory(
+  tags: string,
+  countryCode: string
+): RadioStation['category'] {
+  const lower = `${tags} ${countryCode}`.toLowerCase();
+  if (countryCode.toUpperCase() === 'ID' || lower.includes('indonesia')) return 'Indonesia';
+  if (/(news|talk|public|speech|npr|bbc|sport)/.test(lower)) return 'Talk';
+  if (/(dance|edm|club|house|techno|trance|80s|disco)/.test(lower)) return 'Dance';
+  if (/(chill|lofi|lo-fi|jazz|ambient|classical|acoustic|relax|focus)/.test(lower)) return 'Focus';
+  return 'Global';
+}
+
+function isPlayableLiveHttpsStream(rawUrl: unknown, hlsFlag?: unknown): string | null {
+  if (typeof rawUrl !== 'string') return null;
+  const trimmed = rawUrl.trim();
+  if (!/^https:\/\//i.test(trimmed)) return null;
+  if (Number(hlsFlag) === 1) return null;
+  if (/\.(m3u8|pls|m3u|asx|xspf)(\?.*)?$/i.test(trimmed)) return null;
+  return trimmed;
+}
+
+export async function searchLiveRadioStations(
+  query: string,
+  countryCode?: string
+): Promise<RadioStation[]> {
+  const trimmedQuery = query.trim();
+  const normalizedCountry = countryCode?.trim().toUpperCase();
+
+  let rawItems: Array<Record<string, unknown>> = [];
+  for (const host of RADIO_BROWSER_MIRRORS) {
+    try {
+      const path = trimmedQuery
+        ? `/json/stations/search?name=${encodeURIComponent(trimmedQuery)}&hidebroken=true&is_https=true&order=clickcount&reverse=true&limit=28`
+        : normalizedCountry === 'GLOBAL'
+          ? `/json/stations/topclick/30`
+          : `/json/stations/search?countrycode=${encodeURIComponent(normalizedCountry || 'ID')}&hidebroken=true&is_https=true&order=clickcount&reverse=true&limit=28`;
+
+      const res = await fetch(`${host}${path}`, { signal: AbortSignal.timeout(4500) });
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (Array.isArray(json) && json.length > 0) {
+        rawItems = json;
+        break;
+      }
+      if (trimmedQuery) {
+        const tagRes = await fetch(
+          `${host}/json/stations/search?tag=${encodeURIComponent(trimmedQuery)}&hidebroken=true&is_https=true&order=clickcount&reverse=true&limit=24`,
+          { signal: AbortSignal.timeout(4500) }
+        );
+        if (tagRes.ok) {
+          const tagJson = await tagRes.json();
+          if (Array.isArray(tagJson) && tagJson.length > 0) {
+            rawItems = tagJson;
+            break;
+          }
+        }
+      }
+    } catch {
+      // Failover cleanly to next verified mirror
+    }
+  }
+
+  const dedup = new Set<string>();
+  const stations: RadioStation[] = [];
+
+  for (let i = 0; i < rawItems.length; i++) {
+    const item = rawItems[i];
+    const streamUrl = isPlayableLiveHttpsStream(item.url_resolved || item.url, item.hls);
+    if (!streamUrl || dedup.has(streamUrl)) continue;
+    dedup.add(streamUrl);
+
+    const name = String(item.name || '').trim();
+    if (!name) continue;
+    const country = String(item.country || '').trim();
+    const countryCodeStr = String(item.countrycode || '').trim().toUpperCase();
+    const state = String(item.state || '').trim();
+    const tagsStr = String(item.tags || '').trim();
+    const firstTag = tagsStr
+      .split(',')
+      .map((s) => s.trim())
+      .find(Boolean);
+    const genre = firstTag ? firstTag.slice(0, 26) : 'Live Radio';
+    const codec = String(item.codec || 'MP3').trim().toUpperCase();
+    const bitrateNum = Number(item.bitrate) || 0;
+    const bitRate = bitrateNum > 0 ? `LIVE ${bitrateNum} kbps ${codec}` : `LIVE ${codec}`;
+    const faviconRaw = String(item.favicon || '').trim();
+    const faviconUrl = /^https:\/\//i.test(faviconRaw) ? faviconRaw : undefined;
+    const homepageRaw = String(item.homepage || '').trim();
+    const homepage = /^https?:\/\//i.test(homepageRaw) ? homepageRaw : undefined;
+    const cityLabel = [state, countryCodeStr || country].filter(Boolean).join(', ') || country || undefined;
+    const palette = RADIO_PALETTE[stations.length % RADIO_PALETTE.length];
+    const stationId = `rb-${String(item.stationuuid || i)}`;
+
+    const liveStubTrack: Track = {
+      id: `live-track-${stationId}`,
+      title: name,
+      artist: cityLabel || 'Live FM Broadcast',
+      album: genre,
+      duration: 0,
+      coverUrl: faviconUrl || '',
+      audioUrl: streamUrl,
+      streamSource: 'official-stream',
+      sourceTag: 'live-radio',
+      genre: 'Live Radio',
+      lyrics: [{ time: 0, text: `${name} — Live 24/7 Broadcast` }],
+      artistSolanaAddress: '',
+      bpm: 118
+    };
+
+    stations.push({
+      id: stationId,
+      name,
+      tagline: [tagsStr, String(item.language || '').trim(), country]
+        .filter(Boolean)
+        .join(' · ')
+        .slice(0, 120) || 'Live HTTPS FM & Internet Radio Stream',
+      genre,
+      city: cityLabel,
+      country: country || undefined,
+      category: inferRadioCategory(tagsStr, countryCodeStr),
+      bitRate,
+      listenersCount: Number(item.clickcount) || Number(item.votes) || 120,
+      color: palette.color,
+      accentColor: palette.accent,
+      streamUrl,
+      isLiveBroadcast: true,
+      faviconUrl,
+      homepage,
+      currentTrack: liveStubTrack
+    });
+
+    if (stations.length >= 24) break;
+  }
+
+  return stations;
+}
+
+export async function searchPodcastsOnline(query: string): Promise<PodcastEpisode[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  const itunesPromise = (async (): Promise<PodcastEpisode[]> => {
+    try {
+      const res = await fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=podcast&entity=podcastEpisode&limit=14`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (!res.ok) return [];
+      const json = await res.json();
+      const results = Array.isArray(json?.results) ? json.results : [];
+      const mapped: PodcastEpisode[] = [];
+
+      for (let i = 0; i < results.length; i++) {
+        const item = results[i] as Record<string, unknown>;
+        const audioRaw = String(item.episodeUrl || '').trim();
+        if (!/^https:\/\//i.test(audioRaw)) continue;
+        const durSec = Math.max(
+          60,
+          Math.round((Number(item.trackTimeMillis) || 0) / 1000) || 1800
+        );
+        const title = String(item.trackName || '').trim();
+        if (!title) continue;
+        const podcastName = String(item.collectionName || 'Podcast Show').trim();
+        const coverRaw = String(item.artworkUrl600 || item.artworkUrl160 || '').trim();
+        const coverUrl = /^https:\/\//i.test(coverRaw) ? coverRaw : '';
+        const desc = String(item.description || item.shortDescription || podcastName).trim();
+
+        mapped.push({
+          id: `itunes-ep-${String(item.trackId || i)}`,
+          title,
+          host: podcastName,
+          podcastName,
+          duration: durSec,
+          coverUrl,
+          audioUrl: audioRaw,
+          isVideoPodcast: false,
+          category: 'Audio Podcast',
+          description: desc,
+          episodeNumber: Number(item.trackNumber) || i + 1,
+          hostSolanaAddress: '',
+          transcript: [
+            { time: 0, text: `${podcastName}: ${title}` },
+            { time: 20, text: desc.slice(0, 180) || 'Full audio podcast episode playing.' }
+          ]
+        });
+      }
+      return mapped;
+    } catch {
+      return [];
+    }
+  })();
+
+  const ytVideoPromise = (async (): Promise<PodcastEpisode[]> => {
+    try {
+      const endpoint = getApiEndpoint('/api/yt-search');
+      const res = await fetch(
+        `${endpoint}?q=${encodeURIComponent(`${q} full podcast`)}&mode=yt&intent=video`,
+        { signal: AbortSignal.timeout(5500) }
+      );
+      if (!res.ok) return [];
+      const json = await res.json();
+      const items = Array.isArray(json?.items) ? json.items : [];
+      const mapped: PodcastEpisode[] = [];
+
+      for (let i = 0; i < items.length; i++) {
+        const v = items[i] as StreamCandidate;
+        if (!v?.videoId || !v?.title) continue;
+        if (v.duration > 0 && v.duration < 180) continue;
+        const cover = safeYtThumbnail(v.thumbnail, v.videoId);
+        const dur = v.duration > 0 ? v.duration : 1800;
+        const candidate: MusicVideoCandidate = {
+          videoId: v.videoId,
+          title: v.title,
+          author: v.author || 'Video Podcast',
+          duration: dur,
+          thumbnail: cover
+        };
+        mapped.push({
+          id: `yt-pod-${v.videoId}`,
+          title: v.title,
+          host: v.author || 'Video Podcast',
+          podcastName: v.author || 'YouTube Video Podcast',
+          duration: dur,
+          coverUrl: cover,
+          youtubeId: v.videoId,
+          videoCandidates: [candidate],
+          isVideoPodcast: true,
+          category: 'Video Podcast',
+          description: `Full video podcast conversation from ${v.author || 'creator channel'}.`,
+          episodeNumber: i + 1,
+          hostSolanaAddress: '',
+          transcript: [
+            { time: 0, text: `${v.author || 'Video Podcast'}: ${v.title}` },
+            { time: 20, text: 'Video stage synchronized with full episode playback.' }
+          ]
+        });
+        if (mapped.length >= 6) break;
+      }
+      return mapped;
+    } catch {
+      return [];
+    }
+  })();
+
+  const [ytRes, audioRes] = await Promise.allSettled([ytVideoPromise, itunesPromise]);
+  const videos = ytRes.status === 'fulfilled' ? ytRes.value : [];
+  const audios = audioRes.status === 'fulfilled' ? audioRes.value : [];
+  return [...videos, ...audios];
 }
 
 

@@ -153,7 +153,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               ) : (
                 <div className="relative z-10 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-xs font-medium text-white">
                   <Loader2 size={14} className="animate-spin text-emerald-400" />
-                  <span>{t.findingMusicVideo}</span>
+                  <span>
+                    {!isResolvingVideo && (activeVideoId || currentCandidate?.videoId)
+                      ? track.genre === 'Podcast'
+                        ? 'Buffering video podcast...'
+                        : 'Buffering video stream...'
+                      : t.findingMusicVideo}
+                  </span>
                 </div>
               )}
             </div>

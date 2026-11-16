@@ -123,6 +123,15 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
     };
   }, [isOpen, activeArtistName, refreshAll, syncWalletState]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const parsedAmount = Number.parseFloat(tipAmountInput);
@@ -248,9 +257,9 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
       aria-modal="true"
       aria-label="Solana Web3 Wallet and Tipping Protocol"
     >
-      <div className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto bg-[var(--bg-surface)] border border-[var(--border-medium)] rounded-2xl p-4 sm:p-6 shadow-2xl text-[var(--text-primary)] select-none">
+      <div className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto bg-[var(--bg-surface)] border border-[var(--border-medium)] rounded-2xl px-4 pb-4 pt-0 sm:px-6 sm:pb-6 shadow-2xl text-[var(--text-primary)] select-none">
         {/* Top Header */}
-        <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="sticky top-0 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 sm:pt-5 pb-3.5 mb-4 bg-[var(--bg-surface)]/95 backdrop-blur-md border-b border-[var(--border-subtle)] flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2.5 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)] border border-[var(--accent-border)] shrink-0">
               <Wallet size={20} />
@@ -712,7 +721,7 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
           </div>
         )}
 
-        {/* TAB 3: LIVE LEDGER, BENCHMARKS & ESCROW */}
+      {/* TAB 3: LIVE LEDGER, BENCHMARKS & ESCROW */}
         {activeTab === 'ledger' && (
           <div className="space-y-4">
             {/* Protocol Summary */}

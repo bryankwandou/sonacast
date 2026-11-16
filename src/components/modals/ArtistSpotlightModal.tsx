@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Coins,
   Disc3,
   Heart,
   ListPlus,
@@ -44,6 +45,7 @@ interface ArtistSpotlightModalProps {
   onAddToQueue: (track: Track) => void;
   onStartRadio: (track: Track) => void;
   onToggleLike?: (track: Track) => void;
+  onTipArtist?: (artistName: string) => void;
 }
 
 export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
@@ -61,7 +63,8 @@ export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
   onPlayNext,
   onAddToQueue,
   onStartRadio,
-  onToggleLike
+  onToggleLike,
+  onTipArtist
 }) => {
   const { t } = useAppPreferences();
   const cleanArtist = artistName ? getPrimaryArtistName(artistName) : null;
@@ -116,7 +119,7 @@ export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
         (existing) =>
           existing.title.toLowerCase() === item.title.toLowerCase() &&
           getPrimaryArtistName(existing.artist).toLowerCase() ===
-            getPrimaryArtistName(item.artist).toLowerCase()
+          getPrimaryArtistName(item.artist).toLowerCase()
       );
       if (!dup) merged.push(item);
     }
@@ -290,15 +293,29 @@ export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
                   onClick={() => onToggleFollowArtist(cleanArtist, resolvedGenre)}
                   data-testid="artist-follow-btn"
                   aria-pressed={isFollowed}
-                  className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold border cursor-pointer transition-colors ${
-                    isFollowed
-                      ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
-                      : 'bg-[var(--bg-surface)] border-[var(--border-medium)] text-[var(--text-primary)] hover:border-[var(--accent-emerald)]'
-                  }`}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold border cursor-pointer transition-colors ${isFollowed
+                    ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                    : 'bg-[var(--bg-surface)] border-[var(--border-medium)] text-[var(--text-primary)] hover:border-[var(--accent-emerald)]'
+                    }`}
                 >
                   {isFollowed ? <UserCheck size={13} /> : <UserPlus size={13} />}
                   <span>{isFollowed ? t.followingArtist : t.followArtist}</span>
                 </button>
+
+                {onTipArtist && (
+                  <button
+                    type="button"
+                    data-testid="artist-spotlight-tip-btn"
+                    onClick={() => {
+                      onClose();
+                      onTipArtist(cleanArtist);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[var(--bg-surface)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    <Coins size={13} className="text-[var(--accent-text)]" />
+                    <span>{t.tipArtist}</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -334,11 +351,10 @@ export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
                   return (
                     <div
                       key={tr.id}
-                      className={`flex items-center gap-3 p-2 rounded-xl transition-colors group ${
-                        isActive
-                          ? 'bg-[var(--accent-soft)] border border-[var(--accent-border)]'
-                          : 'hover:bg-[var(--bg-tint)] border border-transparent'
-                      }`}
+                      className={`flex items-center gap-3 p-2 rounded-xl transition-colors group ${isActive
+                        ? 'bg-[var(--accent-soft)] border border-[var(--accent-border)]'
+                        : 'hover:bg-[var(--bg-tint)] border border-transparent'
+                        }`}
                     >
                       <button
                         type="button"
@@ -360,9 +376,8 @@ export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
                         />
                         <div className="min-w-0 flex-1">
                           <div
-                            className={`text-xs font-bold truncate ${
-                              isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
-                            }`}
+                            className={`text-xs font-bold truncate ${isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
+                              }`}
                           >
                             {tr.title}
                           </div>
@@ -382,11 +397,10 @@ export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
                             onClick={() => onToggleLike(tr)}
                             aria-label={t.likedSongs}
                             title={t.likedSongs}
-                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                              isLiked
-                                ? 'text-[var(--accent-text)]'
-                                : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-                            }`}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${isLiked
+                              ? 'text-[var(--accent-text)]'
+                              : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
+                              }`}
                           >
                             <Heart size={13} className={isLiked ? 'fill-current' : ''} />
                           </button>

@@ -11,6 +11,7 @@ import type {
   SearchHistoryEntry,
   TabType,
   LyricLine,
+  MusicVideoCandidate,
   EqPreset,
   MoodPreset,
   RepeatMode,
@@ -33,7 +34,9 @@ import {
   resolveFullTrackStream,
   resolveMusicVideoStream,
   searchAlbumsOnline,
+  searchLiveRadioStations,
   searchPlaylistsOnline,
+  searchPodcastsOnline,
   searchTracksOnline
 } from './services/musicService';
 import {
@@ -303,6 +306,11 @@ export default function App() {
   const [blends, setBlends] = useState<BlendRoom[]>([]);
   const [albumModalTrack, setAlbumModalTrack] = useState<Track | null>(null);
   const [artistSpotlightName, setArtistSpotlightName] = useState<string | null>(null);
+  const [walletTargetArtist, setWalletTargetArtist] = useState<{
+    artist: string;
+    trackTitle?: string;
+  } | null>(null);
+  const [activeRadioStationId, setActiveRadioStationId] = useState<string | null>(null);
   const [lyricCardState, setLyricCardState] = useState<{ open: boolean; lineIndex: number | null }>({
     open: false,
     lineIndex: null
@@ -746,7 +754,9 @@ export default function App() {
       setStreamError(msg);
       const now = performance.now();
       const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+      const isLiveRadio = currentTrackRef.current.sourceTag === 'live-radio';
       const canAdvance =
+        !isLiveRadio &&
         recStateRef.current.repeatMode !== 'one' &&
         (autoplayEnabledRef.current ||
           queueRef.current.length > 1 ||
@@ -1325,6 +1335,10 @@ export default function App() {
       setCurrentTrack(track);
       setCurrentTime(0);
 
+      if (track.sourceTag !== 'live-radio' && playbackContextRef.current.type !== 'radio') {
+        setActiveRadioStationId(null);
+      }
+
       mutateNeonLibrary('record_play', { track }).then((snap) => {
         if (snap && snap.connected) {
           setCloudConnected(true);
@@ -1332,7 +1346,11 @@ export default function App() {
         }
       });
 
-      const isSingleStandalonePlay = !options?.fromContextList && autoplayEnabledRef.current;
+      const isSingleStandalonePlay =
+        !options?.fromContextList &&
+        autoplayEnabledRef.current &&
+        track.sourceTag !== 'live-radio' &&
+        track.genre !== 'Podcast';
 
       if (isSingleStandalonePlay) {
         const autoCtx = buildAutoSimilarContext(track);
@@ -1368,9 +1386,14 @@ export default function App() {
         });
 
         const ctxType = playbackContextRef.current.type;
-        if (ctxType === 'radio') {
+        if (ctxType === 'radio' && track.sourceTag !== 'live-radio') {
           refillRadioQueueIfNeeded(track, false);
-        } else if (autoplayEnabledRef.current && recStateRef.current.repeatMode !== 'one') {
+        } else if (
+          autoplayEnabledRef.current &&
+          recStateRef.current.repeatMode !== 'one' &&
+          track.sourceTag !== 'live-radio' &&
+          track.genre !== 'Podcast'
+        ) {
           // Preload peer class candidates into discoveredPool before an ordered album/playlist finishes
           const q = queueRef.current;
           const idx = q.findIndex((t) => t.id === track.id);
@@ -1389,7 +1412,11 @@ export default function App() {
         }
       }
 
-      if (track.lyrics.length < 18) {
+      if (track.sourceTag === 'live-radio' || track.genre === 'Podcast') {
+        resolvedLyricsMetaRef.current = { trackId: track.id, fetchDur: track.duration };
+        setLyricsStatus(track.lyrics.length > 0 ? 'loaded' : 'idle');
+        setLyricsSynced(track.lyrics.length > 4);
+      } else if (track.lyrics.length < 18) {
         if (track.lyrics.length > 0) {
           setLyricsStatus('loaded');
           setLyricsSynced(track.lyrics.length > 4);
@@ -1405,7 +1432,13 @@ export default function App() {
       const qAfter = queueRef.current;
       const curIdxInQ = qAfter.findIndex((item) => item.id === track.id);
       const nextPreviewTrack = curIdxInQ >= 0 ? qAfter[curIdxInQ + 1] : qAfter[0];
-      if (nextPreviewTrack && nextPreviewTrack.id !== track.id && nextPreviewTrack.lyrics.length <= 2) {
+      if (
+        nextPreviewTrack &&
+        nextPreviewTrack.id !== track.id &&
+        nextPreviewTrack.lyrics.length <= 2 &&
+        nextPreviewTrack.sourceTag !== 'live-radio' &&
+        nextPreviewTrack.genre !== 'Podcast'
+      ) {
         fetchLyricsWithMeta(
           nextPreviewTrack.title,
           nextPreviewTrack.artist,
@@ -1433,16 +1466,20 @@ export default function App() {
             ? [track.youtubeId]
             : undefined;
 
-      // 1. Direct Studio Master MP3 or local user file
+      // 1. Direct Studio Master MP3, Live Broadcast Stream, or local user file
       if (track.audioUrl) {
         resolvingTrackIdRef.current = null;
         setResolvingTrackId(null);
         setIsYouTubeActive(false);
-        sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl, fallbackYtIds);
-        if (isVideoStageActive) {
+        sharedAudioEngine.playTrack(track.duration, track.bpm, track.audioUrl, fallbackYtIds, {
+          isLiveStream: track.sourceTag === 'live-radio',
+          fallbackAudioUrl: track.fallbackAudioUrl
+        });
+        if (isVideoStageActive && track.sourceTag !== 'live-radio') {
           void activateMusicVideoForTrack(track, 0);
         } else if (
           track.genre !== 'Podcast' &&
+          track.sourceTag !== 'live-radio' &&
           !(track.musicVideoCandidates && track.musicVideoCandidates.length > 0)
         ) {
           window.setTimeout(() => {
@@ -1542,7 +1579,7 @@ export default function App() {
             );
           }
         }
-        if (readyIds.length < 4) {
+        if (readyIds.length < 4 && track.genre !== 'Podcast' && track.sourceTag !== 'live-radio') {
           const activeGen = sharedAudioEngine.getPlayGeneration();
           resolveFullTrackStream(track.title, track.artist, readyDuration)
             .then((resolved) => {
@@ -1659,7 +1696,47 @@ export default function App() {
       }
     }, [activateMusicVideoForTrack, buildAutoSimilarContext, gatherLocalCandidatePool, refillRadioQueueIfNeeded, resolveLyricsForTrack]);
 
-  const handleSelectRadio = (station: RadioStation) => {
+  const handleSelectRadio = (station: RadioStation, mode?: 'live' | 'mix') => {
+    const resolvedMode = mode || (station.streamUrl ? 'live' : 'mix');
+    setActiveRadioStationId(station.id);
+
+    if (resolvedMode === 'live' && station.streamUrl) {
+      if (
+        isStageVisibleRef.current &&
+        (stageModeRef.current === 'video-only' || stageModeRef.current === 'video-lyric')
+      ) {
+        setStageMode('orbwave-only');
+      }
+      const liveTrack: Track = {
+        ...station.currentTrack,
+        id: `live-${station.id}`,
+        title: station.name,
+        artist: station.city ? `${station.genre} · ${station.city}` : station.genre,
+        album: station.tagline,
+        duration: 0,
+        coverUrl: station.faviconUrl || station.currentTrack.coverUrl,
+        audioUrl: station.streamUrl,
+        fallbackAudioUrl: station.fallbackStreamUrl,
+        youtubeId: undefined,
+        candidateVideoIds: undefined,
+        musicVideoId: undefined,
+        musicVideoCandidates: undefined,
+        streamSource: 'official-stream',
+        sourceTag: 'live-radio',
+        genre: 'Live Radio',
+        lyrics: [{ time: 0, text: `${station.name} — Live 24/7 Broadcast` }]
+      };
+      playbackContextRef.current = {
+        type: 'radio',
+        id: station.id,
+        title: station.name,
+        subtitle: station.city ? `${station.city} · Live Broadcast` : 'Live Broadcast'
+      };
+      setPlaybackContext(playbackContextRef.current);
+      handleSelectTrack(liveTrack, { fromContextList: true });
+      return;
+    }
+
     handleStartRadio(station.currentTrack, {
       id: station.id,
       title: station.name,
@@ -1667,7 +1744,22 @@ export default function App() {
     });
   };
 
-  const handleSelectPodcast = (episode: PodcastEpisode) => {
+  const handleSelectPodcast = (episode: PodcastEpisode, openVideoStage?: boolean) => {
+    const videoCandidates: MusicVideoCandidate[] =
+      episode.videoCandidates && episode.videoCandidates.length > 0
+        ? episode.videoCandidates
+        : episode.youtubeId
+          ? [
+              {
+                videoId: episode.youtubeId,
+                title: episode.title,
+                author: episode.host || episode.podcastName,
+                duration: episode.duration,
+                thumbnail: episode.coverUrl
+              }
+            ]
+          : [];
+    const shouldOpenVideo = Boolean(openVideoStage && (episode.youtubeId || videoCandidates.length > 0));
     const podTrack: Track = {
       id: episode.id,
       title: episode.title,
@@ -1675,15 +1767,25 @@ export default function App() {
       album: episode.podcastName,
       duration: episode.duration,
       coverUrl: episode.coverUrl,
-      audioUrl: episode.audioUrl,
+      audioUrl: shouldOpenVideo ? undefined : episode.audioUrl,
       videoUrl: episode.videoUrl,
-      streamSource: episode.audioUrl ? 'official-stream' : undefined,
+      youtubeId: episode.youtubeId,
+      musicVideoId: episode.youtubeId,
+      candidateVideoIds: episode.youtubeId ? [episode.youtubeId] : undefined,
+      musicVideoCandidates: videoCandidates.length > 0 ? videoCandidates : undefined,
+      streamSource: episode.youtubeId || episode.audioUrl ? 'official-stream' : undefined,
       genre: 'Podcast',
       lyrics: episode.transcript,
       artistSolanaAddress: episode.hostSolanaAddress,
       bpm: 90
     };
     handleSelectTrack(podTrack, { fromContextList: true });
+    if (shouldOpenVideo) {
+      setStageMode('video-lyric');
+      setIsStageOpen(true);
+      setIsFloatingMinimized(false);
+      mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleUploadTrack = async (file: File) => {
@@ -4063,7 +4165,11 @@ export default function App() {
                   <RadioView
                     stations={RADIO_STATIONS}
                     onSelectStation={handleSelectRadio}
-                    activeStationId={RADIO_STATIONS.find((s) => s.currentTrack.id === currentTrack.id)?.id}
+                    onSearchStations={searchLiveRadioStations}
+                    activeStationId={
+                      activeRadioStationId ||
+                      RADIO_STATIONS.find((s) => s.currentTrack.id === currentTrack.id)?.id
+                    }
                   />
                 )}
 
@@ -4071,6 +4177,7 @@ export default function App() {
                   <PodcastsView
                     podcasts={PODCAST_CATALOG}
                     onSelectPodcast={handleSelectPodcast}
+                    onSearchPodcasts={searchPodcastsOnline}
                     activeEpisodeId={currentTrack.id}
                   />
                 )}
@@ -4349,6 +4456,11 @@ export default function App() {
         onAddToQueue={handleAddToQueue}
         onStartRadio={handleStartRadio}
         onToggleLike={handleToggleLike}
+        onTipArtist={(artist) => {
+          setArtistSpotlightName(null);
+          setWalletTargetArtist({ artist, trackTitle: `${artist} Studio Support` });
+          setIsWalletModalOpen(true);
+        }}
       />
 
       {/* Neon Auth Login / Account Modal */}
@@ -4366,10 +4478,15 @@ export default function App() {
       {/* Solana Devnet Wallet Modal */}
       <SolanaWalletModal
         isOpen={isWalletModalOpen}
-        onClose={() => setIsWalletModalOpen(false)}
-        activeArtistName={currentTrack.artist}
-        activeArtistAddress={currentTrack.artistSolanaAddress}
-        activeTrackTitle={currentTrack.title}
+        onClose={() => {
+          setIsWalletModalOpen(false);
+          setWalletTargetArtist(null);
+        }}
+        activeArtistName={walletTargetArtist?.artist || currentTrack.artist}
+        activeArtistAddress={
+          walletTargetArtist ? undefined : currentTrack.artistSolanaAddress
+        }
+        activeTrackTitle={walletTargetArtist?.trackTitle || currentTrack.title}
       />
 
       {/* Pitch Deck Modal */}

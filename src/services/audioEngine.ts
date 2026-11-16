@@ -113,6 +113,10 @@ export class AudioEngine {
   private lastEndedGeneration = -1;
 
   private lastAudioUrl: string | undefined = undefined;
+  private streamAudioElement: HTMLAudioElement | null = null;
+  private usingPassthroughStream = false;
+  private isLiveStream = false;
+  private fallbackStreamUrl: string | undefined = undefined;
   private currentTrackBpm = 120;
   private isPlaying = false;
   private wasPlayingBeforeSleep = false;
@@ -418,7 +422,7 @@ export class AudioEngine {
       }
 
       this.ctx.addEventListener('statechange', () => {
-        if (!this.ctx) return;
+        if (!this.ctx || this.usingPassthroughStream) return;
         const st = this.ctx.state as string;
         if (this.activeBackend === 'html5' && (st === 'suspended' || st === 'interrupted')) {
           if (this.audioElement && this.audioElement.paused && this.isPlaying) {
@@ -429,7 +433,7 @@ export class AudioEngine {
       });
 
       this.audioElement.addEventListener('timeupdate', () => {
-        if (this.activeBackend !== 'html5' || !this.audioElement || !this.isPlaying) return;
+        if (this.activeBackend !== 'html5' || this.usingPassthroughStream || !this.audioElement || !this.isPlaying) return;
         this.currentTime = this.audioElement.currentTime;
         const now = performance.now();
         const minInterval = this.lowCpuMode || this.isDocumentHidden ? 350 : 90;
@@ -440,17 +444,19 @@ export class AudioEngine {
       });
 
       this.audioElement.addEventListener('play', () => {
-        if (this.activeBackend === 'html5') {
+        if (this.activeBackend === 'html5' && !this.usingPassthroughStream) {
           this.startHtml5Poll();
         }
       });
 
       this.audioElement.addEventListener('pause', () => {
-        this.stopHtml5Poll();
+        if (!this.usingPassthroughStream) {
+          this.stopHtml5Poll();
+        }
       });
 
       this.audioElement.addEventListener('playing', () => {
-        if (this.activeBackend !== 'html5') return;
+        if (this.activeBackend !== 'html5' || this.usingPassthroughStream) return;
         if (this.ctx && this.ctx.state !== 'running') {
           this.ctx.resume().catch(() => {});
         }
@@ -461,7 +467,7 @@ export class AudioEngine {
       });
 
       this.audioElement.addEventListener('pause', () => {
-        if (this.activeBackend !== 'html5' || !this.audioElement || this.audioElement.ended) return;
+        if (this.activeBackend !== 'html5' || this.usingPassthroughStream || !this.audioElement || this.audioElement.ended) return;
         if (this.isPlaying) {
           this.isPlaying = false;
           this.notifyState();
@@ -469,7 +475,15 @@ export class AudioEngine {
       });
 
       this.audioElement.addEventListener('error', () => {
-        if (this.activeBackend !== 'html5') return;
+        if (this.activeBackend !== 'html5' || this.usingPassthroughStream) return;
+        if (this.lastAudioUrl && !this.lastAudioUrl.startsWith('blob:')) {
+          this.tryPassthroughStreamFallback(
+            this.lastAudioUrl,
+            this.playGeneration,
+            this.isLiveStream ? 0 : this.currentTime
+          );
+          return;
+        }
         if (this.candidateIds.length > 0) {
           this.playYouTubeTrack(
             this.candidateIds,
@@ -489,10 +503,13 @@ export class AudioEngine {
       const syncHtml5Duration = () => {
         if (
           this.activeBackend === 'html5' &&
+          !this.usingPassthroughStream &&
+          !this.isLiveStream &&
           this.audioElement &&
           this.audioElement.duration &&
           isFinite(this.audioElement.duration) &&
-          this.audioElement.duration > 0
+          this.audioElement.duration > 0 &&
+          this.audioElement.duration < 86400
         ) {
           const realDur = Math.round(this.audioElement.duration);
           if (Math.abs(realDur - this.duration) >= 1) {
@@ -507,7 +524,7 @@ export class AudioEngine {
 
       this.audioElement.addEventListener('ended', () => {
         const genAtEnd = this.playGeneration;
-        if (this.activeBackend !== 'html5') return;
+        if (this.activeBackend !== 'html5' || this.usingPassthroughStream || this.isLiveStream) return;
         this.completeCurrentTrack(genAtEnd);
       });
     }
@@ -787,11 +804,189 @@ export class AudioEngine {
     }
   }
 
-  private stopHtml5Backend() {
-    this.stopHtml5Poll();
+  private getActiveHtml5Element(): HTMLAudioElement | null {
+    return this.usingPassthroughStream ? this.streamAudioElement : this.audioElement;
+  }
+
+  private ensureStreamAudioElement(): HTMLAudioElement | null {
+    if (typeof Audio === 'undefined') return null;
+    if (this.streamAudioElement) return this.streamAudioElement;
+
+    const el = new Audio();
+    // Deliberately omit crossOrigin so live radio/podcast CDNs without permissive CORS headers stream cleanly.
+    el.preload = 'none';
+    el.loop = false;
+    el.volume = this.volume;
+    el.playbackRate = this.playbackRate;
+
+    el.addEventListener('timeupdate', () => {
+      if (this.activeBackend !== 'html5' || !this.usingPassthroughStream || !this.isPlaying) return;
+      this.currentTime = el.currentTime;
+      const now = performance.now();
+      const minInterval = this.lowCpuMode || this.isDocumentHidden ? 350 : 90;
+      if (now - this.lastHtml5NotifyAt >= minInterval) {
+        this.lastHtml5NotifyAt = now;
+        this.notifyTime();
+      }
+    });
+
+    el.addEventListener('play', () => {
+      if (this.activeBackend === 'html5' && this.usingPassthroughStream) {
+        this.startHtml5Poll();
+      }
+    });
+
+    el.addEventListener('playing', () => {
+      if (this.activeBackend !== 'html5' || !this.usingPassthroughStream) return;
+      if (!this.isPlaying) {
+        this.isPlaying = true;
+        this.notifyState();
+      }
+    });
+
+    el.addEventListener('pause', () => {
+      if (!this.usingPassthroughStream) return;
+      this.stopHtml5Poll();
+      if (this.activeBackend === 'html5' && !el.ended && this.isPlaying) {
+        this.isPlaying = false;
+        this.notifyState();
+      }
+    });
+
+    const syncStreamDuration = () => {
+      if (
+        this.activeBackend === 'html5' &&
+        this.usingPassthroughStream &&
+        !this.isLiveStream &&
+        el.duration &&
+        isFinite(el.duration) &&
+        el.duration > 0 &&
+        el.duration < 86400
+      ) {
+        const realDur = Math.round(el.duration);
+        if (Math.abs(realDur - this.duration) >= 1) {
+          this.duration = realDur;
+          this.notifyDurationChange();
+        }
+      }
+    };
+
+    el.addEventListener('loadedmetadata', syncStreamDuration);
+    el.addEventListener('durationchange', syncStreamDuration);
+
+    el.addEventListener('ended', () => {
+      const genAtEnd = this.playGeneration;
+      if (this.activeBackend !== 'html5' || !this.usingPassthroughStream || this.isLiveStream) return;
+      this.completeCurrentTrack(genAtEnd);
+    });
+
+    el.addEventListener('error', () => {
+      if (this.activeBackend !== 'html5' || !this.usingPassthroughStream) return;
+      const fallbackUrl = this.fallbackStreamUrl;
+      if (fallbackUrl) {
+        const resolvedFallback = new URL(fallbackUrl, window.location.href).href;
+        if (el.src !== resolvedFallback) {
+          this.fallbackStreamUrl = undefined;
+          this.lastAudioUrl = fallbackUrl;
+          el.src = fallbackUrl;
+          el.load();
+          el.play().catch(() => {});
+          return;
+        }
+      }
+      if (this.candidateIds.length > 0) {
+        this.playYouTubeTrack(
+          this.candidateIds,
+          this.duration,
+          this.currentTrackBpm,
+          this.isLiveStream ? 0 : this.currentTime
+        );
+        return;
+      }
+      if (this.isPlaying) {
+        this.isPlaying = false;
+        this.notifyState();
+      }
+      this.notifyError('Live stream unavailable or temporarily offline. Select another station or mix.');
+    });
+
+    this.streamAudioElement = el;
+    return el;
+  }
+
+  private tryPassthroughStreamFallback(url: string, gen: number, fromOffset = 0): boolean {
+    if (gen !== this.playGeneration) return false;
+    const streamEl = this.ensureStreamAudioElement();
+    if (!streamEl) return false;
+
+    this.usingPassthroughStream = true;
+    this.lastAudioUrl = url;
     if (this.audioElement) {
       try {
         this.audioElement.pause();
+        this.audioElement.removeAttribute('src');
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+
+    streamEl.volume = this.volume;
+    streamEl.playbackRate = this.playbackRate;
+    const resolvedSrc = new URL(url, window.location.href).href;
+    if (streamEl.src !== resolvedSrc) {
+      streamEl.src = url;
+    }
+    if (!this.isLiveStream && fromOffset > 1) {
+      try {
+        streamEl.currentTime = fromOffset;
+      } catch {
+        // Seek once metadata is ready
+      }
+    }
+
+    streamEl
+      .play()
+      .then(() => {
+        if (gen !== this.playGeneration) return;
+        this.isPlaying = true;
+        this.wasPlayingBeforeSleep = true;
+        this.startHtml5Poll();
+        this.notifyState();
+      })
+      .catch(() => {
+        if (gen !== this.playGeneration) return;
+        const fallbackUrl = this.fallbackStreamUrl;
+        if (fallbackUrl && fallbackUrl !== url) {
+          this.fallbackStreamUrl = undefined;
+          this.tryPassthroughStreamFallback(fallbackUrl, gen, fromOffset);
+          return;
+        }
+        if (this.candidateIds.length > 0) {
+          this.playYouTubeTrack(this.candidateIds, Math.max(60, this.duration), this.currentTrackBpm);
+        } else {
+          this.isPlaying = false;
+          this.wasPlayingBeforeSleep = false;
+          this.notifyState();
+          this.notifyError('Stream playback blocked or offline. Click Play to retry.');
+        }
+      });
+
+    return true;
+  }
+
+  private stopHtml5Backend() {
+    this.stopHtml5Poll();
+    this.usingPassthroughStream = false;
+    if (this.audioElement) {
+      try {
+        this.audioElement.pause();
+      } catch {
+        // Ignore
+      }
+    }
+    if (this.streamAudioElement) {
+      try {
+        this.streamAudioElement.pause();
       } catch {
         // Ignore
       }
@@ -803,33 +998,40 @@ export class AudioEngine {
     const intervalMs = this.isDocumentHidden ? 1500 : this.lowCpuMode ? 350 : 100;
     const pollGen = this.playGeneration;
     this.html5PollInterval = window.setInterval(() => {
-      if (this.activeBackend !== 'html5' || !this.audioElement || pollGen !== this.playGeneration) {
+      const activeEl = this.getActiveHtml5Element();
+      if (this.activeBackend !== 'html5' || !activeEl || pollGen !== this.playGeneration) {
         if (pollGen !== this.playGeneration) this.stopHtml5Poll();
         return;
       }
-      if (this.audioElement.ended) {
+      if (!this.isLiveStream && activeEl.ended) {
         this.completeCurrentTrack(pollGen);
         return;
       }
-      if (!this.isPlaying || this.audioElement.paused) {
+      if (!this.isPlaying || activeEl.paused) {
         return;
       }
-      if (this.audioElement.duration && isFinite(this.audioElement.duration) && this.audioElement.duration > 0) {
-        const realDur = Math.round(this.audioElement.duration);
+      if (
+        !this.isLiveStream &&
+        activeEl.duration &&
+        isFinite(activeEl.duration) &&
+        activeEl.duration > 0 &&
+        activeEl.duration < 86400
+      ) {
+        const realDur = Math.round(activeEl.duration);
         if (Math.abs(realDur - this.duration) >= 1) {
           this.duration = realDur;
           this.notifyDurationChange();
         }
-        if (this.audioElement.duration >= 10 && this.audioElement.currentTime >= this.audioElement.duration - 0.18) {
+        if (activeEl.duration >= 10 && activeEl.currentTime >= activeEl.duration - 0.18) {
           this.completeCurrentTrack(pollGen);
           return;
         }
       }
       this.currentTime =
-        this.duration > 0
-          ? Math.min(this.audioElement.currentTime, this.duration)
-          : this.audioElement.currentTime;
-      if (this.duration >= 30 && this.currentTime >= this.duration - 0.35 && this.audioElement.ended) {
+        !this.isLiveStream && this.duration > 0
+          ? Math.min(activeEl.currentTime, this.duration)
+          : activeEl.currentTime;
+      if (!this.isLiveStream && this.duration >= 30 && this.currentTime >= this.duration - 0.35 && activeEl.ended) {
         this.completeCurrentTrack(pollGen);
         return;
       }
@@ -935,6 +1137,9 @@ export class AudioEngine {
     const clampedStart = Math.max(0, Math.floor(startSeconds));
     this.activeBackend = 'youtube';
     this.lastAudioUrl = undefined;
+    this.usingPassthroughStream = false;
+    this.isLiveStream = false;
+    this.fallbackStreamUrl = undefined;
     this.stopHtml5Backend();
     this.clearYouTubeWatchdog();
     this.clearYouTubeResumeCheck();
@@ -1154,23 +1359,47 @@ export class AudioEngine {
     });
   }
 
-  public playTrack(duration: number, bpm = 120, audioUrl?: string, candidateVideoIds?: string[]) {
+  public playTrack(
+    duration: number,
+    bpm = 120,
+    audioUrl?: string,
+    candidateVideoIds?: string[],
+    options?: { isLiveStream?: boolean; fallbackAudioUrl?: string }
+  ) {
     if (audioUrl) {
       const gen = ++this.playGeneration;
       this.activeBackend = 'html5';
+      this.usingPassthroughStream = false;
+      this.isLiveStream = Boolean(options?.isLiveStream);
+      this.fallbackStreamUrl = options?.fallbackAudioUrl;
       this.lastPauseCalledAt = 0;
       this.lastAudioUrl = audioUrl;
       this.candidateIds = candidateVideoIds ? [...candidateVideoIds] : [];
       this.stopYouTubeBackend();
+      if (this.streamAudioElement) {
+        try {
+          this.streamAudioElement.pause();
+        } catch {
+          // Ignore
+        }
+      }
       this.initHtml5Context();
 
-      this.duration = Math.max(60, duration);
+      this.duration = this.isLiveStream ? 0 : Math.max(60, duration);
       this.currentTrackBpm = bpm;
       this.currentTime = 0;
       this.wasPlayingBeforeSleep = true;
       this.notifyTime();
 
-      if (!this.audioElement) return;
+      const requiresDirectPassthrough =
+        /^https?:\/\//i.test(audioUrl) &&
+        /(?:^|\.)(?:rri\.co\.id|anchor\.fm|radioking\.com|listen2myradio\.com)/i.test(
+          new URL(audioUrl, window.location.href).hostname
+        );
+      if (!this.audioElement || requiresDirectPassthrough) {
+        this.tryPassthroughStreamFallback(audioUrl, gen, 0);
+        return;
+      }
       this.audioElement.loop = false;
       this.audioElement.volume = this.volume;
       this.audioElement.playbackRate = this.playbackRate;
@@ -1178,7 +1407,7 @@ export class AudioEngine {
       if (this.gainNode && this.ctx) {
         const now = this.ctx.currentTime;
         this.gainNode.gain.cancelScheduledValues(now);
-        if (this.crossfadeSeconds > 0) {
+        if (this.crossfadeSeconds > 0 && !this.isLiveStream) {
           const rampSecs = Math.min(4, this.crossfadeSeconds);
           this.gainNode.gain.setValueAtTime(0.08, now);
           this.gainNode.gain.linearRampToValueAtTime(1, now + rampSecs);
@@ -1191,7 +1420,13 @@ export class AudioEngine {
       if (this.audioElement.src !== resolvedSrc) {
         this.audioElement.src = audioUrl;
       }
-      this.audioElement.currentTime = 0;
+      if (!this.isLiveStream) {
+        try {
+          this.audioElement.currentTime = 0;
+        } catch {
+          // Ignore before metadata ready
+        }
+      }
 
       if (this.ctx && this.ctx.state !== 'running') {
         this.ctx.resume().catch(() => {});
@@ -1206,6 +1441,10 @@ export class AudioEngine {
         })
         .catch(() => {
           if (gen !== this.playGeneration) return;
+          if (!this.usingPassthroughStream && !audioUrl.startsWith('blob:')) {
+            this.tryPassthroughStreamFallback(audioUrl, gen, 0);
+            return;
+          }
           if (candidateVideoIds && candidateVideoIds.length > 0) {
             this.playYouTubeTrack(candidateVideoIds, duration, bpm);
           } else {
@@ -1230,9 +1469,10 @@ export class AudioEngine {
     if (!this.isPlaying) return false;
     if (this.activeBackend === 'none') return true;
     if (this.activeBackend === 'html5') {
-      if (!this.audioElement || !this.audioElement.src) return true;
-      if (this.audioElement.paused || Boolean(this.audioElement.error)) return true;
-      if (this.ctx && this.ctx.state !== 'running') return true;
+      const activeEl = this.getActiveHtml5Element();
+      if (!activeEl || !activeEl.src) return true;
+      if (activeEl.paused || Boolean(activeEl.error)) return true;
+      if (!this.usingPassthroughStream && this.ctx && this.ctx.state !== 'running') return true;
       return false;
     }
     if (this.activeBackend === 'youtube') {
@@ -1261,9 +1501,10 @@ export class AudioEngine {
     this.clearYouTubeResumeCheck();
     this.stopYouTubePoll();
     this.stopHtml5Poll();
-    if (this.activeBackend === 'html5' && this.audioElement) {
+    const activeEl = this.getActiveHtml5Element();
+    if (this.activeBackend === 'html5' && activeEl) {
       try {
-        this.audioElement.pause();
+        activeEl.pause();
       } catch {
         // Ignore
       }
@@ -1281,11 +1522,39 @@ export class AudioEngine {
     if (!forceRecover && this.isPlaying && !this.isPlaybackWedged()) return;
     this.lastPauseCalledAt = 0;
 
-    if (this.ctx && this.ctx.state !== 'running') {
+    if (!this.usingPassthroughStream && this.ctx && this.ctx.state !== 'running') {
       this.ctx.resume().catch(() => {});
     }
 
     if (this.activeBackend === 'html5') {
+      if (this.usingPassthroughStream) {
+        const streamEl = this.ensureStreamAudioElement();
+        if (!streamEl) return;
+        if ((Boolean(streamEl.error) || !streamEl.src) && this.lastAudioUrl) {
+          streamEl.src = this.lastAudioUrl;
+          streamEl.load();
+        }
+        if (!streamEl.src) {
+          this.isPlaying = false;
+          this.wasPlayingBeforeSleep = false;
+          this.notifyState();
+          return;
+        }
+        streamEl
+          .play()
+          .then(() => {
+            this.isPlaying = true;
+            this.wasPlayingBeforeSleep = true;
+            this.notifyState();
+          })
+          .catch(() => {
+            this.isPlaying = false;
+            this.wasPlayingBeforeSleep = false;
+            this.notifyState();
+          });
+        return;
+      }
+
       if (!this.audioElement) {
         this.initHtml5Context();
       }
@@ -1294,13 +1563,15 @@ export class AudioEngine {
 
       const needsReload = (Boolean(audio.error) || !audio.src) && Boolean(this.lastAudioUrl);
       if (needsReload && this.lastAudioUrl) {
-        const resumeAt = Math.max(0, Math.min(this.duration, this.currentTime));
+        const resumeAt = this.isLiveStream ? 0 : Math.max(0, Math.min(this.duration, this.currentTime));
         audio.src = this.lastAudioUrl;
         audio.load();
-        try {
-          audio.currentTime = resumeAt;
-        } catch {
-          // Will start near position once metadata loads
+        if (!this.isLiveStream) {
+          try {
+            audio.currentTime = resumeAt;
+          } catch {
+            // Will start near position once metadata loads
+          }
         }
       }
 
@@ -1321,13 +1592,15 @@ export class AudioEngine {
         .catch(() => {
           // Retry once by rebinding stream URL in case sleep broke TCP/HTTP range socket
           if (this.lastAudioUrl && !needsReload) {
-            const resumeAt = Math.max(0, Math.min(this.duration, this.currentTime));
+            const resumeAt = this.isLiveStream ? 0 : Math.max(0, Math.min(this.duration, this.currentTime));
             audio.src = this.lastAudioUrl;
             audio.load();
-            try {
-              audio.currentTime = resumeAt;
-            } catch {
-              // Safe fallback
+            if (!this.isLiveStream) {
+              try {
+                audio.currentTime = resumeAt;
+              } catch {
+                // Safe fallback
+              }
             }
             audio
               .play()
@@ -1337,6 +1610,10 @@ export class AudioEngine {
                 this.notifyState();
               })
               .catch(() => {
+                if (!fromAutoWake && this.lastAudioUrl && !this.lastAudioUrl.startsWith('blob:')) {
+                  this.tryPassthroughStreamFallback(this.lastAudioUrl, this.playGeneration, resumeAt);
+                  return;
+                }
                 if (!fromAutoWake && this.candidateIds.length > 0) {
                   this.playYouTubeTrack(
                     this.candidateIds,
@@ -1432,6 +1709,7 @@ export class AudioEngine {
   }
 
   public seek(seconds: number) {
+    if (this.isLiveStream) return;
     const clamped = Math.max(0, Math.min(this.duration, seconds));
     this.currentTime = clamped;
     this.ytNearEndLastPos = clamped >= this.duration - 3.5 ? clamped : -1;
@@ -1448,9 +1726,10 @@ export class AudioEngine {
       return;
     }
 
-    if (this.activeBackend === 'html5' && this.audioElement && this.audioElement.src) {
+    const activeEl = this.getActiveHtml5Element();
+    if (this.activeBackend === 'html5' && activeEl && activeEl.src) {
       try {
-        this.audioElement.currentTime = clamped;
+        activeEl.currentTime = clamped;
       } catch {
         // Ignore seek before metadata ready
       }
@@ -1472,6 +1751,9 @@ export class AudioEngine {
     }
     if (this.audioElement) {
       this.audioElement.volume = this.volume;
+    }
+    if (this.streamAudioElement) {
+      this.streamAudioElement.volume = this.volume;
     }
     if (this.ytPlayer && this.ytReady) {
       try {
@@ -1551,6 +1833,9 @@ export class AudioEngine {
     this.playbackRate = Math.max(0.5, Math.min(2, rate));
     if (this.audioElement) {
       this.audioElement.playbackRate = this.playbackRate;
+    }
+    if (this.streamAudioElement) {
+      this.streamAudioElement.playbackRate = this.playbackRate;
     }
     if (this.ytPlayer && this.ytReady) {
       try {
@@ -1732,10 +2017,19 @@ export class AudioEngine {
       };
     }
 
-    if (this.activeBackend === 'html5' && this.analyser && this.isPlaying) {
+    if (
+      this.activeBackend === 'html5' &&
+      !this.usingPassthroughStream &&
+      this.analyser &&
+      this.isPlaying
+    ) {
       this.analyser.getByteFrequencyData(this.freqArray);
       this.analyser.getByteTimeDomainData(this.waveArray);
-    } else if (this.activeBackend === 'youtube' && this.isPlaying) {
+    } else if (
+      (this.activeBackend === 'youtube' ||
+        (this.activeBackend === 'html5' && this.usingPassthroughStream)) &&
+      this.isPlaying
+    ) {
       // BPM-locked reactive envelope while official embed video streams audio
       const t = performance.now() / 1000;
       const beatsPerSec = this.currentTrackBpm / 60;

@@ -512,9 +512,16 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
 
           {/* Desktop Spotify Seek Scrubber Row: currentTime [====*------] duration */}
           <div className="hidden md:flex items-center gap-2 w-full">
-            <span className="text-[11px] font-mono tabular-nums text-[var(--text-dim)] w-9 text-right shrink-0">
-              {formatTime(displayedTime)}
-            </span>
+            {duration <= 0 && currentTrack?.sourceTag === 'live-radio' ? (
+              <span className="inline-flex items-center justify-end gap-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-rose-400 w-9 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                LIVE
+              </span>
+            ) : (
+              <span className="text-[11px] font-mono tabular-nums text-[var(--text-dim)] w-9 text-right shrink-0">
+                {formatTime(displayedTime)}
+              </span>
+            )}
 
             <div
               role="slider"
@@ -564,7 +571,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             </div>
 
             <span className="text-[11px] font-mono tabular-nums text-[var(--text-dim)] w-9 text-left shrink-0">
-              {formatTime(duration)}
+              {duration <= 0 && currentTrack?.sourceTag === 'live-radio' ? '24/7' : formatTime(duration)}
             </span>
           </div>
         </div>

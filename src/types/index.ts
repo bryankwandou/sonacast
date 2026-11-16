@@ -21,6 +21,7 @@ export interface Track {
   coverUrl: string;
   videoUrl?: string;
   audioUrl?: string; // bundled studio master MP3 or local user upload blob URL
+  fallbackAudioUrl?: string; // secondary live radio mirror URL
   youtubeId?: string; // primary official full-length YouTube stream ID
   candidateVideoIds?: string[]; // failover official embed-safe stream IDs
   musicVideoId?: string; // official music video YouTube ID (distinct from - Topic audio stream)
@@ -147,6 +148,10 @@ export interface PodcastEpisode {
   coverUrl: string;
   audioUrl?: string;
   videoUrl?: string;
+  youtubeId?: string;
+  videoCandidates?: MusicVideoCandidate[];
+  isVideoPodcast?: boolean;
+  category?: string;
   description: string;
   episodeNumber: number;
   transcript: LyricLine[];
@@ -159,11 +164,17 @@ export interface RadioStation {
   tagline: string;
   genre: string;
   city?: string;
+  country?: string;
   category?: 'Global' | 'Indonesia' | 'Focus' | 'Dance' | 'Talk';
   bitRate: string;
   listenersCount: number;
   color: string;
   accentColor: string;
+  streamUrl?: string;
+  fallbackStreamUrl?: string;
+  isLiveBroadcast?: boolean;
+  faviconUrl?: string;
+  homepage?: string;
   currentTrack: Track;
 }
 

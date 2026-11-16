@@ -98,7 +98,7 @@ export const ThemeLanguageControls: React.FC<ThemeLanguageControlsProps> = ({
   }
 
   return (
-    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+    <div className="flex items-center gap-1 sm:gap-2 shrink-0">
       {/* Unified Single Language Selector (24 Languages) */}
       <div
         className="inline-flex items-center rounded-full p-0.5 border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border-medium)] transition-colors"
@@ -106,7 +106,7 @@ export const ThemeLanguageControls: React.FC<ThemeLanguageControlsProps> = ({
         aria-label="Language switcher"
       >
         <label
-          className="flex items-center gap-1.5 pl-2.5 pr-2 py-1"
+          className="flex items-center gap-1 sm:gap-1.5 pl-2 pr-1.5 sm:pl-2.5 sm:pr-2 py-1"
           title={t.languageLabel}
         >
           <Globe size={12} className="text-[var(--text-secondary)] shrink-0" />
@@ -115,7 +115,7 @@ export const ThemeLanguageControls: React.FC<ThemeLanguageControlsProps> = ({
             onChange={(e) => setLanguage(e.target.value as Language)}
             data-testid="language-select-topbar"
             aria-label={t.languageLabel}
-            className="bg-transparent text-[11px] font-semibold text-[var(--text-primary)] outline-none cursor-pointer max-w-[78px] sm:max-w-[108px]"
+            className="bg-transparent text-[11px] font-semibold text-[var(--text-primary)] outline-none cursor-pointer max-w-[54px] sm:max-w-[108px]"
           >
             {LANGUAGE_OPTIONS.map((opt) => (
               <option

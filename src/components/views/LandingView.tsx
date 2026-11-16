@@ -210,11 +210,11 @@ export const LandingView: React.FC<LandingViewProps> = ({
     >
       {/* Minimalist Option-A Top Header: Logo, Theme, 24 Languages, Enter Web Player */}
       <header className="sticky top-0 z-30 border-b border-[var(--border-subtle)] bg-[var(--bg-app)]/90 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-3 sm:px-8 lg:px-12 h-16 flex items-center justify-between gap-2 sm:gap-4 min-w-0">
+        <div className="max-w-7xl mx-auto px-3 sm:px-8 lg:px-12 h-16 flex items-center justify-between gap-1.5 sm:gap-4 min-w-0">
           <button
             type="button"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="flex items-center gap-2 text-left cursor-pointer shrink-0 group"
+            className="flex items-center gap-1.5 sm:gap-2 text-left cursor-pointer shrink-0 group"
           >
             <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-[var(--border-medium)] bg-[var(--bg-surface)] flex items-center justify-center transition-colors group-hover:border-[var(--text-primary)]">
               <Disc3
@@ -223,12 +223,12 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 style={isPlaying ? { animationDuration: '6s' } : undefined}
               />
             </div>
-            <span className="font-editorial text-xl sm:text-2xl leading-none tracking-tight text-[var(--text-primary)]">
+            <span className="font-editorial text-lg sm:text-2xl leading-none tracking-tight text-[var(--text-primary)]">
               {t.appName}
             </span>
           </button>
 
-          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 min-w-0 [&_select]:max-w-[74px] sm:[&_select]:max-w-none">
+          <div className="flex items-center gap-1 sm:gap-2.5 shrink-0 min-w-0 [&_select]:max-w-[54px] sm:[&_select]:max-w-none">
             <ThemeLanguageControls variant="landing" />
 
             {onOpenAuth && (
@@ -236,10 +236,11 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 type="button"
                 data-testid="landing-auth-btn"
                 onClick={onOpenAuth}
-                className="min-h-[36px] sm:min-h-[38px] px-2.5 sm:px-3.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-medium)] hover:border-[var(--text-primary)] text-[var(--text-primary)] text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+                aria-label={authUser ? authUser.displayName : t.authSignIn}
+                className="min-h-[34px] sm:min-h-[38px] px-2.5 sm:px-3.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-medium)] hover:border-[var(--text-primary)] text-[var(--text-primary)] text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
               >
                 <User size={13} className="text-[var(--accent-text)] shrink-0" />
-                <span className="max-w-[80px] sm:max-w-[120px] truncate">
+                <span className="hidden sm:inline max-w-[120px] truncate">
                   {authUser ? authUser.displayName : t.authSignIn}
                 </span>
               </button>
@@ -249,9 +250,10 @@ export const LandingView: React.FC<LandingViewProps> = ({
               type="button"
               data-testid="enter-app-btn"
               onClick={() => onEnterApp('discover')}
-              className="min-h-[36px] sm:min-h-[38px] px-3 sm:px-5 rounded-full bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1 hover:opacity-90 transition-opacity cursor-pointer shrink-0 whitespace-nowrap"
+              className="min-h-[34px] sm:min-h-[38px] px-3 sm:px-5 rounded-full bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1 hover:opacity-90 transition-opacity cursor-pointer shrink-0 whitespace-nowrap"
             >
-              <span>{t.enterPlayerCta}</span>
+              <span className="sm:hidden">Player</span>
+              <span className="hidden sm:inline">{t.enterPlayerCta}</span>
               <ArrowRight size={12} className="hidden sm:inline" />
             </button>
           </div>

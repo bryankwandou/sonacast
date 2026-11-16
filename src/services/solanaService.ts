@@ -553,6 +553,22 @@ class SolanaService {
       return { success: false, balance: 0, error: 'Wallet address unavailable.' };
     }
     try {
+      // Try server proxy first if a Devnet faucet secret/RPC is provisioned
+      const serverRes = await fetch('/api/tips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'faucet_devnet', recipient: addr })
+      }).catch(() => null);
+      if (serverRes && serverRes.ok) {
+        const serverData = await serverRes.json().catch(() => null);
+        if (serverData?.signature) {
+          await this.waitForSignatureConfirmation('devnet', String(serverData.signature), 22000);
+          const balance = await this.fetchBalance();
+          this.notify();
+          return { success: true, balance };
+        }
+      }
+
       const resp = await fetch(DEVNET_PUBLIC_RPC, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -563,6 +579,16 @@ class SolanaService {
           params: [addr, LAMPORTS_PER_SOL]
         })
       });
+      if (resp.status === 410 || resp.status === 429) {
+        return {
+          success: false,
+          balance: this.cachedBalanceSol,
+          error:
+            resp.status === 410
+              ? `Solana Devnet RPC faucet is closed (HTTP 410). Copy your Devnet address (${addr.slice(0, 6)}...${addr.slice(-4)}) and request Devnet SOL at https://faucet.solana.com.`
+              : 'Devnet faucet rate-limited. Open https://faucet.solana.com with your copied Devnet wallet address.'
+        };
+      }
       const data = await resp.json();
       if (data.error || !data.result) {
         return {
