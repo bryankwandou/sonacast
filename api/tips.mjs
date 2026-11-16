@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import {
   ensureListenerRow,
   ensureSchema,
@@ -603,6 +604,91 @@ export default async function handler(req, res) {
       const cfg = getClusterConfig(targetCluster);
       const rpcResult = await solanaRpcCall(cfg.rpcUrl, method, params);
       res.status(200).json({ jsonrpc: '2.0', id: 1, result: rpcResult });
+      return;
+    }
+
+    // Server-side Solana Devnet faucet funded strictly for Devnet sandbox testing
+    if (postAction === 'faucet_devnet') {
+      const targetCluster = normalizeCluster(body.cluster);
+      if (targetCluster !== 'devnet') {
+        res.status(403).json({ error: 'Faucet is strictly restricted to Solana Devnet.' });
+        return;
+      }
+      const recipient = sanitizeText(body.recipient, 64);
+      if (!isValidPublicKey(recipient)) {
+        res.status(400).json({ error: 'Invalid recipient Solana address.' });
+        return;
+      }
+
+      const rawSecret = String(process.env.SOLANA_DEVNET_FAUCET_SECRET_KEY || '').trim();
+      if (!rawSecret) {
+        res.status(503).json({
+          error: 'Devnet server faucet is not provisioned. Use https://spigot-devnet.vercel.app or https://faucet.solana.com.'
+        });
+        return;
+      }
+
+      let secretBytes;
+      try {
+        const parsed = JSON.parse(rawSecret);
+        if (!Array.isArray(parsed) || parsed.length !== 64) {
+          throw new Error('Expected 64-byte keypair array');
+        }
+        secretBytes = Uint8Array.from(parsed.map((n) => Number(n) & 0xff));
+      } catch {
+        res.status(500).json({ error: 'Server Devnet faucet key configuration is malformed.' });
+        return;
+      }
+
+      const cfg = getClusterConfig('devnet');
+      const currentBalRes = await solanaRpcCall(cfg.rpcUrl, 'getBalance', [
+        recipient,
+        { commitment: 'confirmed' }
+      ]);
+      const currentLamports = Number(currentBalRes?.value) || 0;
+      if (currentLamports >= 5 * LAMPORTS_PER_SOL) {
+        res.status(429).json({
+          error: 'Devnet test wallet already holds >= 5.0 SOL. Use existing Devnet balance to tip artists.'
+        });
+        return;
+      }
+
+      const faucetKeypair = Keypair.fromSecretKey(secretBytes);
+      const connection = new Connection(cfg.rpcUrl, 'confirmed');
+      const faucetLamports = await connection.getBalance(faucetKeypair.publicKey, 'confirmed');
+      const dripLamports = LAMPORTS_PER_SOL;
+      if (faucetLamports < dripLamports + 50000) {
+        res.status(503).json({
+          error: 'Devnet faucet reserve exhausted. Top up via https://spigot-devnet.vercel.app or https://faucet.solana.com.'
+        });
+        return;
+      }
+
+      const tx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: faucetKeypair.publicKey,
+          toPubkey: new PublicKey(recipient),
+          lamports: dripLamports
+        })
+      );
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = faucetKeypair.publicKey;
+      tx.sign(faucetKeypair);
+
+      const signature = await connection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed'
+      });
+
+      res.status(200).json({
+        success: true,
+        cluster: 'devnet',
+        recipient,
+        lamports: dripLamports,
+        signature,
+        faucetAddress: faucetKeypair.publicKey.toBase58()
+      });
       return;
     }
 

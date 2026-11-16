@@ -415,7 +415,7 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
                   {isAirdropping ? 'Requesting...' : '+1 SOL Airdrop'}
                 </button>
                 <a
-                  href="https://faucet.solana.com/"
+                  href="https://spigot-devnet.vercel.app/"
                   target="_blank"
                   rel="noreferrer"
                   className="text-[11px] text-[var(--accent-text)] underline"

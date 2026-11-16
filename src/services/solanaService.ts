@@ -567,6 +567,15 @@ class SolanaService {
           this.notify();
           return { success: true, balance };
         }
+      } else if (serverRes && serverRes.status === 429) {
+        const errData = await serverRes.json().catch(() => null);
+        return {
+          success: false,
+          balance: this.cachedBalanceSol,
+          error:
+            errData?.error ||
+            'Devnet test wallet already has enough SOL to send tips.'
+        };
       }
 
       const resp = await fetch(DEVNET_PUBLIC_RPC, {
@@ -585,8 +594,8 @@ class SolanaService {
           balance: this.cachedBalanceSol,
           error:
             resp.status === 410
-              ? `Solana Devnet RPC faucet is closed (HTTP 410). Copy your Devnet address (${addr.slice(0, 6)}...${addr.slice(-4)}) and request Devnet SOL at https://faucet.solana.com.`
-              : 'Devnet faucet rate-limited. Open https://faucet.solana.com with your copied Devnet wallet address.'
+              ? `Solana Devnet RPC faucet is closed (HTTP 410). Copy your Devnet address (${addr.slice(0, 6)}...${addr.slice(-4)}) and request Devnet SOL at https://spigot-devnet.vercel.app or https://faucet.solana.com.`
+              : 'Devnet faucet rate-limited. Open https://spigot-devnet.vercel.app or https://faucet.solana.com with your copied Devnet wallet address.'
         };
       }
       const data = await resp.json();
@@ -805,7 +814,7 @@ class SolanaService {
     if (!verifyRes.ok || !verifiedJson?.tip) {
       throw new Error(
         verifiedJson?.error ||
-          `On-chain transfer succeeded (${txSignature.slice(0, 12)}...), but Neon verification failed.`
+        `On-chain transfer succeeded (${txSignature.slice(0, 12)}...), but Neon verification failed.`
       );
     }
 
