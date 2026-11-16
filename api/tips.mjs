@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import {
   ensureListenerRow,
   ensureSchema,
@@ -653,9 +652,25 @@ export default async function handler(req, res) {
         return;
       }
 
-      const faucetKeypair = Keypair.fromSecretKey(secretBytes);
-      const connection = new Connection(cfg.rpcUrl, 'confirmed');
-      const faucetLamports = await connection.getBalance(faucetKeypair.publicKey, 'confirmed');
+      const faucetSeed = Buffer.from(secretBytes.slice(0, 32));
+      const faucetPubkeyBytes = Buffer.from(secretBytes.slice(32, 64));
+      const faucetAddress = encodeBase58(faucetPubkeyBytes);
+      if (recipient === faucetAddress) {
+        res.status(400).json({ error: 'Recipient cannot match faucet treasury address.' });
+        return;
+      }
+
+      const recipientPubkeyBytes = decodeBase5832Bytes(recipient);
+      if (!recipientPubkeyBytes) {
+        res.status(400).json({ error: 'Invalid recipient Solana address bytes.' });
+        return;
+      }
+
+      const faucetBalRes = await solanaRpcCall(cfg.rpcUrl, 'getBalance', [
+        faucetAddress,
+        { commitment: 'confirmed' }
+      ]);
+      const faucetLamports = Number(faucetBalRes?.value) || 0;
       const dripLamports = LAMPORTS_PER_SOL;
       if (faucetLamports < dripLamports + 50000) {
         res.status(503).json({
@@ -664,30 +679,53 @@ export default async function handler(req, res) {
         return;
       }
 
-      const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: faucetKeypair.publicKey,
-          toPubkey: new PublicKey(recipient),
-          lamports: dripLamports
-        })
-      );
-      const { blockhash } = await connection.getLatestBlockhash('confirmed');
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = faucetKeypair.publicKey;
-      tx.sign(faucetKeypair);
+      const bhRes = await solanaRpcCall(cfg.rpcUrl, 'getLatestBlockhash', [
+        { commitment: 'confirmed' }
+      ]);
+      const blockhash = String(bhRes?.value?.blockhash || '');
+      const blockhashBytes = decodeBase5832Bytes(blockhash);
+      if (!blockhashBytes) {
+        res.status(502).json({ error: 'Failed to fetch recent Devnet blockhash.' });
+        return;
+      }
 
-      const signature = await connection.sendRawTransaction(tx.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: 'confirmed'
+      const instrData = Buffer.alloc(12);
+      instrData.writeUInt32LE(2, 0);
+      instrData.writeBigUInt64LE(BigInt(dripLamports), 4);
+      const message = Buffer.concat([
+        Buffer.from([1, 0, 1, 3]),
+        faucetPubkeyBytes,
+        Buffer.from(recipientPubkeyBytes),
+        Buffer.alloc(32),
+        Buffer.from(blockhashBytes),
+        Buffer.from([1, 2, 2, 0, 1, 12]),
+        instrData
+      ]);
+      const pkcs8Header = Buffer.from('302e020100300506032b657004220420', 'hex');
+      const privateKeyObj = crypto.createPrivateKey({
+        key: Buffer.concat([pkcs8Header, faucetSeed]),
+        format: 'der',
+        type: 'pkcs8'
       });
+      const txSignatureBytes = crypto.sign(null, message, privateKeyObj);
+      const rawTxBase64 = Buffer.concat([Buffer.from([1]), txSignatureBytes, message]).toString('base64');
+
+      const signature = await solanaRpcCall(cfg.rpcUrl, 'sendTransaction', [
+        rawTxBase64,
+        {
+          encoding: 'base64',
+          skipPreflight: false,
+          preflightCommitment: 'confirmed'
+        }
+      ]);
 
       res.status(200).json({
         success: true,
         cluster: 'devnet',
         recipient,
         lamports: dripLamports,
-        signature,
-        faucetAddress: faucetKeypair.publicKey.toBase58()
+        signature: String(signature),
+        faucetAddress
       });
       return;
     }
