@@ -147,7 +147,10 @@ export class AudioEngine {
   private html5StallSince = 0;
   private audioBlobCache = new Map<string, string>();
   private audioBlobPromises = new Map<string, Promise<string | null>>();
+  private audioBlobPrefetchTimer: number | null = null;
   private blobRecoverInFlight = false;
+  private html5PlayPending = false;
+  private pendingHtml5SeekSeconds: number | null = null;
   private suppressPauseUntilMs = 0;
 
   constructor() {
@@ -494,12 +497,29 @@ export class AudioEngine {
       this.audioElement.addEventListener('playing', () => {
         if (this.activeBackend !== 'html5' || this.usingPassthroughStream) return;
         this.suppressPauseUntilMs = 0;
+        this.html5PlayPending = false;
         if (this.ctx && this.ctx.state !== 'running') {
           this.ctx.resume().catch(() => {});
         }
         if (!this.isPlaying) {
           this.isPlaying = true;
           this.notifyState();
+        }
+        const activeUrl = this.lastAudioUrl ? this.isSameOriginAudioFile(this.lastAudioUrl) : null;
+        if (activeUrl && !this.audioBlobCache.has(activeUrl) && this.audioBlobPrefetchTimer === null) {
+          const playingGen = this.playGeneration;
+          this.audioBlobPrefetchTimer = window.setTimeout(() => {
+            this.audioBlobPrefetchTimer = null;
+            if (
+              playingGen === this.playGeneration &&
+              this.activeBackend === 'html5' &&
+              !this.usingPassthroughStream &&
+              this.lastAudioUrl &&
+              this.isSameOriginAudioFile(this.lastAudioUrl) === activeUrl
+            ) {
+              void this.prefetchSameOriginAudioBlob(activeUrl);
+            }
+          }, 900);
         }
       });
 
@@ -555,6 +575,22 @@ export class AudioEngine {
           if (realDur >= 10 && Math.abs(realDur - this.duration) >= 1) {
             this.duration = realDur;
             this.notifyDurationChange();
+          }
+          if (this.pendingHtml5SeekSeconds !== null && this.audioElement.readyState >= 1) {
+            const target = Math.max(
+              0,
+              Math.min(this.audioElement.duration - 0.15, this.pendingHtml5SeekSeconds)
+            );
+            this.pendingHtml5SeekSeconds = null;
+            try {
+              this.audioElement.currentTime = target;
+              this.currentTime = target;
+              this.html5LastPos = target;
+              this.html5StallSince = performance.now();
+              this.notifyTime();
+            } catch {
+              // Ignore seek failure
+            }
           }
         }
       };
@@ -1032,13 +1068,20 @@ export class AudioEngine {
     return null;
   }
 
+  private clearHtml5BlobPrefetch() {
+    if (this.audioBlobPrefetchTimer !== null) {
+      clearTimeout(this.audioBlobPrefetchTimer);
+      this.audioBlobPrefetchTimer = null;
+    }
+  }
+
   private prefetchSameOriginAudioBlob(resolvedUrl: string): Promise<string | null> {
     const cached = this.audioBlobCache.get(resolvedUrl);
     if (cached) return Promise.resolve(cached);
     const inFlight = this.audioBlobPromises.get(resolvedUrl);
     if (inFlight) return inFlight;
 
-    const task = fetch(resolvedUrl)
+    const task = fetch(resolvedUrl, { cache: 'no-store' })
       .then((res) => (res.ok ? res.blob() : null))
       .then((blob) => {
         if (!blob || blob.size < 1024) return null;
@@ -1079,7 +1122,7 @@ export class AudioEngine {
     const sameOriginUrl = this.isSameOriginAudioFile(this.lastAudioUrl);
     if (sameOriginUrl) {
       const startedAt = performance.now();
-      const shouldResume = this.isPlaying;
+      const shouldResume = this.isPlaying || this.html5PlayPending;
       this.blobRecoverInFlight = true;
       try {
         const blobUrl = await this.prefetchSameOriginAudioBlob(sameOriginUrl);
@@ -1133,8 +1176,11 @@ export class AudioEngine {
 
   private stopHtml5Backend() {
     this.stopHtml5Poll();
+    this.clearHtml5BlobPrefetch();
     this.usingPassthroughStream = false;
     this.blobRecoverInFlight = false;
+    this.html5PlayPending = false;
+    this.pendingHtml5SeekSeconds = null;
     this.html5LastPos = -1;
     this.html5StallSince = 0;
     if (this.audioElement) {
@@ -1169,7 +1215,7 @@ export class AudioEngine {
         this.completeCurrentTrack(pollGen);
         return;
       }
-      if (!this.isPlaying || activeEl.paused) {
+      if ((!this.isPlaying && !this.html5PlayPending) || activeEl.paused) {
         return;
       }
       const nowMs = performance.now();
@@ -1202,6 +1248,9 @@ export class AudioEngine {
             void this.recoverStalledHtml5Seek(pollGen, activeEl.currentTime);
           }
         }
+      }
+      if (!this.isPlaying || this.pendingHtml5SeekSeconds !== null) {
+        return;
       }
       this.currentTime =
         !this.isLiveStream && this.duration > 0
@@ -1558,6 +1607,8 @@ export class AudioEngine {
       this.fallbackStreamUrl = options?.fallbackAudioUrl;
       this.lastPauseCalledAt = 0;
       this.suppressPauseUntilMs = 0;
+      this.pendingHtml5SeekSeconds = null;
+      this.clearHtml5BlobPrefetch();
       this.lastAudioUrl = audioUrl;
       this.candidateIds = candidateVideoIds ? [...candidateVideoIds] : [];
       this.stopYouTubeBackend();
@@ -1608,12 +1659,10 @@ export class AudioEngine {
       if (this.audioElement.src !== resolvedEffectiveSrc) {
         this.audioElement.src = effectiveAudioSrc;
       }
-      if (sameOriginAudio && !cachedBlobUrl) {
-        void this.prefetchSameOriginAudioBlob(sameOriginAudio);
-      }
       this.html5LastPos = 0;
       this.html5StallSince = performance.now();
       this.blobRecoverInFlight = false;
+      this.html5PlayPending = true;
       if (!this.isLiveStream) {
         try {
           this.audioElement.currentTime = 0;
@@ -1630,11 +1679,13 @@ export class AudioEngine {
         .play()
         .then(() => {
           if (gen !== this.playGeneration) return;
+          this.html5PlayPending = false;
           this.isPlaying = true;
           this.notifyState();
         })
         .catch(() => {
           if (gen !== this.playGeneration) return;
+          this.html5PlayPending = false;
           if (!this.usingPassthroughStream && !audioUrl.startsWith('blob:')) {
             this.tryPassthroughStreamFallback(audioUrl, gen, 0);
             return;
@@ -1687,6 +1738,9 @@ export class AudioEngine {
   public pause() {
     this.lastPauseCalledAt = performance.now();
     this.suppressPauseUntilMs = 0;
+    this.html5PlayPending = false;
+    this.pendingHtml5SeekSeconds = null;
+    this.clearHtml5BlobPrefetch();
     this.ytTrackTransitionUntil = 0;
     this.ytNearEndLastPos = -1;
     this.ytNearEndStallSince = 0;
@@ -1935,14 +1989,14 @@ export class AudioEngine {
         if (sameOriginUrl) {
           const cachedBlobUrl = this.audioBlobCache.get(sameOriginUrl);
           if (cachedBlobUrl && this.audioElement.src !== cachedBlobUrl) {
-            const shouldResume = this.isPlaying;
+            const shouldResume = this.isPlaying || this.html5PlayPending;
             this.suppressPauseUntilMs = shouldResume ? performance.now() + 250 : 0;
             this.audioElement.src = cachedBlobUrl;
             this.audioElement.load();
             try {
               this.audioElement.currentTime = clamped;
             } catch {
-              // Ignore seek before metadata ready
+              this.pendingHtml5SeekSeconds = clamped;
             }
             if (shouldResume) {
               this.isPlaying = true;
@@ -1956,10 +2010,15 @@ export class AudioEngine {
             this.notifyTime();
             return;
           }
-          try {
-            this.audioElement.currentTime = clamped;
-          } catch {
-            // Ignore seek before metadata ready
+          if (this.audioElement.readyState >= 1) {
+            this.pendingHtml5SeekSeconds = null;
+            try {
+              this.audioElement.currentTime = clamped;
+            } catch {
+              this.pendingHtml5SeekSeconds = clamped;
+            }
+          } else {
+            this.pendingHtml5SeekSeconds = clamped;
           }
           let isBuffered = false;
           try {
@@ -1975,17 +2034,22 @@ export class AudioEngine {
           } catch {
             // Ignore buffered check error
           }
-          if (!cachedBlobUrl && !isBuffered) {
+          if (!cachedBlobUrl && !isBuffered && this.audioElement.readyState >= 1) {
             void this.recoverStalledHtml5Seek(this.playGeneration, clamped);
           }
           this.notifyTime();
           return;
         }
       }
-      try {
-        activeEl.currentTime = clamped;
-      } catch {
-        // Ignore seek before metadata ready
+      if (activeEl.readyState >= 1) {
+        this.pendingHtml5SeekSeconds = null;
+        try {
+          activeEl.currentTime = clamped;
+        } catch {
+          this.pendingHtml5SeekSeconds = clamped;
+        }
+      } else {
+        this.pendingHtml5SeekSeconds = clamped;
       }
     } else if (this.activeBackend === 'youtube' && this.ytPlayer && this.ytReady) {
       try {
