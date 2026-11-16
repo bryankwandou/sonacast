@@ -147,6 +147,7 @@ export class AudioEngine {
   private html5StallSince = 0;
   private audioBlobCache = new Map<string, string>();
   private audioBlobPromises = new Map<string, Promise<string | null>>();
+  private audioBlobAbortControllers = new Map<string, AbortController>();
   private audioBlobPrefetchTimer: number | null = null;
   private blobRecoverInFlight = false;
   private html5PlayPending = false;
@@ -519,7 +520,7 @@ export class AudioEngine {
             ) {
               void this.prefetchSameOriginAudioBlob(activeUrl);
             }
-          }, 900);
+          }, 2000);
         }
       });
 
@@ -1068,10 +1069,17 @@ export class AudioEngine {
     return null;
   }
 
-  private clearHtml5BlobPrefetch() {
+  private clearHtml5BlobPrefetch(keepUrl: string | null = null) {
     if (this.audioBlobPrefetchTimer !== null) {
       clearTimeout(this.audioBlobPrefetchTimer);
       this.audioBlobPrefetchTimer = null;
+    }
+    for (const [url, controller] of this.audioBlobAbortControllers.entries()) {
+      if (!keepUrl || url !== keepUrl) {
+        controller.abort();
+        this.audioBlobAbortControllers.delete(url);
+        this.audioBlobPromises.delete(url);
+      }
     }
   }
 
@@ -1081,7 +1089,10 @@ export class AudioEngine {
     const inFlight = this.audioBlobPromises.get(resolvedUrl);
     if (inFlight) return inFlight;
 
-    const task = fetch(resolvedUrl, { cache: 'no-store' })
+    const controller = new AbortController();
+    this.audioBlobAbortControllers.set(resolvedUrl, controller);
+
+    const task = fetch(resolvedUrl, { cache: 'no-store', signal: controller.signal })
       .then((res) => (res.ok ? res.blob() : null))
       .then((blob) => {
         if (!blob || blob.size < 1024) return null;
@@ -1099,7 +1110,12 @@ export class AudioEngine {
       })
       .catch(() => null)
       .finally(() => {
-        this.audioBlobPromises.delete(resolvedUrl);
+        if (this.audioBlobAbortControllers.get(resolvedUrl) === controller) {
+          this.audioBlobAbortControllers.delete(resolvedUrl);
+        }
+        if (this.audioBlobPromises.get(resolvedUrl) === task) {
+          this.audioBlobPromises.delete(resolvedUrl);
+        }
       });
 
     this.audioBlobPromises.set(resolvedUrl, task);
@@ -1608,7 +1624,8 @@ export class AudioEngine {
       this.lastPauseCalledAt = 0;
       this.suppressPauseUntilMs = 0;
       this.pendingHtml5SeekSeconds = null;
-      this.clearHtml5BlobPrefetch();
+      const sameOriginAudio = this.isSameOriginAudioFile(audioUrl);
+      this.clearHtml5BlobPrefetch(sameOriginAudio);
       this.lastAudioUrl = audioUrl;
       this.candidateIds = candidateVideoIds ? [...candidateVideoIds] : [];
       this.stopYouTubeBackend();
@@ -1652,7 +1669,6 @@ export class AudioEngine {
         }
       }
 
-      const sameOriginAudio = this.isSameOriginAudioFile(audioUrl);
       const cachedBlobUrl = sameOriginAudio ? this.audioBlobCache.get(sameOriginAudio) : undefined;
       const effectiveAudioSrc = cachedBlobUrl || audioUrl;
       const resolvedEffectiveSrc = new URL(effectiveAudioSrc, window.location.href).href;
