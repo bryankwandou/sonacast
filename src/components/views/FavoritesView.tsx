@@ -1,6 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
+  Bookmark,
+  BookmarkCheck,
   Check,
   Clock,
   Cloud,
@@ -10,6 +12,7 @@ import {
   FolderPlus,
   Heart,
   ListMusic,
+  Loader2,
   Pin,
   Play,
   Plus,
@@ -24,6 +27,7 @@ import {
   UserCog
 } from 'lucide-react';
 import type {
+  CatalogAlbum,
   FavoriteTrack,
   FollowedArtist,
   ListenerProfile,
@@ -33,6 +37,8 @@ import type {
   UserPlaylist
 } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { usePopularCharts } from '../../hooks/usePopularCharts';
+import { fetchAlbumTracksOnline } from '../../services/musicService';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 
 interface FavoritesViewProps {
@@ -60,6 +66,7 @@ interface FavoritesViewProps {
   onCreateAlbum: (name: string, description?: string) => void;
   onDeleteAlbum: (albumId: string) => void;
   onRemoveTrackFromAlbum: (albumId: string, trackId: string) => void;
+  onSaveCatalogAlbum?: (album: CatalogAlbum, prefetchedTracks?: Track[]) => Promise<void> | void;
   onToggleFollowArtist: (artistName: string, genre: string) => void;
   onSearchArtist: (artistName: string) => void;
   onUpdateProfile: (displayName: string, bio: string) => void;
@@ -95,6 +102,7 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
   onCreateAlbum,
   onDeleteAlbum,
   onRemoveTrackFromAlbum,
+  onSaveCatalogAlbum,
   onToggleFollowArtist,
   onSearchArtist,
   onUpdateProfile,
@@ -104,11 +112,14 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
   onOpenBlend
 }) => {
   const { t } = useAppPreferences();
+  const { popularCharts } = usePopularCharts();
   const [subTab, setSubTab] = useState<HubSubTab>('favorites');
   const [filterQuery, setFilterQuery] = useState('');
   const [pinnedOnly, setPinnedOnly] = useState(false);
   const [editingNoteTrackId, setEditingNoteTrackId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
+  const [loadingCatalogAlbumId, setLoadingCatalogAlbumId] = useState<string | null>(null);
+  const [savingCatalogAlbumId, setSavingCatalogAlbumId] = useState<string | null>(null);
 
   const [newAlbumName, setNewAlbumName] = useState('');
   const [newAlbumDesc, setNewAlbumDesc] = useState('');
@@ -118,6 +129,45 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
   const [jsonImportNotice, setJsonImportNotice] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const savedAlbumNames = useMemo(
+    () => new Set(albums.map((a) => a.name.trim().toLowerCase())),
+    [albums]
+  );
+
+  const handlePlayCatalogAlbum = async (alb: CatalogAlbum) => {
+    setLoadingCatalogAlbumId(alb.id);
+    try {
+      const res = await fetchAlbumTracksOnline(alb);
+      if (res.tracks.length > 0) {
+        onPlayTrackList(
+          res.tracks,
+          false,
+          {
+            id: `release-album-${res.album.id}`,
+            type: 'release-album',
+            title: res.album.title,
+            subtitle: res.album.artist,
+            coverUrl: res.album.coverUrl,
+            ordered: true
+          },
+          0
+        );
+      }
+    } finally {
+      setLoadingCatalogAlbumId(null);
+    }
+  };
+
+  const handleSavePopularAlbum = async (alb: CatalogAlbum) => {
+    if (!onSaveCatalogAlbum || savingCatalogAlbumId === alb.id) return;
+    setSavingCatalogAlbumId(alb.id);
+    try {
+      await onSaveCatalogAlbum(alb);
+    } finally {
+      setSavingCatalogAlbumId(null);
+    }
+  };
 
   const [editingProfile, setEditingProfile] = useState(false);
   const [nameDraft, setNameDraft] = useState(profile.displayName);
@@ -939,6 +989,99 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
                 </div>
               )}
             </div>
+          )}
+
+          {/* Curated Popular Studio Albums Shelf */}
+          {popularCharts.albums.length > 0 && (
+            <section
+              data-testid="favorites-popular-albums"
+              className="pt-4 border-t border-[var(--border-subtle)] space-y-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Disc3 size={15} className="text-[var(--accent-text)]" />
+                  <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                    Popular Studio Albums
+                  </h3>
+                </div>
+                <span className="text-[11px] font-mono text-[var(--text-dim)]">
+                  {popularCharts.albums.length} Releases
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {popularCharts.albums.slice(0, 12).map((alb) => {
+                  const isSaved = savedAlbumNames.has(alb.title.trim().toLowerCase());
+                  const isLoadingAlb = loadingCatalogAlbumId === alb.id;
+                  const isSavingAlb = savingCatalogAlbumId === alb.id;
+                  return (
+                    <div
+                      key={alb.id}
+                      className="rounded-xl p-2.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] flex flex-col justify-between gap-2 min-w-0"
+                    >
+                      <div className="space-y-2 min-w-0">
+                        <div className="relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
+                          <img
+                            src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
+                            alt={alb.title}
+                            loading="lazy"
+                            onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-[var(--text-primary)] truncate">
+                            {alb.title}
+                          </p>
+                          <p className="text-[11px] text-[var(--text-dim)] truncate">
+                            {alb.artist}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-1 pt-1">
+                        {onSaveCatalogAlbum && (
+                          <button
+                            type="button"
+                            disabled={isSavingAlb}
+                            onClick={() => void handleSavePopularAlbum(alb)}
+                            title={isSaved ? 'Saved in Library' : 'Save Album to Library'}
+                            className={`h-7 px-2 rounded-lg border text-[10px] font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-60 ${
+                              isSaved
+                                ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                                : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            }`}
+                          >
+                            {isSavingAlb ? (
+                              <Loader2 size={10} className="animate-spin" />
+                            ) : isSaved ? (
+                              <BookmarkCheck size={11} />
+                            ) : (
+                              <Bookmark size={11} />
+                            )}
+                            <span>{isSaved ? 'Saved' : 'Save'}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={isLoadingAlb}
+                          onClick={() => void handlePlayCatalogAlbum(alb)}
+                          aria-label={`Play ${alb.title}`}
+                          className="h-7 px-2.5 rounded-lg bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                        >
+                          {isLoadingAlb ? (
+                            <Loader2 size={10} className="animate-spin" />
+                          ) : (
+                            <Play size={10} className="fill-current" />
+                          )}
+                          <span>Play</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           )}
         </div>
       )}

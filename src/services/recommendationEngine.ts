@@ -152,8 +152,17 @@ const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     classLabel: 'Indo Pop & Ballad Soul',
     isInstrumental: false,
     compatibleClasses: ['indo_band_rock', 'indo_indie_folk', 'rnb_late_soul'],
-    peerArtists: ['Tulus', 'Raisa', 'Afgan', 'Glenn Fredly', 'Nadin Amizah', 'Mahalini', 'Tiara Andini', 'Judika', 'Lyodra', 'Bernadya'],
-    keywords: ['tulus', 'raisa', 'afgan', 'glenn fredly', 'judika', 'mahalini', 'tiara andini', 'lyodra', 'ziva magnolya', 'bernadya', 'nadin amizah', 'pamungkas', 'rizky febian', 'juicy luicy', 'virgoun', 'budi doremi', 'rossa', 'bunga citra lestari', 'isyana sarasvati', 'yura yunita', 'sal priadi', 'siti nurhaliza', 'maher zain']
+    peerArtists: ['Tulus', 'Raisa', 'Mahalini', 'Bernadya', 'Tiara Andini', 'Nadin Amizah', 'Andmesh', 'Afgan', 'Judika', 'Lyodra'],
+    keywords: [
+      'tulus', 'raisa', 'afgan', 'glenn fredly', 'judika', 'mahalini', 'tiara andini',
+      'lyodra', 'ziva magnolya', 'bernadya', 'nadin amizah', 'pamungkas', 'rizky febian',
+      'juicy luicy', 'virgoun', 'budi doremi', 'rossa', 'bunga citra lestari',
+      'isyana sarasvati', 'yura yunita', 'sal priadi', 'siti nurhaliza', 'maher zain',
+      'near', 'dian sorowea', 'wizz baker', 'juan reza', 'chesylino', 'mario g klau',
+      'raim laode', 'andmesh', 'jaz', 'cakra khan', 'fabio asher', 'anggi marito',
+      'keisya levronka', 'nyoman paul', 'rony parulian', 'aziz hedra', 'brisia jodie',
+      'stevan pasaribu', 'mahen', 'anji', 'marcell', 'krisdayanti', 'melly goeslaw'
+    ]
   },
   indo_band_rock: {
     classId: 'indo_band_rock',
@@ -161,7 +170,12 @@ const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     isInstrumental: false,
     compatibleClasses: ['indo_pop_ballad', 'indo_indie_folk', 'alt_indie_rock'],
     peerArtists: ['Sheila On 7', 'Dewa 19', 'Noah', 'Padi', 'Peterpan', 'Gigi', 'Ada Band', 'Chrisye', 'Nidji'],
-    keywords: ['dewa 19', 'sheila on 7', 'noah', 'peterpan', 'padi', 'gigi', 'ada band', 'chrisye', 'ungu', 'nidji', 'd\'masiv', 'letto', 'slank', 'armada', 'seventeen', 'kahitna', 'yovie']
+    keywords: [
+      'dewa 19', 'sheila on 7', 'noah', 'peterpan', 'padi', 'gigi', 'ada band', 'chrisye',
+      'ungu', 'nidji', 'd\'masiv', 'letto', 'slank', 'armada', 'seventeen', 'kahitna',
+      'yovie', 'vierratale', 'vierra', 'geisha', 'for revenge', 'last child', 'samsons',
+      'kotak', 'kerispatih', 'naff', 'drive', 'ran', 'hivi', 'maliq'
+    ]
   },
   indo_indie_folk: {
     classId: 'indo_indie_folk',
@@ -169,7 +183,7 @@ const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     isInstrumental: false,
     compatibleClasses: ['indo_pop_ballad', 'indo_band_rock', 'alt_indie_rock', 'jazz_blues_acoustic'],
     peerArtists: ['Hindia', 'Payung Teduh', 'Fourtwnty', 'Efek Rumah Kaca', 'Reality Club', 'Banda Neira', 'Feby Putri', 'Kunto Aji'],
-    keywords: ['hindia', 'feast', 'efek rumah kaca', 'payung teduh', 'fourtwnty', 'banda neira', 'reality club', 'barasuara', 'feby putri', 'kunto aji', 'fiersa besari', 'dere', 'idgitaf', 'iwan fals']
+    keywords: ['hindia', 'feast', 'efek rumah kaca', 'payung teduh', 'fourtwnty', 'banda neira', 'reality club', 'barasuara', 'feby putri', 'kunto aji', 'fiersa besari', 'dere', 'idgitaf', 'iwan fals', 'danilla', 'dialog dini hari', 'stars and rabbit']
   },
   indo_koplo_dangdut: {
     classId: 'indo_koplo_dangdut',
@@ -269,14 +283,93 @@ const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
   }
 };
 
+export type TrackLanguageRegion = 'id' | 'ko' | 'ja' | 'es' | 'en' | 'instrumental';
+
+export interface AudioFeatureVector {
+  energy: number;
+  valence: number;
+  danceability: number;
+  acousticness: number;
+  instrumentalness: number;
+  tempoNorm: number;
+}
+
+const INDONESIAN_TITLE_CUES =
+  /\b(sayang|cinta|rindu|hati|kenangan|kisah|tertawan|trakan|mendua|dirimu|sialnya|sempurna|kasih|separuh|monokrom|tujuh belas|berdua|bertahan|menunggu|selamanya|karena|jangan|terlalu|karna|jang|komang|tak segampang itu|sisa rasa|hilang tanpa bilang|tak ingin usai|pesan terakhir|penjaga hati|semata karenamu|berhenti berharap|seluruh nafas|cukup tahu|dan\.\.\.|kangen)\b/i;
+
+function isWordBoundaryMatch(haystack: string, keyword: string): boolean {
+  if (!keyword || !haystack) return false;
+  if (keyword.length <= 4 && !keyword.includes(' ')) {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(haystack);
+  }
+  return haystack.includes(keyword);
+}
+
 export function normalizeBaseTitle(title: string): string {
   return String(title || '')
     .toLowerCase()
     .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
-    .replace(/\b(live|remix|remaster(?:ed)?|acoustic|slowed|reverb|cover|version|edit|radio)\b/g, ' ')
+    .replace(/\b(live|remix|remaster(?:ed)?|acoustic|slowed|reverb|sped up|cover|version|edit|radio|official|audio)\b/g, ' ')
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+export function inferTrackLanguageRegion(
+  track: Pick<Track, 'title' | 'artist' | 'genre' | 'bpm'>
+): TrackLanguageRegion {
+  const titleLower = String(track.title || '').toLowerCase();
+  const artistLower = String(track.artist || '').toLowerCase();
+  const genreLower = String(track.genre || '').toLowerCase();
+
+  if (
+    genreLower.includes('classic') ||
+    genreLower.includes('soundtrack') ||
+    genreLower.includes('orchestra') ||
+    /\b(nocturne|sonata|concerto|prelude|etude|piano solo|symphony|opus|instrumental)\b/i.test(titleLower)
+  ) {
+    return 'instrumental';
+  }
+  if (
+    genreLower.includes('indonesia') ||
+    genreLower.includes('indo') ||
+    genreLower.includes('dangdut') ||
+    genreLower.includes('koplo') ||
+    INDONESIAN_TITLE_CUES.test(titleLower) ||
+    ['indo_pop_ballad', 'indo_band_rock', 'indo_indie_folk', 'indo_koplo_dangdut'].some((cid) =>
+      SONIC_CLASS_PROFILES[cid as SonicClassId].keywords.some((kw) => isWordBoundaryMatch(artistLower, kw))
+    )
+  ) {
+    return 'id';
+  }
+  if (
+    genreLower.includes('k-pop') ||
+    genreLower.includes('kpop') ||
+    genreLower.includes('korean') ||
+    /[\uAC00-\uD7AF]/.test(track.title || '') ||
+    SONIC_CLASS_PROFILES.kpop_idol.keywords.some((kw) => isWordBoundaryMatch(artistLower, kw))
+  ) {
+    return 'ko';
+  }
+  if (
+    genreLower.includes('j-pop') ||
+    genreLower.includes('jpop') ||
+    genreLower.includes('anime') ||
+    genreLower.includes('city pop') ||
+    /[\u3040-\u30FF\u4E00-\u9FAF]/.test(track.title || '') ||
+    SONIC_CLASS_PROFILES.jpop_city_anime.keywords.some((kw) => isWordBoundaryMatch(artistLower, kw))
+  ) {
+    return 'ja';
+  }
+  if (
+    genreLower.includes('latin') ||
+    genreLower.includes('reggaeton') ||
+    SONIC_CLASS_PROFILES.latin_global.keywords.some((kw) => isWordBoundaryMatch(artistLower, kw))
+  ) {
+    return 'es';
+  }
+  return 'en';
 }
 
 export function classifyTrackTier(
@@ -296,12 +389,19 @@ export function classifyTrackTier(
   }
 
   for (const profile of Object.values(SONIC_CLASS_PROFILES)) {
-    if (profile.keywords.some((kw) => artistLower.includes(kw))) {
+    if (profile.keywords.some((kw) => isWordBoundaryMatch(artistLower, kw))) {
       return profile;
     }
   }
 
-  const family = resolveGenreFamily(genreLower, artistLower);
+  // Catch Indonesian / Malay titles with generic 'Pop' genre metadata (e.g. Karna Su Sayang, Komang, Sial)
+  if (INDONESIAN_TITLE_CUES.test(titleLower)) {
+    if (genreLower.includes('indie') || genreLower.includes('folk')) return SONIC_CLASS_PROFILES.indo_indie_folk;
+    if (genreLower.includes('rock') || genreLower.includes('band')) return SONIC_CLASS_PROFILES.indo_band_rock;
+    return SONIC_CLASS_PROFILES.indo_pop_ballad;
+  }
+
+  const family = resolveGenreFamily(genreLower, artistLower, titleLower);
   if (family === 'classical') {
     return genreLower.includes('soundtrack')
       ? SONIC_CLASS_PROFILES.soundtrack_epic
@@ -351,15 +451,28 @@ export function extractPrimaryArtist(artist: string): string {
     .toLowerCase();
 }
 
-export function resolveGenreFamily(genre: string, artist = ''): GenreFamily {
+export function resolveGenreFamily(genre: string, artist = '', title = ''): GenreFamily {
   const g = String(genre || '').toLowerCase();
   const a = String(artist || '').toLowerCase();
+  const t = String(title || '').toLowerCase();
 
   if (
     g.includes('indonesia') ||
     g.includes('indo') ||
     g.includes('dangdut') ||
-    ['tulus', 'noah', 'sheila on 7', 'raisa', 'dewa 19', 'isyana', 'nadin amizah', 'mahalini', 'tiara andini', 'judika', 'rossa', 'peterpan', 'slank', 'iwan fals', 'pamungkas', 'hindia', 'feast', 'barasuara', 'efek rumah kaca', 'payung teduh', 'fourtwnty', 'kunto aji', 'rizky febian', 'ziva magnolya', 'lyodra', 'virgoun', 'budi doremi', 'wali', 'ungu', 'st12', 'kangen band', 'raffa affar', 'denny caknan', 'happy asmara'].some((k) => a.includes(k))
+    g.includes('koplo') ||
+    INDONESIAN_TITLE_CUES.test(t) ||
+    [
+      'tulus', 'noah', 'sheila on 7', 'raisa', 'dewa 19', 'isyana', 'nadin amizah', 'mahalini',
+      'tiara andini', 'judika', 'rossa', 'peterpan', 'slank', 'iwan fals', 'pamungkas', 'hindia',
+      'feast', 'barasuara', 'efek rumah kaca', 'payung teduh', 'fourtwnty', 'kunto aji',
+      'rizky febian', 'ziva magnolya', 'lyodra', 'virgoun', 'budi doremi', 'wali', 'ungu',
+      'st12', 'kangen band', 'raffa affar', 'denny caknan', 'happy asmara', 'bernadya',
+      'sal priadi', 'juicy luicy', 'near', 'dian sorowea', 'wizz baker', 'juan reza',
+      'chesylino', 'raim laode', 'andmesh', 'mario g klau', 'for revenge', 'last child',
+      'vierratale', 'geisha', 'fabio asher', 'anggi marito', 'keisya levronka', 'nyoman paul',
+      'cakra khan', 'jaz', 'd\'masiv', 'ada band', 'kahitna', 'maliq', 'hivi'
+    ].some((k) => isWordBoundaryMatch(a, k))
   ) {
     return 'indonesian';
   }
@@ -461,13 +574,125 @@ export function saveRecommendationState(state: RecommendationState): void {
   }
 }
 
+export function estimateAudioFeatures(
+  track: Pick<Track, 'title' | 'artist' | 'genre' | 'bpm'>
+): AudioFeatureVector {
+  const cls = classifyTrackTier(track).classId;
+  const bpm = track.bpm > 40 ? track.bpm : 112;
+  const titleLower = String(track.title || '').toLowerCase();
+  const genreLower = String(track.genre || '').toLowerCase();
+  const tempoNorm = clamp((bpm - 50) / 130, 0, 1);
+
+  let base: Omit<AudioFeatureVector, 'tempoNorm'>;
+  switch (cls) {
+    case 'piano_neoclassical':
+      base = { energy: 0.18, valence: 0.34, danceability: 0.22, acousticness: 0.94, instrumentalness: 0.95 };
+      break;
+    case 'soundtrack_epic':
+      base = { energy: 0.62, valence: 0.42, danceability: 0.30, acousticness: 0.55, instrumentalness: 0.88 };
+      break;
+    case 'indo_pop_ballad':
+      base = { energy: 0.44, valence: 0.38, danceability: 0.52, acousticness: 0.62, instrumentalness: 0.02 };
+      break;
+    case 'indo_indie_folk':
+      base = { energy: 0.48, valence: 0.42, danceability: 0.54, acousticness: 0.68, instrumentalness: 0.04 };
+      break;
+    case 'indo_band_rock':
+      base = { energy: 0.72, valence: 0.54, danceability: 0.58, acousticness: 0.24, instrumentalness: 0.04 };
+      break;
+    case 'indo_koplo_dangdut':
+      base = { energy: 0.82, valence: 0.76, danceability: 0.84, acousticness: 0.25, instrumentalness: 0.02 };
+      break;
+    case 'rnb_late_soul':
+      base = { energy: 0.50, valence: 0.40, danceability: 0.68, acousticness: 0.38, instrumentalness: 0.05 };
+      break;
+    case 'classic_global_legend':
+      base = { energy: 0.66, valence: 0.62, danceability: 0.60, acousticness: 0.34, instrumentalness: 0.06 };
+      break;
+    case 'modern_chart_pop':
+      base = { energy: 0.74, valence: 0.64, danceability: 0.76, acousticness: 0.18, instrumentalness: 0.02 };
+      break;
+    case 'kpop_idol':
+      base = { energy: 0.82, valence: 0.72, danceability: 0.82, acousticness: 0.10, instrumentalness: 0.02 };
+      break;
+    case 'jpop_city_anime':
+      base = { energy: 0.80, valence: 0.68, danceability: 0.70, acousticness: 0.14, instrumentalness: 0.04 };
+      break;
+    case 'alt_indie_rock':
+      base = { energy: 0.66, valence: 0.44, danceability: 0.52, acousticness: 0.28, instrumentalness: 0.08 };
+      break;
+    case 'heavy_metal_hard':
+      base = { energy: 0.92, valence: 0.38, danceability: 0.42, acousticness: 0.05, instrumentalness: 0.12 };
+      break;
+    case 'electronic_dance_synth':
+      base = { energy: 0.84, valence: 0.64, danceability: 0.84, acousticness: 0.08, instrumentalness: 0.28 };
+      break;
+    case 'hiphop_rap_trap':
+      base = { energy: 0.74, valence: 0.52, danceability: 0.82, acousticness: 0.14, instrumentalness: 0.02 };
+      break;
+    case 'jazz_blues_acoustic':
+      base = { energy: 0.36, valence: 0.50, danceability: 0.50, acousticness: 0.80, instrumentalness: 0.20 };
+      break;
+    case 'latin_global':
+    default:
+      base = { energy: 0.78, valence: 0.78, danceability: 0.86, acousticness: 0.20, instrumentalness: 0.02 };
+      break;
+  }
+
+  let { energy, valence, danceability, acousticness, instrumentalness } = base;
+  if (/\b(acoustic|unplugged|ballad|piano|slowed)\b/.test(titleLower) || genreLower.includes('acoustic')) {
+    energy = clamp(energy - 0.18, 0.05, 0.98);
+    acousticness = clamp(acousticness + 0.25, 0.05, 0.98);
+  }
+  if (/\b(remix|club|dance|party|sped up)\b/.test(titleLower) || genreLower.includes('dance')) {
+    energy = clamp(energy + 0.15, 0.05, 0.98);
+    danceability = clamp(danceability + 0.14, 0.05, 0.98);
+    acousticness = clamp(acousticness - 0.14, 0.02, 0.95);
+  }
+  if (/\b(instrumental|karaoke)\b/.test(titleLower)) {
+    instrumentalness = Math.max(instrumentalness, 0.85);
+  }
+
+  return { energy, valence, danceability, acousticness, instrumentalness, tempoNorm };
+}
+
+export function computeAudioVectorCosine(a: AudioFeatureVector, b: AudioFeatureVector): number {
+  const va = [a.energy, a.valence, a.danceability, a.acousticness, a.instrumentalness, a.tempoNorm];
+  const vb = [b.energy, b.valence, b.danceability, b.acousticness, b.instrumentalness, b.tempoNorm];
+  let dot = 0;
+  let magA = 0;
+  let magB = 0;
+  for (let i = 0; i < va.length; i++) {
+    dot += va[i] * vb[i];
+    magA += va[i] * va[i];
+    magB += vb[i] * vb[i];
+  }
+  if (magA === 0 || magB === 0) return 0;
+  return clamp(dot / (Math.sqrt(magA) * Math.sqrt(magB)), 0, 1);
+}
+
+function inferEraBucket(track: Pick<Track, 'title' | 'artist' | 'genre' | 'bpm'>): 'classic' | 'modern' {
+  const cls = classifyTrackTier(track).classId;
+  const artistLower = String(track.artist || '').toLowerCase();
+  if (
+    cls === 'classic_global_legend' ||
+    cls === 'piano_neoclassical' ||
+    ['dewa 19', 'sheila on 7', 'chrisye', 'padi', 'iwan fals', 'slank', 'peterpan'].some((kw) =>
+      artistLower.includes(kw)
+    )
+  ) {
+    return 'classic';
+  }
+  return 'modern';
+}
+
 export function recordTrackSignal(
   state: RecommendationState,
   track: Track,
-  signal: 'play' | 'complete' | 'earlySkip' | 'toggleLike'
+  signal: 'play' | 'complete' | 'earlySkip' | 'toggleLike' | 'queueAdd' | 'albumSave'
 ): RecommendationState {
   const artistKey = extractPrimaryArtist(track.artist);
-  const genreKey = resolveGenreFamily(track.genre, track.artist);
+  const genreKey = resolveGenreFamily(track.genre, track.artist, track.title);
   const next: RecommendationState = {
     ...state,
     likedTracks: [...state.likedTracks],
@@ -487,6 +712,11 @@ export function recordTrackSignal(
     if (artistKey) next.artistAffinity[artistKey] = clamp((next.artistAffinity[artistKey] || 0) - 2.0, -10, 15);
     next.genreAffinity[genreKey] = clamp((next.genreAffinity[genreKey] || 0) - 1.0, -8, 12);
     next.skippedAtByTrackId[track.id] = Date.now();
+  } else if (signal === 'queueAdd' || signal === 'albumSave') {
+    const boostArtist = signal === 'albumSave' ? 3.5 : 3.0;
+    const boostGenre = signal === 'albumSave' ? 2.2 : 1.8;
+    if (artistKey) next.artistAffinity[artistKey] = clamp((next.artistAffinity[artistKey] || 0) + boostArtist, -10, 15);
+    next.genreAffinity[genreKey] = clamp((next.genreAffinity[genreKey] || 0) + boostGenre, -8, 12);
   } else if (signal === 'toggleLike') {
     const exists = next.likedTracks.some((t) => t.id === track.id);
     if (exists) {
@@ -509,65 +739,88 @@ export function scoreCandidateTrack(
   recentIdsAndArtists: { ids: string[]; artists: string[] },
   state: RecommendationState,
   mood: MoodPreset = 'all',
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  usedBaseTitles?: Set<string>
 ): number {
   let score = 0;
 
   const seedArtist = extractPrimaryArtist(seedTrack.artist);
   const candArtist = extractPrimaryArtist(candidate.artist);
-  const seedFamily = resolveGenreFamily(seedTrack.genre, seedTrack.artist);
-  const candFamily = resolveGenreFamily(candidate.genre, candidate.artist);
+  const seedFamily = resolveGenreFamily(seedTrack.genre, seedTrack.artist, seedTrack.title);
+  const candFamily = resolveGenreFamily(candidate.genre, candidate.artist, candidate.title);
   const seedClass = classifyTrackTier(seedTrack);
   const candClass = classifyTrackTier(candidate);
+  const seedLang = inferTrackLanguageRegion(seedTrack);
+  const candLang = inferTrackLanguageRegion(candidate);
 
-  // 0. Equivalent Class / Style Tier Matching
+  // 0. Equivalent Sonic Class / Style Tier Matching
   if (candClass.classId === seedClass.classId) {
-    score += 58;
+    score += 62;
   } else if (seedClass.compatibleClasses.includes(candClass.classId)) {
-    score += 22;
+    score += 24;
   } else {
     score -= 48;
   }
 
   if (seedClass.isInstrumental !== candClass.isInstrumental) {
-    score -= 55;
+    score -= 60;
+  }
+
+  // 0b. Language / Market Coherence (prevents Indonesian Timur -> US Pop drift while respecting multi-lingual listeners)
+  if (seedLang === candLang) {
+    score += seedLang === 'en' ? 14 : 34;
+  } else if (seedLang !== 'en' && seedLang !== 'instrumental') {
+    const userBridgesLanguage = (state.genreAffinity[candFamily] || 0) >= 4;
+    score -= userBridgesLanguage ? 18 : 75;
+  } else if (seedLang === 'en' && candLang !== 'en' && candLang !== 'instrumental') {
+    const userPrefersRegion = (state.genreAffinity[candFamily] || 0) >= 3;
+    score -= userPrefersRegion ? 10 : 34;
   }
 
   const seedBaseTitle = normalizeBaseTitle(seedTrack.title);
   const candBaseTitle = normalizeBaseTitle(candidate.title);
-  if (seedBaseTitle && candBaseTitle && seedBaseTitle === candBaseTitle) {
-    score -= 180;
+  if ((seedBaseTitle && candBaseTitle && seedBaseTitle === candBaseTitle) || (candBaseTitle && usedBaseTitles?.has(candBaseTitle))) {
+    score -= 320;
   }
 
   // 1. Genre continuity
   if (candidate.genre.toLowerCase() === seedTrack.genre.toLowerCase() && candidate.genre) {
-    score += 28;
+    score += 24;
   } else if (candFamily === seedFamily) {
-    score += 20;
+    score += 18;
   } else if (GENRE_COMPATIBILITY[seedFamily]?.includes(candFamily)) {
-    score += 9;
+    score += 8;
   } else {
-    score -= 8;
+    score -= 10;
   }
 
-  // 2. Tempo / BPM transition smoothness
+  // 2. Spotify 6D Audio Feature Vector Cosine Similarity + Tempo + Era
+  const seedVec = estimateAudioFeatures(seedTrack);
+  const candVec = estimateAudioFeatures(candidate);
+  const vecSim = computeAudioVectorCosine(seedVec, candVec);
+  score += clamp(Math.round((vecSim - 0.72) * 110), -26, 34);
+
   const seedBpm = seedTrack.bpm > 40 ? seedTrack.bpm : 112;
   const candBpm = candidate.bpm > 40 ? candidate.bpm : 112;
   const bpmDelta = Math.abs(seedBpm - candBpm);
-  if (bpmDelta <= 8) score += 20;
-  else if (bpmDelta <= 18) score += 14;
-  else if (bpmDelta <= 30) score += 6;
-  else if (bpmDelta > 50) score -= 14;
+  if (bpmDelta <= 8) score += 14;
+  else if (bpmDelta <= 18) score += 9;
+  else if (bpmDelta <= 30) score += 3;
+  else if (bpmDelta > 50) score -= 12;
+
+  if (inferEraBucket(seedTrack) === inferEraBucket(candidate)) {
+    score += 10;
+  }
 
   // 3. Artist separation & recency cooldown
   if (candArtist && candArtist === seedArtist) {
-    score -= 120;
+    score -= 140;
   }
   const recentArtistIdx = candArtist ? recentIdsAndArtists.artists.indexOf(candArtist) : -1;
-  if (recentArtistIdx === 0 || recentArtistIdx === 1) {
-    score -= 110;
-  } else if (recentArtistIdx >= 2 && recentArtistIdx <= 4) {
-    score -= 45;
+  if (recentArtistIdx === 0 || recentArtistIdx === 1 || recentArtistIdx === 2) {
+    score -= 140;
+  } else if (recentArtistIdx >= 3 && recentArtistIdx <= 5) {
+    score -= 55;
   }
 
   const recentIdIdx = recentIdsAndArtists.ids.indexOf(candidate.id);
@@ -582,7 +835,7 @@ export function scoreCandidateTrack(
   // 4. Local user behavioral signals
   const isLiked = state.likedTracks.some((t) => t.id === candidate.id);
   if (isLiked && recentIdIdx === -1) {
-    score += 26;
+    score += 24;
   }
   const artistBias = candArtist ? state.artistAffinity[candArtist] || 0 : 0;
   const genreBias = state.genreAffinity[candFamily] || 0;
@@ -590,8 +843,8 @@ export function scoreCandidateTrack(
   score += clamp(genreBias * 3, -15, 24);
 
   const skippedAt = state.skippedAtByTrackId[candidate.id];
-  if (skippedAt && nowMs - skippedAt < 20 * 60 * 1000) {
-    score -= 95;
+  if (skippedAt && nowMs - skippedAt < 25 * 60 * 1000) {
+    score -= 110;
   }
 
   // 5. Mood filter weighting
@@ -640,6 +893,24 @@ export function scoreCandidateTrack(
   return score;
 }
 
+function scoreTransitionPair(prevTrack: Track, candidate: Track): number {
+  const prevVec = estimateAudioFeatures(prevTrack);
+  const candVec = estimateAudioFeatures(candidate);
+  const sim = computeAudioVectorCosine(prevVec, candVec);
+  const prevBpm = prevTrack.bpm > 40 ? prevTrack.bpm : 112;
+  const candBpm = candidate.bpm > 40 ? candidate.bpm : 112;
+  const bpmBonus = Math.max(-18, 20 - Math.abs(prevBpm - candBpm) * 0.65);
+  const prevCls = classifyTrackTier(prevTrack);
+  const candCls = classifyTrackTier(candidate);
+  const clsBonus =
+    prevCls.classId === candCls.classId
+      ? 24
+      : prevCls.compatibleClasses.includes(candCls.classId)
+        ? 10
+        : -20;
+  return (sim - 0.72) * 90 + bpmBonus + clsBonus;
+}
+
 export function buildSmartQueueFromPool(
   seedTrack: Track,
   pool: Track[],
@@ -661,34 +932,54 @@ export function buildSmartQueueFromPool(
     extractPrimaryArtist(seedTrack.artist),
     ...recentTracks.slice(0, 5).map((t) => extractPrimaryArtist(t.artist))
   ];
-  let currentSeed = seedTrack;
+  const usedBaseTitles = new Set<string>();
+  const seedBase = normalizeBaseTitle(seedTrack.title);
+  if (seedBase) usedBaseTitles.add(seedBase);
+  const artistSessionCounts = new Map<string, number>();
+
+  let prevTrack = seedTrack;
 
   while (remaining.length > 0 && ordered.length < limit) {
     let bestIdx = 0;
     let bestScore = -Infinity;
     for (let i = 0; i < remaining.length; i++) {
-      const s = scoreCandidateTrack(
-        remaining[i],
-        currentSeed,
+      const cand = remaining[i];
+      // 72% anchor similarity to user's original seed + 28% smooth transition from previous track
+      const anchorScore = scoreCandidateTrack(
+        cand,
+        seedTrack,
         { ids: rollingIds, artists: rollingArtists },
         state,
-        mood
+        mood,
+        Date.now(),
+        usedBaseTitles
       );
-      if (s > bestScore) {
-        bestScore = s;
+      const transScore =
+        prevTrack.id === seedTrack.id ? anchorScore : scoreTransitionPair(prevTrack, cand);
+      const candArtist = extractPrimaryArtist(cand.artist);
+      const sessionArtistCount = candArtist ? artistSessionCounts.get(candArtist) || 0 : 0;
+      const artistCapPenalty = sessionArtistCount >= 2 ? 160 : 0;
+
+      const combinedScore = anchorScore * 0.72 + transScore * 0.28 - artistCapPenalty;
+      if (combinedScore > bestScore) {
+        bestScore = combinedScore;
         bestIdx = i;
       }
     }
     const chosen = remaining.splice(bestIdx, 1)[0];
     ordered.push(chosen);
+    const chosenBase = normalizeBaseTitle(chosen.title);
+    if (chosenBase) usedBaseTitles.add(chosenBase);
+
     rollingIds.unshift(chosen.id);
     if (rollingIds.length > 18) rollingIds.pop();
     const chosenArtist = extractPrimaryArtist(chosen.artist);
     if (chosenArtist) {
+      artistSessionCounts.set(chosenArtist, (artistSessionCounts.get(chosenArtist) || 0) + 1);
       rollingArtists.unshift(chosenArtist);
       if (rollingArtists.length > 6) rollingArtists.pop();
     }
-    currentSeed = chosen;
+    prevTrack = chosen;
   }
 
   return ordered;

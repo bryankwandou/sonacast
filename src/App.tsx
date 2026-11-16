@@ -28,6 +28,7 @@ import { TRACK_CATALOG, PODCAST_CATALOG, RADIO_STATIONS } from './data/catalog';
 import { sharedAudioEngine } from './services/audioEngine';
 import { solanaService } from './services/solanaService';
 import {
+  fetchAlbumTracksOnline,
   fetchLyricsWithMeta,
   findMasterAudio,
   peekCachedTrackStream,
@@ -51,6 +52,7 @@ import {
   getClassMatchedSeedQueries,
   getMoodSearchQuery,
   getMoodSeedQueries,
+  inferTrackLanguageRegion,
   loadRecommendationState,
   pickNextTrackPure,
   recordTrackSignal,
@@ -1005,13 +1007,27 @@ export default function App() {
       if (pooled.length === 0) return;
 
       const seedTier = classifyTrackTier(seedTrack);
-      const sameOrCompatible = pooled.filter((c) => {
+      const seedLang = inferTrackLanguageRegion(seedTrack);
+      const sameLangAndClass = pooled.filter((c) => {
         const ct = classifyTrackTier(c);
-        return (
-          ct.classId === seedTier.classId ||
-          seedTier.compatibleClasses.includes(ct.classId)
-        );
+        const cl = inferTrackLanguageRegion(c);
+        const classMatch = ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
+        if (!classMatch) return false;
+        if (seedLang !== 'en' && seedLang !== 'instrumental') {
+          return cl === seedLang;
+        }
+        return true;
       });
+      const sameOrCompatible =
+        sameLangAndClass.length >= 4
+          ? sameLangAndClass
+          : pooled.filter((c) => {
+              const ct = classifyTrackTier(c);
+              return (
+                ct.classId === seedTier.classId ||
+                seedTier.compatibleClasses.includes(ct.classId)
+              );
+            });
       const candidatePool = sameOrCompatible.length >= 4 ? sameOrCompatible : pooled;
 
       setQueue((prev) => {
@@ -1357,11 +1373,24 @@ export default function App() {
         setPlaybackContext(autoCtx);
 
         const seedTier = classifyTrackTier(track);
+        const seedLang = inferTrackLanguageRegion(track);
         const instantPool = gatherLocalCandidatePool(track.id);
-        const classMatchedInstant = instantPool.filter((cand) => {
+        const langAndClassInstant = instantPool.filter((cand) => {
           const ct = classifyTrackTier(cand);
-          return ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
+          const classOk = ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
+          if (!classOk) return false;
+          if (seedLang !== 'en' && seedLang !== 'instrumental') {
+            return inferTrackLanguageRegion(cand) === seedLang;
+          }
+          return true;
         });
+        const classMatchedInstant =
+          langAndClassInstant.length >= 3
+            ? langAndClassInstant
+            : instantPool.filter((cand) => {
+                const ct = classifyTrackTier(cand);
+                return ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
+              });
         const rankedInstant = buildSmartQueueFromPool(
           track,
           classMatchedInstant.length >= 3 ? classMatchedInstant : instantPool,
@@ -2026,11 +2055,13 @@ export default function App() {
 
   const handleAddToQueue = useCallback((track: Track) => {
     setManualQueue((prev) => (prev.some((x) => x.id === track.id) ? prev : [...prev, track]));
+    setRecState((prev) => recordTrackSignal(prev, track, 'queueAdd'));
   }, []);
 
   const handlePlayNext = useCallback(
     (track: Track) => {
       setManualQueue((prev) => [track, ...prev.filter((x) => x.id !== track.id)]);
+      setRecState((prev) => recordTrackSignal(prev, track, 'queueAdd'));
       showToast(`${t.playNext}: ${track.title}`, 'success');
     },
     [showToast, t.playNext]
@@ -2478,6 +2509,62 @@ export default function App() {
       });
     },
     [runCloudMutation]
+  );
+
+  const handleSaveCatalogAlbum = useCallback(
+    async (album: CatalogAlbum, prefetchedTracks?: Track[]) => {
+      const targetName = album.title.trim();
+      if (!targetName) return;
+      const alreadyExists = recStateRef.current.playlists.some(
+        (p) => p.name.trim().toLowerCase() === targetName.toLowerCase()
+      );
+      if (alreadyExists) {
+        showToast(`${targetName} is already in Collection`, 'success');
+        return;
+      }
+
+      let albumTracks = Array.isArray(prefetchedTracks) ? prefetchedTracks : [];
+      if (albumTracks.length === 0) {
+        try {
+          const fetched = await fetchAlbumTracksOnline(album);
+          albumTracks = fetched.tracks;
+        } catch {
+          albumTracks = [];
+        }
+      }
+
+      const plId = `alb-cat-${album.id}-${Date.now().toString(36)}`;
+      const description = `${album.artist}${album.genre ? ` · ${album.genre}` : ''}`;
+      setRecState((prev) => {
+        const withTracks: RecommendationState = {
+          ...prev,
+          playlists: [
+            {
+              id: plId,
+              name: targetName,
+              description,
+              coverUrl: album.coverUrl || albumTracks[0]?.coverUrl || '',
+              tracks: albumTracks,
+              createdAt: Date.now()
+            },
+            ...prev.playlists
+          ]
+        };
+        const updated = albumTracks[0]
+          ? recordTrackSignal(withTracks, albumTracks[0], 'albumSave')
+          : withTracks;
+        saveRecommendationState(updated);
+        return updated;
+      });
+
+      void runCloudMutation('create_album', {
+        name: targetName,
+        description,
+        initialTrack: albumTracks[0]
+      });
+      showToast(`Saved album: ${targetName}`, 'success');
+    },
+    [runCloudMutation, showToast]
   );
 
   const handleSaveQueueAsPlaylist = useCallback(() => {
@@ -3224,6 +3311,7 @@ export default function App() {
           likedTrackIds={likedTrackIds}
           onToggleLike={handleToggleLike}
           onOpenAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+          onPlayTrackList={handlePlayTrackList}
         />
       ) : (
         <>
@@ -4022,6 +4110,7 @@ export default function App() {
                     onAddTrackToPlaylist={handleAddTrackToPlaylist}
                     onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
                     onDeletePlaylist={handleDeletePlaylist}
+                    onSaveCatalogAlbum={handleSaveCatalogAlbum}
                     activeMood={activeMood}
                     onSelectMood={handleSelectMood}
                     onRecordSearch={handleRecordSearch}
@@ -4089,6 +4178,7 @@ export default function App() {
                     onCreateAlbum={(name, desc) => handleCreatePlaylist(name, desc)}
                     onDeleteAlbum={handleDeletePlaylist}
                     onRemoveTrackFromAlbum={handleRemoveTrackFromPlaylist}
+                    onSaveCatalogAlbum={handleSaveCatalogAlbum}
                     onToggleFollowArtist={handleToggleFollowArtist}
                     onSearchArtist={(name) => handleOpenArtistSpotlight(name)}
                     onUpdateProfile={handleUpdateProfile}

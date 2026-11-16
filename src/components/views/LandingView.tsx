@@ -12,9 +12,10 @@ import {
   SkipForward,
   User
 } from 'lucide-react';
-import type { AuthUser, TabType, Track } from '../../types';
+import type { AuthUser, CatalogAlbum, PlaybackContextInfo, TabType, Track } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { usePopularCharts } from '../../hooks/usePopularCharts';
+import { fetchAlbumTracksOnline } from '../../services/musicService';
 import { extractPrimaryArtist } from '../../services/recommendationEngine';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 import { ThemeLanguageControls } from '../layout/ThemeLanguageControls';
@@ -37,6 +38,12 @@ interface LandingViewProps {
   likedTrackIds?: Set<string>;
   onToggleLike?: (track: Track) => void;
   onOpenAddToAlbum?: (track: Track) => void;
+  onPlayTrackList?: (
+    tracks: Track[],
+    shuffle?: boolean,
+    contextInfo?: PlaybackContextInfo,
+    startIndex?: number
+  ) => void;
   lyricsOffset?: number;
 }
 
@@ -77,12 +84,42 @@ export const LandingView: React.FC<LandingViewProps> = ({
   likedTrackIds,
   onToggleLike,
   onOpenAddToAlbum,
+  onPlayTrackList,
   lyricsOffset = 0
 }) => {
   const { t } = useAppPreferences();
   const { popularCharts, isLoadingCharts } = usePopularCharts();
   const [chartRegion, setChartRegion] = useState<'global' | 'indonesia'>('global');
   const [heroQuery, setHeroQuery] = useState('');
+  const [loadingLandingAlbumId, setLoadingLandingAlbumId] = useState<string | null>(null);
+
+  const handlePlayLandingAlbum = async (alb: CatalogAlbum) => {
+    setLoadingLandingAlbumId(alb.id);
+    try {
+      const res = await fetchAlbumTracksOnline(alb);
+      if (res.tracks.length > 0) {
+        if (onPlayTrackList) {
+          onPlayTrackList(
+            res.tracks,
+            false,
+            {
+              id: `release-album-${res.album.id}`,
+              type: 'release-album',
+              title: res.album.title,
+              subtitle: res.album.artist,
+              coverUrl: res.album.coverUrl,
+              ordered: true
+            },
+            0
+          );
+        } else {
+          onSelectTrack(res.tracks[0]);
+        }
+      }
+    } finally {
+      setLoadingLandingAlbumId(null);
+    }
+  };
 
   const curatedPool = useMemo(() => {
     const seen = new Set<string>();
@@ -683,6 +720,82 @@ export const LandingView: React.FC<LandingViewProps> = ({
             </div>
           )}
         </section>
+
+        {/* Borderless Popular Studio Albums Strip */}
+        {popularCharts.albums.length > 0 && (
+          <section
+            data-testid="landing-popular-albums"
+            className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 py-12 border-t border-[var(--border-subtle)] space-y-6"
+          >
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-[11px] font-mono uppercase tracking-[0.16em] text-[var(--text-dim)]">
+                  Studio Collections &middot; Global &amp; Indonesia
+                </p>
+                <h2 className="font-editorial text-2xl sm:text-3xl text-[var(--text-primary)]">
+                  Popular Studio Albums
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onEnterApp('discover')}
+                className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <span>Browse All {popularCharts.albums.length} Albums</span>
+                <ArrowRight size={13} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 sm:gap-5">
+              {popularCharts.albums.slice(0, 12).map((alb) => {
+                const isLoadingAlb = loadingLandingAlbumId === alb.id;
+                return (
+                  <button
+                    key={alb.id}
+                    type="button"
+                    data-testid={`landing-album-${alb.id}`}
+                    onClick={() => void handlePlayLandingAlbum(alb)}
+                    className="group text-left space-y-2 cursor-pointer min-w-0"
+                  >
+                    <div className="relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
+                      <img
+                        src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
+                        alt={alb.title}
+                        loading="lazy"
+                        decoding="async"
+                        onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                      />
+                      <div
+                        className={`absolute inset-0 flex items-center justify-center bg-black/35 transition-opacity ${
+                          isLoadingAlb ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}
+                      >
+                        <div className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg">
+                          {isLoadingAlb ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <Play size={16} className="fill-current ml-0.5" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                        {alb.title}
+                      </p>
+                      <p className="text-[11px] text-[var(--text-dim)] truncate">
+                        {alb.artist}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Minimalist 4-Row Typographic Capabilities Index */}
         <section className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 py-12 border-t border-[var(--border-subtle)]">

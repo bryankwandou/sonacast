@@ -1807,7 +1807,7 @@ const DAILY_CHARTS_FEED_URLS = [
   'https://cdn.jsdelivr.net/gh/bryankwandou/sonacast@catalog-data/daily-charts.json',
   'https://raw.githubusercontent.com/bryankwandou/sonacast/catalog-data/daily-charts.json'
 ];
-const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v2';
+const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v3';
 const DAILY_CHARTS_TTL_MS = 12 * 60 * 60 * 1000;
 
 function catalogItemsToTracks(items: CatalogApiItem[]): Track[] {
@@ -1832,7 +1832,8 @@ function catalogItemsToTracks(items: CatalogApiItem[]): Track[] {
 function mergeDailyAlbums(liveAlbums?: CatalogAlbum[]): CatalogAlbum[] {
   const seen = new Set<string>();
   const merged: CatalogAlbum[] = [];
-  for (const album of [...(Array.isArray(liveAlbums) ? liveAlbums : []), ...FEATURED_RELEASE_ALBUMS]) {
+  // Prioritize verified curated studio releases (Global + Indonesia) ahead of dynamic feed extras
+  for (const album of [...FEATURED_RELEASE_ALBUMS, ...(Array.isArray(liveAlbums) ? liveAlbums : [])]) {
     if (!album?.id || !album?.title) continue;
     const key = `${normalizeText(album.title)}::${normalizeText((album.artist || '').split(/[,&]|ft\.?/i)[0])}`;
     if (seen.has(key)) continue;
@@ -1978,13 +1979,43 @@ export const FEATURED_RELEASE_ALBUMS: CatalogAlbum[] = [
     recordType: 'album'
   },
   {
-    id: '1007321681',
-    title: 'A Night At The Opera',
-    artist: 'Queen',
+    id: '602528092',
+    title: 'Sialnya, Hidup Harus Tetap Berjalan',
+    artist: 'Bernadya',
     coverUrl:
-      'https://cdn-images.dzcdn.net/images/cover/0b56f4eee05fa1ea753c5654b2cdb70c/1000x1000-000000-80-0-0.jpg',
-    nbTracks: 12,
-    genre: 'Classic Rock',
+      'https://cdn-images.dzcdn.net/images/cover/870667b82b372984ba65f023eb74f4a6/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 8,
+    genre: 'Indonesian Pop',
+    recordType: 'album'
+  },
+  {
+    id: '586786102',
+    title: 'HIT ME HARD AND SOFT',
+    artist: 'Billie Eilish',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/5d284b31cb9ddeb1a0c79aede5a94e1c/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 10,
+    genre: 'Pop',
+    recordType: 'album'
+  },
+  {
+    id: '383703577',
+    title: 'SOS',
+    artist: 'SZA',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/328d68300e654b21831b261e413780e0/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 23,
+    genre: 'R&B / Soul',
+    recordType: 'album'
+  },
+  {
+    id: '397089007',
+    title: 'fabula',
+    artist: 'Mahalini',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/ea2ee495e17ab155bdcdac0fe75cf513/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 10,
+    genre: 'Indonesian Pop',
     recordType: 'album'
   },
   {
@@ -1995,6 +2026,46 @@ export const FEATURED_RELEASE_ALBUMS: CatalogAlbum[] = [
       'https://cdn-images.dzcdn.net/images/cover/8c39b232a5edecdf5fffc14f551fa42b/1000x1000-000000-80-0-0.jpg',
     nbTracks: 13,
     genre: 'Pop',
+    recordType: 'album'
+  },
+  {
+    id: '631839161',
+    title: "Short n' Sweet",
+    artist: 'Sabrina Carpenter',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/0fd6e3b346b959a8781ccfa89b63607a/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 12,
+    genre: 'Pop',
+    recordType: 'album'
+  },
+  {
+    id: '113100922',
+    title: 'Menari Dengan Bayangan',
+    artist: 'Hindia',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/23cc662ac90d414741c26754e0105d9d/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 15,
+    genre: 'Indonesian Indie',
+    recordType: 'album'
+  },
+  {
+    id: '182811182',
+    title: 'Future Nostalgia',
+    artist: 'Dua Lipa',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/f8364f090ba04f1b19b381ec0390f3e4/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 13,
+    genre: 'Pop / Dance',
+    recordType: 'album'
+  },
+  {
+    id: '1007321681',
+    title: 'A Night At The Opera',
+    artist: 'Queen',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/0b56f4eee05fa1ea753c5654b2cdb70c/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 12,
+    genre: 'Classic Rock',
     recordType: 'album'
   },
   {
@@ -2034,6 +2105,96 @@ export const FEATURED_RELEASE_ALBUMS: CatalogAlbum[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/52/8e/5a/528e5a30-52b0-b68c-f184-635fcf15e6d7/22UM1IM01017.rgb.jpg/600x600bb.jpg',
     nbTracks: 9,
+    genre: 'K-Pop',
+    recordType: 'album'
+  },
+  {
+    id: '466106885',
+    title: "NewJeans 2nd EP 'Get Up'",
+    artist: 'NewJeans',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/37e446fe36cee17b6215e5d506d18354/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 6,
+    genre: 'K-Pop',
+    recordType: 'ep'
+  },
+  {
+    id: '189054902',
+    title: 'THE BOOK',
+    artist: 'YOASOBI',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/9b0a4e419b1ae7ea87e641220262878e/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 9,
+    genre: 'J-Pop',
+    recordType: 'album'
+  },
+  {
+    id: '147564462',
+    title: 'Selamat Ulang Tahun',
+    artist: 'Nadin Amizah',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/b080d54a7ef57165aa25f1643ee54aec/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 10,
+    genre: 'Indonesian Indie',
+    recordType: 'album'
+  },
+  {
+    id: '1215463',
+    title: '07 Des',
+    artist: 'Sheila On 7',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/5cb52d63a0234cf9b518c3e8ecf434e1/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 14,
+    genre: 'Indonesian Rock',
+    recordType: 'album'
+  },
+  {
+    id: '6651488',
+    title: 'good kid, m.A.A.d city (Deluxe)',
+    artist: 'Kendrick Lamar',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/b5be27644d505bad7bdb516fe4165475/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 17,
+    genre: 'Hip-Hop',
+    recordType: 'album'
+  },
+  {
+    id: '299821',
+    title: 'A Rush of Blood to the Head',
+    artist: 'Coldplay',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/5ba1787e1ec36dbbca38ff01fea8fb21/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 11,
+    genre: 'Alternative Rock',
+    recordType: 'album'
+  },
+  {
+    id: '145319162',
+    title: 'Mantra Mantra',
+    artist: 'Kunto Aji',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/58a4584233befab4d501d9aad6b760f5/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 9,
+    genre: 'Indonesian Indie',
+    recordType: 'album'
+  },
+  {
+    id: '746059',
+    title: '21',
+    artist: 'Adele',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/dc1ce848d830ecc93521be5a78350364/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 11,
+    genre: 'Pop / Soul',
+    recordType: 'album'
+  },
+  {
+    id: '278473182',
+    title: 'MAP OF THE SOUL : 7',
+    artist: 'BTS',
+    coverUrl:
+      'https://cdn-images.dzcdn.net/images/cover/ba01e3de4d64a272543c427914c49e8b/1000x1000-000000-80-0-0.jpg',
+    nbTracks: 20,
     genre: 'K-Pop',
     recordType: 'album'
   }

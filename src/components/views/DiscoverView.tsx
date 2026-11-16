@@ -25,6 +25,10 @@ import { PlayingBars } from '../common/PlayingBars';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 import { useCoverAccentRgb } from '../../utils/coverColor';
 import {
+  Bookmark,
+  BookmarkCheck,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Disc3,
   Globe,
@@ -75,6 +79,7 @@ interface DiscoverViewProps {
   onAddTrackToPlaylist?: (playlistId: string, track: Track) => void;
   onRemoveTrackFromPlaylist?: (playlistId: string, trackId: string) => void;
   onDeletePlaylist?: (playlistId: string) => void;
+  onSaveCatalogAlbum?: (album: CatalogAlbum, prefetchedTracks?: Track[]) => Promise<void> | void;
   activeMood?: MoodPreset;
   onSelectMood?: (mood: MoodPreset) => void;
   onRecordSearch?: (query: string, mode: 'songs' | 'albums', matchedTrack?: Track) => void;
@@ -86,6 +91,29 @@ const FEATURED_ARTISTS = [
 ];
 
 type LibrarySubTab = 'browse' | 'liked' | 'recent' | 'playlists';
+type AlbumCategoryFilter = 'all' | 'indonesia' | 'global' | 'rnb-hiphop' | 'rock-indie' | 'kjpop';
+
+function matchesAlbumCategory(alb: CatalogAlbum, cat: AlbumCategoryFilter): boolean {
+  if (cat === 'all') return true;
+  const g = String(alb.genre || '').toLowerCase();
+  const a = String(alb.artist || '').toLowerCase();
+  if (cat === 'indonesia') {
+    return g.includes('indo') || ['tulus', 'bernadya', 'mahalini', 'hindia', 'nadin amizah', 'sheila on 7', 'kunto aji'].some((k) => a.includes(k));
+  }
+  if (cat === 'global') {
+    return (g.includes('pop') && !g.includes('indo') && !g.includes('k-pop') && !g.includes('j-pop')) || g.includes('synth') || g.includes('dance') || g.includes('funk');
+  }
+  if (cat === 'rnb-hiphop') {
+    return g.includes('r&b') || g.includes('soul') || g.includes('hip') || g.includes('rap');
+  }
+  if (cat === 'rock-indie') {
+    return g.includes('rock') || g.includes('indie') || g.includes('electronic') || g.includes('alt');
+  }
+  if (cat === 'kjpop') {
+    return g.includes('k-pop') || g.includes('j-pop');
+  }
+  return true;
+}
 
 export const DiscoverView: React.FC<DiscoverViewProps> = ({
   tracks,
@@ -114,6 +142,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onAddTrackToPlaylist,
   onRemoveTrackFromPlaylist,
   onDeletePlaylist,
+  onSaveCatalogAlbum,
   activeMood = 'all',
   onSelectMood,
   onRecordSearch
@@ -126,6 +155,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const [inlineResults, setInlineResults] = useState<Track[]>([]);
   const [isSearchingInline, setIsSearchingInline] = useState(false);
   const [chartRegion, setChartRegion] = useState<'global' | 'indonesia'>('global');
+  const [albumCategory, setAlbumCategory] = useState<AlbumCategoryFilter>('all');
+  const [showAllAlbums, setShowAllAlbums] = useState(false);
+  const [savingAlbumId, setSavingAlbumId] = useState<string | null>(null);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [selectedAlbum, setSelectedAlbum] = useState<CatalogAlbum | null>(null);
@@ -135,6 +167,31 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const [selectedDailyPlaylistTracks, setSelectedDailyPlaylistTracks] = useState<Track[]>([]);
   const [loadingPlaylistId, setLoadingPlaylistId] = useState<string | null>(null);
   const [expandedMixId, setExpandedMixId] = useState<string | null>(null);
+
+  const savedAlbumNames = useMemo(
+    () => new Set(playlists.map((p) => p.name.trim().toLowerCase())),
+    [playlists]
+  );
+
+  const filteredPopularAlbums = useMemo(
+    () => popularCharts.albums.filter((alb) => matchesAlbumCategory(alb, albumCategory)),
+    [popularCharts.albums, albumCategory]
+  );
+
+  const displayedPopularAlbums = useMemo(
+    () => (showAllAlbums ? filteredPopularAlbums : filteredPopularAlbums.slice(0, 12)),
+    [filteredPopularAlbums, showAllAlbums]
+  );
+
+  const handleBookmarkCatalogAlbum = async (alb: CatalogAlbum, prefetched?: Track[]) => {
+    if (!onSaveCatalogAlbum || savingAlbumId === alb.id) return;
+    setSavingAlbumId(alb.id);
+    try {
+      await onSaveCatalogAlbum(alb, prefetched);
+    } finally {
+      setSavingAlbumId(null);
+    }
+  };
 
   const recommendedMixes = useMemo(
     () =>
@@ -890,7 +947,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </section>
           )}
 
-          {/* Top Daily Albums (Ordered Tracklist Playback) */}
+          {/* Popular Studio Albums (Ordered Tracklist Playback + Library Save) */}
           <section data-testid="featured-albums-section" className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -898,21 +955,71 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 <h3 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
                   {t.topDailyAlbums}
                 </h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-dim)]">
+                  {filteredPopularAlbums.length}
+                </span>
               </div>
-              <span className="text-[11px] text-[var(--text-dim)]">
-                Top Albums
-              </span>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                {([
+                  { id: 'all', label: 'All' },
+                  { id: 'indonesia', label: 'Indonesia' },
+                  { id: 'global', label: 'Global Pop' },
+                  { id: 'rnb-hiphop', label: 'R&B / Hip-Hop' },
+                  { id: 'rock-indie', label: 'Rock & Indie' },
+                  { id: 'kjpop', label: 'K-Pop & J-Pop' }
+                ] as const).map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    data-testid={`album-filter-${cat.id}`}
+                    onClick={() => {
+                      setAlbumCategory(cat.id);
+                      setShowAllAlbums(false);
+                    }}
+                    className={`min-h-[28px] px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                      albumCategory === cat.id
+                        ? 'bg-[var(--ink-solid)] text-[var(--ink-solid-fg)]'
+                        : 'bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+                {filteredPopularAlbums.length > 12 && (
+                  <button
+                    type="button"
+                    data-testid="toggle-all-albums-btn"
+                    onClick={() => setShowAllAlbums((v) => !v)}
+                    className="min-h-[28px] px-2.5 py-1 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border-medium)] text-[11px] font-bold text-[var(--accent-text)] inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                  >
+                    {showAllAlbums ? (
+                      <>
+                        <span>Show Less</span>
+                        <ChevronUp size={12} />
+                      </>
+                    ) : (
+                      <>
+                        <span>Show All ({filteredPopularAlbums.length})</span>
+                        <ChevronDown size={12} />
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
-              {popularCharts.albums.slice(0, 8).map((alb) => {
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3.5">
+              {displayedPopularAlbums.map((alb) => {
                 const isActiveAlb = selectedAlbum?.id === alb.id;
                 const isLoadingAlb = loadingAlbumId === alb.id;
+                const isSaved = savedAlbumNames.has(alb.title.trim().toLowerCase());
+                const isSaving = savingAlbumId === alb.id;
                 return (
                   <div
                     key={alb.id}
                     data-testid={`featured-album-${alb.id}`}
-                    className={`group rounded-2xl p-2.5 border transition-all flex flex-col justify-between gap-2 ${
+                    className={`group rounded-2xl p-2.5 border transition-all flex flex-col justify-between gap-2 min-w-0 ${
                       isActiveAlb
                         ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'
                         : 'bg-[var(--bg-tint)] border-[var(--border-subtle)] hover:border-[var(--border-medium)]'
@@ -921,7 +1028,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenAlbum(alb)}
-                      className="text-left space-y-2 cursor-pointer"
+                      className="text-left space-y-2 cursor-pointer min-w-0"
                     >
                       <div className="relative aspect-square rounded-xl overflow-hidden bg-[var(--bg-surface)]">
                         <img
@@ -947,20 +1054,45 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                       </div>
                     </button>
 
-                    <div className="flex items-center justify-between gap-1.5 pt-1">
-                      <span className="text-[10px] font-mono text-[var(--text-dim)]">
+                    <div className="flex items-center justify-between gap-1.5 pt-1 min-w-0">
+                      <span className="text-[10px] font-mono text-[var(--text-dim)] shrink-0">
                         {alb.nbTracks ? `${alb.nbTracks}t` : 'LP'}
                       </span>
-                      <button
-                        type="button"
-                        data-testid={`play-album-${alb.id}`}
-                        disabled={isLoadingAlb}
-                        onClick={() => handlePlayReleaseAlbum(alb, false, 0)}
-                        className="h-7 px-2.5 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-60"
-                      >
-                        <Play size={10} className="fill-current" />
-                        <span>{t.playAlbum}</span>
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {onSaveCatalogAlbum && (
+                          <button
+                            type="button"
+                            data-testid={`save-album-${alb.id}`}
+                            disabled={isSaving}
+                            onClick={() => void handleBookmarkCatalogAlbum(alb)}
+                            title={isSaved ? 'Saved in Library' : 'Save Album to Library'}
+                            aria-label={isSaved ? 'Saved in Library' : 'Save Album to Library'}
+                            className={`w-7 h-7 rounded-full border flex items-center justify-center cursor-pointer transition-colors disabled:opacity-60 ${
+                              isSaved
+                                ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                                : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            }`}
+                          >
+                            {isSaving ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : isSaved ? (
+                              <BookmarkCheck size={12} />
+                            ) : (
+                              <Bookmark size={12} />
+                            )}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          data-testid={`play-album-${alb.id}`}
+                          disabled={isLoadingAlb}
+                          onClick={() => handlePlayReleaseAlbum(alb, false, 0)}
+                          className="h-7 px-2.5 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-60 whitespace-nowrap"
+                        >
+                          <Play size={10} className="fill-current shrink-0" />
+                          <span>{t.playAlbum}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -991,6 +1123,25 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {onSaveCatalogAlbum && (
+                      <button
+                        type="button"
+                        disabled={savingAlbumId === selectedAlbum.id}
+                        onClick={() => void handleBookmarkCatalogAlbum(selectedAlbum, selectedAlbumTracks)}
+                        className="h-8 px-3 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                      >
+                        {savedAlbumNames.has(selectedAlbum.title.trim().toLowerCase()) ? (
+                          <BookmarkCheck size={12} className="text-[var(--accent-text)]" />
+                        ) : (
+                          <Bookmark size={12} />
+                        )}
+                        <span>
+                          {savedAlbumNames.has(selectedAlbum.title.trim().toLowerCase())
+                            ? 'Saved Album'
+                            : 'Save Album'}
+                        </span>
+                      </button>
+                    )}
                     {selectedAlbumTracks.length > 0 && onPlayTrackList && (
                       <>
                         <button
