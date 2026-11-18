@@ -456,7 +456,7 @@ export default async function handler(req, res) {
 
       const BLOCKED_EXPLICIT_RE = /\b(cunt|fuck|shit|shat|bitch|whore|porn|xxx|sex\s+sound)\b/i;
       const NON_MUSIC_ALBUM_RE =
-        /\b(sound\s*effects?|sfx|soundtrack|original\s+motion\s+picture|bandai\s+namco|video\s+game|minecraft|karaoke|lullaby|asmr|white\s*noise|sleep\s*sounds|gorguts|obscura|magical\s+strings|cynthoni|grindcore|death\s+metal|country)\b/i;
+        /\b(sound\s*effects?|sfx|soundtrack|original\s+motion\s+picture|bandai\s+namco|video\s+game|minecraft|karaoke|lullaby|asmr|white\s*noise|brown\s*noise|pink\s*noise|rain\s*sounds|sleep\s*sounds|sleeptherapy|deep\s+sleep|for\s+sleep|relaxation|meditation|gorguts|obscura|magical\s+strings|cynthoni|grindcore|death\s+metal|country)\b/i;
       const RETRO_DECADE_PL_RE =
         /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal|sleep|relaxation|meditation|calm\s+piano|study\s+lofi|chill\s+lofi|country)\b/i;
       const NICHE_CHART_GENRE_RE = /\b(country)\b/i;
@@ -615,7 +615,14 @@ export default async function handler(req, res) {
             }))
         : [];
 
-      const featuredAlbums = [...appleAlbumList, ...dzFeaturedAlbums].slice(0, 16);
+      const featuredAlbums = [...appleAlbumList];
+      for (const a of dzFeaturedAlbums) {
+        const key = `${normalizeAlbumBase(a.title)}::${normalizeText(String(a.artist || '').split(/[,&]/)[0] || '')}`;
+        if (appleAlbSeen.has(key)) continue;
+        appleAlbSeen.add(key);
+        featuredAlbums.push(a);
+        if (featuredAlbums.length >= 16) break;
+      }
 
       const rawPlaylists = Array.isArray(dzTopPlaylists?.data) ? dzTopPlaylists.data : [];
       const plSeen = new Set();

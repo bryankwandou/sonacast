@@ -1839,7 +1839,7 @@ const DAILY_CHARTS_FEED_URLS = [
 ];
 const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v5';
 const DAILY_CHARTS_TTL_MS = 12 * 60 * 60 * 1000;
-const NON_MUSIC_EXTRA_RE = /\b(sound\s*effects?|sfx|original\s+motion\s+picture|video\s+game|minecraft|bandai|asmr|karaoke|lullaby|gorguts|obscura|magical\s+strings|cynthoni|death\s+metal)\b/i;
+const NON_MUSIC_EXTRA_RE = /\b(sound\s*effects?|sfx|original\s+motion\s+picture|video\s+game|minecraft|bandai|asmr|karaoke|lullaby|white\s*noise|brown\s*noise|pink\s*noise|rain\s*sounds|sleep\s*sounds|sleeptherapy|deep\s+sleep|for\s+sleep|relaxation|meditation|gorguts|obscura|magical\s+strings|cynthoni|death\s+metal)\b/i;
 const RETRO_PL_RE = /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal|sleep|relaxation|meditation|calm\s+piano|study\s+lofi|chill\s+lofi|country)\b/i;
 
 function catalogItemsToTracks(items: CatalogApiItem[]): Track[] {
