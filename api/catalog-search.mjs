@@ -496,7 +496,7 @@ export default async function handler(req, res) {
                 a?.id &&
                 a?.title &&
                 a.explicit_lyrics !== true &&
-                (Number(a.nb_tracks) === 0 || Number(a.nb_tracks) >= 5) &&
+                (Number(a.nb_tracks || 0) === 0 || Number(a.nb_tracks) >= 5) &&
                 !BLOCKED_EXPLICIT_RE.test(`${a.title} ${a.artist?.name || ''}`) &&
                 !NON_MUSIC_ALBUM_RE.test(`${a.title} ${a.artist?.name || ''}`)
             )

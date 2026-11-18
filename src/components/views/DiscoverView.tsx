@@ -519,15 +519,24 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           {/* Spotify-Style 2x4 Quick Access Shortcut Grid */}
           <section data-testid="spotify-home-shortcuts" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             {(() => {
-              const shortcuts: {
+              type HomeShortcut = {
                 id: string;
                 title: string;
                 coverUrl: string;
                 fallbackArtist: string;
                 onTrigger: () => void;
-              }[] = [];
+              };
+              const shortcuts: HomeShortcut[] = [];
+              const seenTitles = new Set<string>();
+              const pushShortcut = (entry: HomeShortcut) => {
+                if (shortcuts.length >= 8) return;
+                const key = entry.title.trim().toLowerCase();
+                if (!key || seenTitles.has(key)) return;
+                seenTitles.add(key);
+                shortcuts.push(entry);
+              };
               if (likedTracks.length > 0 && onPlayTrackList) {
-                shortcuts.push({
+                pushShortcut({
                   id: 'sc-liked',
                   title: t.likedSongs,
                   coverUrl: likedTracks[0]?.coverUrl || DEFAULT_COVER_DATA_URI,
@@ -543,7 +552,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 });
               }
               for (const pl of popularCharts.playlists.slice(0, 3)) {
-                shortcuts.push({
+                pushShortcut({
                   id: `sc-pl-${pl.id}`,
                   title: pl.title,
                   coverUrl: pl.coverUrl || DEFAULT_COVER_DATA_URI,
@@ -551,9 +560,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   onTrigger: () => void handlePlayDailyPlaylist(pl, false, 0)
                 });
               }
-              for (const mix of recommendedMixes.slice(0, 2)) {
-                if (shortcuts.length >= 8) break;
-                shortcuts.push({
+              for (const mix of recommendedMixes) {
+                if (shortcuts.length >= 6) break;
+                pushShortcut({
                   id: `sc-${mix.id}`,
                   title: mix.title,
                   coverUrl: mix.tracks[0]?.coverUrl || DEFAULT_COVER_DATA_URI,
@@ -570,8 +579,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 });
               }
               for (const alb of popularCharts.albums) {
-                if (shortcuts.length >= 8) break;
-                shortcuts.push({
+                pushShortcut({
                   id: `sc-alb-${alb.id}`,
                   title: alb.title,
                   coverUrl: alb.coverUrl || DEFAULT_COVER_DATA_URI,

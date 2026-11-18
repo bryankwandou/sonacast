@@ -481,11 +481,7 @@ function safeYtThumbnail(rawThumb: string | undefined, videoId: string): string 
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
-const PIPED_MIRRORS = [
-  'https://api.piped.private.coffee',
-  'https://pipedapi.kavin.rocks',
-  'https://pipedapi.adminforge.de'
-];
+const PIPED_MIRRORS = ['https://api.piped.private.coffee'];
 
 function createLinkedAbortSignal(
   timeoutMs: number,
@@ -567,7 +563,7 @@ async function searchPipedMusic(
 ): Promise<StreamCandidate[]> {
   if (parentSignal?.aborted) return [];
   const primary = await searchSinglePipedMirror(PIPED_MIRRORS[0], query, parentSignal, filter);
-  if (primary.length >= 3 || parentSignal?.aborted) return primary;
+  if (PIPED_MIRRORS.length <= 1 || primary.length >= 3 || parentSignal?.aborted) return primary;
 
   const altBatches = await Promise.allSettled(
     PIPED_MIRRORS.slice(1).map((mirror) => searchSinglePipedMirror(mirror, query, parentSignal, filter))
