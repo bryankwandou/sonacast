@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LyricLine, Track } from '../../types';
 import {
   Check,
@@ -6,6 +6,8 @@ import {
   ChevronUp,
   Download,
   Film,
+  Flame,
+  Headphones,
   Heart,
   ListPlus,
   Mic2,
@@ -78,8 +80,34 @@ export const VibeFeedView: React.FC<VibeFeedViewProps> = ({
 }) => {
   const { t } = useAppPreferences();
   const wheelCooldownRef = useRef<number>(0);
+  const [vibeReactions, setVibeReactions] = useState<Record<string, string[]>>(() => {
+    try {
+      const raw = localStorage.getItem('sonacast_vibe_reactions');
+      return raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
+    } catch {
+      return {};
+    }
+  });
 
   const activeTrack = currentTrack || tracks[0] || null;
+  const activeReactions = activeTrack ? vibeReactions[activeTrack.id] || [] : [];
+
+  const toggleVibeReaction = (tag: string) => {
+    if (!activeTrack) return;
+    setVibeReactions((prev) => {
+      const existing = prev[activeTrack.id] || [];
+      const nextTags = existing.includes(tag)
+        ? existing.filter((x) => x !== tag)
+        : [...existing, tag];
+      const next = { ...prev, [activeTrack.id]: nextTags };
+      try {
+        localStorage.setItem('sonacast_vibe_reactions', JSON.stringify(next));
+      } catch {
+        // Ignore quota failure
+      }
+      return next;
+    });
+  };
   const accentRgb = useCoverAccentRgb(
     activeTrack?.coverUrl,
     activeTrack?.title,
@@ -288,6 +316,33 @@ export const VibeFeedView: React.FC<VibeFeedViewProps> = ({
                   <Mic2 size={13} />
                   <span>{t.karaokeMode}</span>
                 </button>
+              </div>
+
+              {/* Resso Parity: Interactive Track Vibe Pulse Tags */}
+              <div className="pt-1 flex flex-wrap items-center justify-center sm:justify-start gap-1.5" data-testid="vibe-pulse-bar">
+                {[
+                  { id: 'energy', label: 'Hype', Icon: Flame },
+                  { id: 'feels', label: 'Feels', Icon: Heart },
+                  { id: 'dreamy', label: 'Dreamy', Icon: Sparkles },
+                  { id: 'focus', label: 'Deep Listen', Icon: Headphones }
+                ].map(({ id, label, Icon }) => {
+                  const selected = activeReactions.includes(id);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => toggleVibeReaction(id)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-semibold cursor-pointer transition-colors ${
+                        selected
+                          ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                          : 'bg-[var(--bg-elevated)]/70 border-[var(--border-subtle)] text-[var(--text-dim)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <Icon size={11} />
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

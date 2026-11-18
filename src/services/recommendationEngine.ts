@@ -130,7 +130,7 @@ export interface SonicClassProfile {
   keywords: string[];
 }
 
-const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
+export const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
   piano_neoclassical: {
     classId: 'piano_neoclassical',
     classLabel: 'Piano & Neoclassical',
@@ -213,9 +213,9 @@ const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     classId: 'modern_chart_pop',
     classLabel: 'Modern Global Pop',
     isInstrumental: false,
-    compatibleClasses: ['rnb_late_soul', 'electronic_dance_synth', 'kpop_idol', 'alt_indie_rock'],
+    compatibleClasses: ['rnb_late_soul', 'electronic_dance_synth', 'kpop_idol'],
     peerArtists: ['Taylor Swift', 'Dua Lipa', 'Ariana Grande', 'Billie Eilish', 'Bruno Mars', 'Ed Sheeran', 'Harry Styles', 'Sabrina Carpenter', 'Olivia Rodrigo'],
-    keywords: ['taylor swift', 'dua lipa', 'ariana grande', 'billie eilish', 'olivia rodrigo', 'sabrina carpenter', 'harry styles', 'bruno mars', 'ed sheeran', 'justin bieber', 'shawn mendes', 'charlie puth', 'benson boone', 'teddy swims', 'chappell roan', 'adele', 'sam smith', 'maroon 5', 'lady gaga', 'rihanna', 'katy perry']
+    keywords: ['taylor swift', 'dua lipa', 'ariana grande', 'billie eilish', 'olivia rodrigo', 'sabrina carpenter', 'harry styles', 'bruno mars', 'ed sheeran', 'justin bieber', 'shawn mendes', 'charlie puth', 'benson boone', 'teddy swims', 'chappell roan', 'adele', 'sam smith', 'maroon 5', 'lady gaga', 'rihanna', 'katy perry', 'tate mcrae', 'charli xcx', 'gracie abrams', 'troye sivan', 'clairo', 'lana del rey']
   },
   kpop_idol: {
     classId: 'kpop_idol',
@@ -229,7 +229,7 @@ const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     classId: 'jpop_city_anime',
     classLabel: 'J-Pop, Anime & City Pop',
     isInstrumental: false,
-    compatibleClasses: ['kpop_idol', 'modern_chart_pop', 'alt_indie_rock', 'electronic_dance_synth'],
+    compatibleClasses: ['kpop_idol', 'modern_chart_pop', 'electronic_dance_synth'],
     peerArtists: ['YOASOBI', 'Kenshi Yonezu', 'Fujii Kaze', 'Official HIGE DANDism', 'Ado', 'Vaundy', 'Yorushika', 'Aimer'],
     keywords: ['yoasobi', 'kenshi yonezu', 'fujii kaze', 'ado', 'official hige', 'king gnu', 'yorushika', 'vaundy', 'mrs. green apple', 'one ok rock', 'radwimps', 'lisa', 'aimer', 'mariya takeuchi', 'miki matsubara', 'tatsuro yamashita', 'hikaru utada', 'creepy nuts', 'imase']
   },
@@ -237,9 +237,9 @@ const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     classId: 'alt_indie_rock',
     classLabel: 'Alternative & Indie Rock',
     isInstrumental: false,
-    compatibleClasses: ['classic_global_legend', 'modern_chart_pop', 'electronic_dance_synth', 'rnb_late_soul'],
-    peerArtists: ['Coldplay', 'Arctic Monkeys', 'Radiohead', 'Tame Impala', 'Lana Del Rey', 'The 1975', 'Muse', 'Oasis', 'Cigarettes After Sex'],
-    keywords: ['coldplay', 'arctic monkeys', 'radiohead', 'muse', 'oasis', 'tame impala', 'lana del rey', 'cigarettes after sex', 'mac demarco', 'the 1975', 'the neighbourhood', 'imagine dragons', 'onerepublic', 'linkin park', 'nirvana', 'foo fighters', 'green day', 'red hot chili peppers', 'the killers', 'vampire weekend', 'clairo', 'phoebe bridgers', 'mitski']
+    compatibleClasses: ['classic_global_legend'],
+    peerArtists: ['Coldplay', 'Arctic Monkeys', 'Radiohead', 'Muse', 'Oasis', 'Imagine Dragons', 'OneRepublic', 'Linkin Park'],
+    keywords: ['coldplay', 'arctic monkeys', 'radiohead', 'muse', 'oasis', 'imagine dragons', 'onerepublic', 'linkin park', 'nirvana', 'foo fighters', 'green day', 'red hot chili peppers', 'the killers', 'vampire weekend', 'the clash', 'paramore', 'evanescence']
   },
   heavy_metal_hard: {
     classId: 'heavy_metal_hard',
@@ -251,11 +251,11 @@ const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
   },
   electronic_dance_synth: {
     classId: 'electronic_dance_synth',
-    classLabel: 'Electronic, House & Synth',
+    classLabel: 'Synth-Pop, Electronic & Indie Dance',
     isInstrumental: false,
-    compatibleClasses: ['modern_chart_pop', 'kpop_idol', 'jpop_city_anime', 'hiphop_rap_trap'],
-    peerArtists: ['Daft Punk', 'Calvin Harris', 'Kygo', 'Avicii', 'Fred again..', 'Disclosure', 'Zedd', 'Martin Garrix', 'Odesza'],
-    keywords: ['daft punk', 'calvin harris', 'david guetta', 'avicii', 'martin garrix', 'kygo', 'zedd', 'alan walker', 'fred again', 'disclosure', 'peggy gou', 'odesza', 'flume', 'm83', 'skrillex', 'the chainsmokers', 'marshmello', 'tiesto', 'armin van buuren', 'deadmau5', 'justice', 'kavinsky']
+    compatibleClasses: ['modern_chart_pop', 'kpop_idol', 'jpop_city_anime', 'rnb_late_soul'],
+    peerArtists: ['Tame Impala', 'Daft Punk', 'Calvin Harris', 'Kygo', 'Avicii', 'Fred again..', 'Disclosure', 'The 1975', 'MGMT'],
+    keywords: ['tame impala', 'daft punk', 'calvin harris', 'david guetta', 'avicii', 'martin garrix', 'kygo', 'zedd', 'alan walker', 'fred again', 'disclosure', 'peggy gou', 'odesza', 'flume', 'm83', 'skrillex', 'the chainsmokers', 'marshmello', 'tiesto', 'armin van buuren', 'deadmau5', 'justice', 'kavinsky', 'the 1975', 'foster the people', 'mgmt', 'empire of the sun', 'phoenix', 'the neighbourhood', 'cigarettes after sex', 'mac demarco']
   },
   hiphop_rap_trap: {
     classId: 'hiphop_rap_trap',

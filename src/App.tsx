@@ -921,7 +921,7 @@ export default function App() {
         host.style.top = `${rect.top}px`;
         host.style.width = `${rect.width}px`;
         host.style.height = `${rect.height}px`;
-        const visualAllowed = !streamError && (isYtVisualReady || (isStageVisible && isVideoStage));
+        const visualAllowed = !streamError && isYtVisualReady;
         host.style.opacity = visualAllowed ? '1' : '0.005';
         host.style.pointerEvents = visualAllowed ? 'auto' : 'none';
         host.style.zIndex = visualAllowed ? '25' : '1';
@@ -1327,6 +1327,9 @@ export default function App() {
     ) => {
       const selectionSeq = ++selectionCounterRef.current;
       ++mvSelectionTokenRef.current;
+      if (!options?.fromEnded && track.sourceTag !== 'live-radio') {
+        sharedAudioEngine.unlockOnUserGesture();
+      }
       if (mvResolveAbortRef.current) {
         mvResolveAbortRef.current.abort();
         mvResolveAbortRef.current = null;
@@ -2491,9 +2494,13 @@ export default function App() {
       }
       if (isTrackSavedOffline(offlineAudioKeys, track.audioUrl)) {
         await removeTrackOffline(track.audioUrl);
+        navigator.serviceWorker?.controller?.postMessage({ type: 'REFRESH_OFFLINE_AUDIO' });
         showToast(`${t.saveOffline}: ${track.title} removed`);
       } else {
         const ok = await saveTrackOffline(track.audioUrl);
+        if (ok) {
+          navigator.serviceWorker?.controller?.postMessage({ type: 'REFRESH_OFFLINE_AUDIO' });
+        }
         showToast(
           ok ? `${t.savedOffline}: ${track.title}` : 'Unable to cache audio offline',
           ok ? 'success' : 'warning'
@@ -2856,13 +2863,16 @@ export default function App() {
 
   const prewarmTrackStream = useCallback(
     (candidate: Track | null | undefined) => {
-      if (
-        !candidate?.id ||
-        candidate.id === currentTrackRef.current.id ||
-        candidate.audioUrl ||
-        (candidate.candidateVideoIds && candidate.candidateVideoIds.length > 0) ||
-        findMasterAudio(candidate.title, candidate.artist)
-      ) {
+      if (!candidate?.id || candidate.id === currentTrackRef.current.id) {
+        return;
+      }
+      const matchedMaster =
+        candidate.audioUrl || findMasterAudio(candidate.title, candidate.artist)?.audioUrl;
+      if (matchedMaster) {
+        sharedAudioEngine.prewarmAudioFile(matchedMaster);
+        return;
+      }
+      if (candidate.candidateVideoIds && candidate.candidateVideoIds.length > 0) {
         return;
       }
       const existingCache = peekCachedTrackStream(candidate.title, candidate.artist);
@@ -4410,6 +4420,7 @@ export default function App() {
               lyricsStatus={lyricsStatus}
               lyricsOffset={currentLyricsOffset}
               onRetryLyrics={handleRetryCurrentLyrics}
+              onOpenArtist={handleOpenArtistSpotlight}
               isMobileOpen={isMobileQueueOpen}
               onCloseMobile={() => setIsMobileQueueOpen(false)}
             />
@@ -4624,6 +4635,7 @@ export default function App() {
         onAddToQueue={handleAddToQueue}
         onStartRadio={handleStartRadio}
         onToggleLike={handleToggleLike}
+        onSwitchArtist={(nextArtist) => handleOpenArtistSpotlight(nextArtist)}
         onTipArtist={(artist) => {
           setArtistSpotlightName(null);
           setWalletTargetArtist({ artist, trackTitle: `${artist} Studio Support` });

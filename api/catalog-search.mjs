@@ -430,13 +430,18 @@ export default async function handler(req, res) {
 
   if (mode === 'charts') {
     try {
-      const [dzGlobal, usRss, idRss, appleUsAlbums, dzChartAlbums, dzTopPlaylists] = await Promise.all([
+      const [dzGlobal, usRss, idRss, appleUsAlbums, appleIdAlbums, dzChartAlbums, dzTopPlaylists] = await Promise.all([
         fetch('https://api.deezer.com/chart/0/tracks?limit=35', { signal: AbortSignal.timeout(3800) })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
         fetchAppleRssWithDurations('us', 25).catch(() => []),
         fetchAppleRssWithDurations('id', 25).catch(() => []),
-        fetch('https://rss.marketingtools.apple.com/api/v2/us/music/most-played/20/albums.json', {
+        fetch('https://rss.marketingtools.apple.com/api/v2/us/music/most-played/40/albums.json', {
+          signal: AbortSignal.timeout(3800)
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        fetch('https://rss.marketingtools.apple.com/api/v2/id/music/most-played/20/albums.json', {
           signal: AbortSignal.timeout(3800)
         })
           .then((r) => (r.ok ? r.json() : null))
@@ -476,9 +481,27 @@ export default async function handler(req, res) {
         return out;
       };
 
+      const NON_POP_ROCK_ARTIST_RE =
+        /\b(the clash|queen|nirvana|metallica|ac\/dc|linkin park|green day|radiohead|foo fighters|guns n' roses|oasis|red hot chili peppers|iron maiden|system of a down|slipknot)\b/i;
+      const RAP_HIPHOP_ARTIST_RE =
+        /\b(kendrick lamar|drake|lil baby|travis scott|future|eminem|21 savage|playboi carti|kanye west|offset|metro boomin|j\. cole|tyler, the creator)\b/i;
+      const LATIN_ARTIST_RE =
+        /\b(bad bunny|karol g|shakira|feid|rauw alejandro|j balvin|ozuna|peso pluma|maluma)\b/i;
+
+      const inferChartTrackGenre = (item, fallback) => {
+        const artistTitle = `${item?.artist || ''} ${item?.title || ''}`;
+        if (NON_POP_ROCK_ARTIST_RE.test(artistTitle)) return 'Rock';
+        if (RAP_HIPHOP_ARTIST_RE.test(artistTitle)) return 'Hip-Hop/Rap';
+        if (LATIN_ARTIST_RE.test(artistTitle)) return 'Latin';
+        return fallback || 'Pop';
+      };
+
       const dzItems = Array.isArray(dzGlobal?.data)
         ? dzGlobal.data
-            .map((t) => mapDeezerTrack(t, false, 'Pop'))
+            .map((t) => {
+              const mapped = mapDeezerTrack(t, false, 'Pop');
+              return { ...mapped, genre: inferChartTrackGenre(mapped, mapped.genre) };
+            })
             .filter(
               (t) =>
                 t.title &&
@@ -494,34 +517,79 @@ export default async function handler(req, res) {
       const popUsRss = usRss.filter((t) => !isChartExcluded(t));
       const globalCombined = cleanTracks([...dzItems, ...popUsRss], 'Pop');
 
-      const appleAlbumList = Array.isArray(appleUsAlbums?.feed?.results)
-        ? appleUsAlbums.feed.results
-            .filter((a) => {
-              const genreNames = Array.isArray(a?.genres)
-                ? a.genres.map((g) => g?.name || '').join(' ')
-                : '';
-              return (
-                a?.id &&
-                a?.name &&
-                !BLOCKED_EXPLICIT_RE.test(`${a.name} ${a.artistName || ''}`) &&
-                !NON_MUSIC_ALBUM_RE.test(`${a.name} ${a.artistName || ''} ${genreNames}`) &&
-                !COUNTRY_CROSSOVER_RE.test(`${a.name} ${a.artistName || ''} ${genreNames}`)
-              );
-            })
-            .slice(0, 12)
-            .map((a) => ({
-              id: `it-${a.id}`,
-              title: String(a.name || ''),
-              artist: String(a.artistName || 'Various Artists'),
-              coverUrl:
-                typeof a.artworkUrl100 === 'string'
-                  ? a.artworkUrl100.replace('100x100bb', '600x600bb')
-                  : '',
-              releaseDate: String(a.releaseDate || ''),
-              genre: String(a.genres?.find((g) => g?.name && g.name !== 'Music')?.name || 'Pop'),
-              recordType: 'album'
-            }))
-        : [];
+      const rawAppleEntries = [
+        ...(Array.isArray(appleUsAlbums?.feed?.results) ? appleUsAlbums.feed.results.slice(0, 28) : []),
+        ...(Array.isArray(appleIdAlbums?.feed?.results) ? appleIdAlbums.feed.results.slice(0, 14) : [])
+      ].filter((a) => {
+        const genreNames = Array.isArray(a?.genres)
+          ? a.genres.map((g) => g?.name || '').join(' ')
+          : '';
+        return (
+          a?.id &&
+          a?.name &&
+          !/\b(?:single|ep)\b\s*$/i.test(String(a.name)) &&
+          !BLOCKED_EXPLICIT_RE.test(`${a.name} ${a.artistName || ''}`) &&
+          !NON_MUSIC_ALBUM_RE.test(`${a.name} ${a.artistName || ''} ${genreNames}`) &&
+          !COUNTRY_CROSSOVER_RE.test(`${a.name} ${a.artistName || ''} ${genreNames}`)
+        );
+      });
+
+      const appleIds = Array.from(new Set(rawAppleEntries.map((a) => String(a.id)))).slice(0, 32);
+      const appleLookupMap = new Map();
+      if (appleIds.length > 0) {
+        try {
+          const lkRes = await fetch(
+            `https://itunes.apple.com/lookup?id=${appleIds.join(',')}`,
+            { signal: AbortSignal.timeout(3200) }
+          );
+          if (lkRes.ok) {
+            const lkJson = await lkRes.json();
+            for (const row of Array.isArray(lkJson?.results) ? lkJson.results : []) {
+              if (row?.collectionId) {
+                appleLookupMap.set(String(row.collectionId), row);
+              }
+            }
+          }
+        } catch {
+          // Safe fallback when iTunes lookup times out
+        }
+      }
+
+      const normalizeAlbumBase = (title) =>
+        normalizeText(
+          String(title || '').replace(
+            /\s*[([]\s*(?:deluxe|bonus(?:\s+track)?|expanded|complete|clean|explicit|edition|version|remaster(?:ed)?).*?[)\]]\s*$/gi,
+            ''
+          )
+        );
+      const appleAlbSeen = new Set();
+      const appleAlbumList = [];
+      for (const a of rawAppleEntries) {
+        const lk = appleLookupMap.get(String(a.id));
+        if (lk) {
+          const trackCount = Number(lk.trackCount || 0);
+          if (trackCount < 6) continue;
+          if (lk.collectionExplicitness === 'explicit') continue;
+          if (lk.collectionType && String(lk.collectionType).toLowerCase() !== 'album') continue;
+        }
+        const key = `${normalizeAlbumBase(a.name)}::${normalizeText(String(a.artistName || '').split(/[,&]/)[0] || '')}`;
+        if (appleAlbSeen.has(key)) continue;
+        appleAlbSeen.add(key);
+        appleAlbumList.push({
+          id: `it-${a.id}`,
+          title: String(a.name || ''),
+          artist: String(a.artistName || 'Various Artists'),
+          coverUrl:
+            typeof a.artworkUrl100 === 'string'
+              ? a.artworkUrl100.replace('100x100bb', '600x600bb')
+              : '',
+          nbTracks: lk?.trackCount ? Number(lk.trackCount) : undefined,
+          releaseDate: String(a.releaseDate || ''),
+          genre: String(a.genres?.find((g) => g?.name && g.name !== 'Music')?.name || 'Pop'),
+          recordType: 'album'
+        });
+        if (appleAlbumList.length >= 12) break;
+      }
 
       const dzFeaturedAlbums = Array.isArray(dzChartAlbums?.data)
         ? dzChartAlbums.data
@@ -530,7 +598,7 @@ export default async function handler(req, res) {
                 a?.id &&
                 a?.title &&
                 a.explicit_lyrics !== true &&
-                (Number(a.nb_tracks || 0) === 0 || Number(a.nb_tracks) >= 5) &&
+                (Number(a.nb_tracks || 0) === 0 || Number(a.nb_tracks) >= 6) &&
                 !BLOCKED_EXPLICIT_RE.test(`${a.title} ${a.artist?.name || ''}`) &&
                 !NON_MUSIC_ALBUM_RE.test(`${a.title} ${a.artist?.name || ''}`) &&
                 !COUNTRY_CROSSOVER_RE.test(`${a.title} ${a.artist?.name || ''}`)

@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlaybackContextInfo, RadioStation, Track } from '../../types';
 import {
   ChevronUp,
+  Disc3,
   Film,
   Heart,
   ListMusic,
@@ -13,10 +14,17 @@ import {
   RefreshCw,
   Save,
   Share2,
+  Sparkles,
   Trash2,
+  User,
   X
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import {
+  SONIC_CLASS_PROFILES,
+  classifyTrackTier,
+  selectCohesiveCandidatePool
+} from '../../services/recommendationEngine';
 import { applyCoverFallback } from '../../utils/coverFallback';
 import { PlayingBars } from '../common/PlayingBars';
 
@@ -52,6 +60,7 @@ interface RightSidebarProps {
   onSaveQueueAsPlaylist?: () => void;
   lyricsStatus?: 'idle' | 'loading' | 'loaded' | 'unavailable';
   onRetryLyrics?: (customTitle?: string, customArtist?: string) => void;
+  onOpenArtist?: (artistName: string) => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
 }
@@ -85,12 +94,29 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onSaveQueueAsPlaylist,
   lyricsStatus = 'idle',
   onRetryLyrics,
+  onOpenArtist,
   isMobileOpen = false,
   onCloseMobile
 }) => {
   const { t } = useAppPreferences();
-  const [activePanelTab, setActivePanelTab] = useState<'queue' | 'lyrics'>('queue');
+  const [activePanelTab, setActivePanelTab] = useState<'queue' | 'lyrics' | 'related'>('queue');
   const activeSidebarLyricRef = useRef<HTMLButtonElement | null>(null);
+
+  const currentClassProfile = useMemo(() => {
+    const tier = classifyTrackTier(currentTrack);
+    return SONIC_CLASS_PROFILES[tier.classId];
+  }, [currentTrack]);
+
+  const relatedTracks = useMemo(() => {
+    return selectCohesiveCandidatePool(currentTrack, queue, 3).slice(0, 6);
+  }, [currentTrack, queue]);
+
+  const relatedArtists = useMemo(() => {
+    const primary = currentTrack.artist.split(/[,&]|ft\.?/i)[0].trim().toLowerCase();
+    return currentClassProfile.peerArtists
+      .filter((name: string) => name.toLowerCase() !== primary)
+      .slice(0, 6);
+  }, [currentTrack.artist, currentClassProfile]);
 
   const currentQueueIdx = queue.findIndex((item) => item.id === currentTrack.id);
   const orderedUpcoming =
@@ -190,10 +216,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         />
       </div>
 
-      {/* 2 Clean Tab Pills: Up Next | Lyrics (YouTube Music / Spotify parity) */}
-      <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[var(--bg-tint)] mb-3 shrink-0">
+      {/* 3 Clean Tab Pills: Up Next | Lyrics | Related (YouTube Music / Spotify parity) */}
+      <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[var(--bg-tint)] mb-3 shrink-0">
         <button
           type="button"
+          data-testid="sidebar-tab-queue"
           onClick={() => setActivePanelTab('queue')}
           className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
             activePanelTab === 'queue'
@@ -206,6 +233,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         </button>
         <button
           type="button"
+          data-testid="sidebar-tab-lyrics"
           onClick={() => setActivePanelTab('lyrics')}
           className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
             activePanelTab === 'lyrics'
@@ -215,6 +243,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         >
           <Mic2 size={12} />
           <span>{t.lyrics}</span>
+        </button>
+        <button
+          type="button"
+          data-testid="sidebar-tab-related"
+          onClick={() => setActivePanelTab('related')}
+          className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+            activePanelTab === 'related'
+              ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+              : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <Sparkles size={12} />
+          <span>Related</span>
         </button>
       </div>
 
@@ -580,6 +621,78 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   );
                 })}
               </>
+            )}
+          </div>
+        )}
+
+        {activePanelTab === 'related' && (
+          <div className="space-y-4 py-1" data-testid="sidebar-related-panel">
+            <div className="p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] space-y-1">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
+                <Disc3 size={11} />
+                <span>Sonic Profile</span>
+              </div>
+              <div className="text-xs font-extrabold text-[var(--text-primary)]">
+                {currentClassProfile.classLabel}
+              </div>
+              <div className="text-[11px] text-[var(--text-dim)]">
+                Matched by tempo, genre cluster, and listener neighborhood
+              </div>
+            </div>
+
+            {relatedArtists.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] px-1">
+                  Fans Also Like
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {relatedArtists.map((artist: string) => (
+                    <button
+                      key={artist}
+                      type="button"
+                      onClick={() => onOpenArtist?.(artist)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer transition-colors"
+                    >
+                      <User size={11} className="text-[var(--accent-text)]" />
+                      <span>{artist}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {relatedTracks.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] px-1">
+                  Similar Songs
+                </div>
+                <div className="space-y-1">
+                  {relatedTracks.map((item) => (
+                    <button
+                      key={`rel-${item.id}`}
+                      type="button"
+                      onClick={() => onSelectTrack(item)}
+                      className="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-[var(--bg-tint-hover)] text-left cursor-pointer transition-colors group"
+                    >
+                      <img
+                        src={item.coverUrl}
+                        alt={item.title}
+                        loading="lazy"
+                        onError={(e) => applyCoverFallback(e, item.title, item.artist)}
+                        className="w-9 h-9 rounded-md object-cover bg-[var(--bg-elevated)] shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                          {item.title}
+                        </div>
+                        <div className="text-[11px] text-[var(--text-dim)] truncate">
+                          {item.artist}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}

@@ -16,6 +16,10 @@ import {
 import type { CatalogAlbum, PlaybackContextInfo, Track } from '../../types';
 import { ARTISTS_DIRECTORY } from '../../data/artists800';
 import {
+  SONIC_CLASS_PROFILES,
+  classifyTrackTier
+} from '../../services/recommendationEngine';
+import {
   fetchAlbumTracksOnline,
   searchAlbumsOnline,
   searchTracksOnline
@@ -46,6 +50,7 @@ interface ArtistSpotlightModalProps {
   onStartRadio: (track: Track) => void;
   onToggleLike?: (track: Track) => void;
   onTipArtist?: (artistName: string) => void;
+  onSwitchArtist?: (artistName: string) => void;
 }
 
 export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
@@ -64,7 +69,8 @@ export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
   onAddToQueue,
   onStartRadio,
   onToggleLike,
-  onTipArtist
+  onTipArtist,
+  onSwitchArtist
 }) => {
   const { t } = useAppPreferences();
   const cleanArtist = artistName ? getPrimaryArtistName(artistName) : null;
@@ -144,6 +150,32 @@ export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
     );
     return fromDir?.genre || genreHint || topTracks[0]?.genre || 'Global Catalog';
   }, [cleanArtist, genreHint, topTracks]);
+
+  const relatedArtists = useMemo(() => {
+    if (!cleanArtist) return [];
+    const sampleTier = classifyTrackTier({
+      title: topTracks[0]?.title || cleanArtist,
+      artist: cleanArtist,
+      genre: resolvedGenre,
+      bpm: topTracks[0]?.bpm || 112
+    });
+    const peers = SONIC_CLASS_PROFILES[sampleTier.classId]?.peerArtists || [];
+    const dirPeers = ARTISTS_DIRECTORY.filter(
+      (a) =>
+        a.name.toLowerCase() !== cleanArtist.toLowerCase() &&
+        a.genre.toLowerCase() === resolvedGenre.toLowerCase()
+    ).map((a) => a.name);
+    const seen = new Set<string>([cleanArtist.toLowerCase()]);
+    const merged: string[] = [];
+    for (const cand of [...peers, ...dirPeers]) {
+      const k = cand.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      merged.push(cand);
+      if (merged.length >= 6) break;
+    }
+    return merged;
+  }, [cleanArtist, resolvedGenre, topTracks]);
 
   useEffect(() => {
     if (!cleanArtist) return;
@@ -470,6 +502,30 @@ export const ArtistSpotlightModal: React.FC<ArtistSpotlightModalProps> = ({
                         {alb.nbTracks ? `${alb.nbTracks} tracks` : alb.artist}
                       </div>
                     </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Spotify Parity: Fans Also Like */}
+          {relatedArtists.length > 0 && (
+            <section className="space-y-3" data-testid="artist-fans-also-like">
+              <h3 className="text-sm font-extrabold text-[var(--text-primary)] uppercase tracking-wider">
+                Fans Also Like
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {relatedArtists.map((peer) => (
+                  <button
+                    key={peer}
+                    type="button"
+                    onClick={() => onSwitchArtist?.(peer)}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer transition-colors"
+                  >
+                    <span className="w-5 h-5 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)] flex items-center justify-center text-[10px] font-bold">
+                      {peer.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span>{peer}</span>
                   </button>
                 ))}
               </div>

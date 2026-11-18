@@ -369,6 +369,22 @@ export class AudioEngine {
     }
   }
 
+  public unlockOnUserGesture() {
+    if (typeof window === 'undefined') return;
+    this.startTransitionKeepalive(0);
+    if (this.ctx && this.ctx.state !== 'running') {
+      this.ctx.resume().catch(() => {});
+    }
+  }
+
+  public prewarmAudioFile(audioUrl?: string) {
+    if (!audioUrl) return;
+    const sameOriginUrl = this.isSameOriginAudioFile(audioUrl);
+    if (sameOriginUrl) {
+      void this.prefetchSameOriginAudioBlob(sameOriginUrl);
+    }
+  }
+
   public getActiveBackend(): AudioBackendType {
     return this.activeBackend;
   }
@@ -769,7 +785,7 @@ export class AudioEngine {
       }
       if (typeof pos === 'number' && pos >= 0.3) return;
       this.advanceToNextCandidate(gen);
-    }, 5500);
+    }, 3600);
   }
 
   private advanceToNextCandidate(gen: number): boolean {
@@ -859,7 +875,7 @@ export class AudioEngine {
     if (this.keepaliveWavUrl) return this.keepaliveWavUrl;
     if (typeof Blob === 'undefined' || typeof URL === 'undefined') return null;
     try {
-      const sampleCount = 4000;
+      const sampleCount = 80000;
       const dataSize = sampleCount * 2;
       const buf = new ArrayBuffer(44 + dataSize);
       const view = new DataView(buf);
@@ -1252,7 +1268,7 @@ export class AudioEngine {
     const controller = new AbortController();
     this.audioBlobAbortControllers.set(resolvedUrl, controller);
 
-    const task = fetch(resolvedUrl, { cache: 'no-store', signal: controller.signal })
+    const task = fetch(resolvedUrl, { cache: 'force-cache', signal: controller.signal })
       .then((res) => (res.ok ? res.blob() : null))
       .then((blob) => {
         if (!blob || blob.size < 1024) return null;
@@ -1950,7 +1966,6 @@ export class AudioEngine {
       this.suppressPauseUntilMs = performance.now() + 1500;
       if (this.audioElement.src !== resolvedEffectiveSrc) {
         this.audioElement.src = effectiveAudioSrc;
-        this.audioElement.load();
       }
       this.html5LastPos = 0;
       this.html5StallSince = performance.now();

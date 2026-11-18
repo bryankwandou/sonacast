@@ -752,10 +752,31 @@ function scoreMusicVideoCandidate(
     }
   }
 
-  if (/\bofficial\s+music\s+video\b|\bmusic\s+video\b|\bm\s*\/\s*v\b|\bmv\b/i.test(rawTitle)) {
-    score += 65;
+  if (/\bofficial\s+music\s+video\b|\bmusic\s+video\b|\bvideo\s+klip\b|\bm\s*\/\s*v\b|\bmv\b/i.test(rawTitle)) {
+    score += 75;
   } else if (/\bofficial\s+video\b|\bvideo\s+clip\b|\bvideo\s+musik\b/i.test(rawTitle)) {
-    score += 50;
+    score += 58;
+  }
+
+  // Official artist VEVO / artist channel MV uploads format titles as "Artist - Title"
+  if (
+    titleNorm &&
+    artistNorm &&
+    hay.includes(artistNorm) &&
+    normalizeText(item.title).includes(artistNorm) &&
+    normalizeText(item.title).includes(titleNorm)
+  ) {
+    score += 36;
+  }
+
+  // Reject auto-generated static album-art Topic tracks (bare song title with no video cue)
+  const bareNormalizedTitle = normalizeText(item.title);
+  const looksLikeBareTopicArtTrack =
+    Boolean(titleNorm) &&
+    bareNormalizedTitle === titleNorm &&
+    !/\b(video|mv|klip|live)\b/i.test(rawTitle);
+  if (looksLikeBareTopicArtTrack) {
+    return -380;
   }
 
   if (rawAuthor.includes('vevo') || (artistNorm && normalizeText(item.author).includes(artistNorm))) {
@@ -769,10 +790,10 @@ function scoreMusicVideoCandidate(
   }
 
   if (rawAuthor.endsWith('- topic') || rawAuthor.includes(' - topic')) {
-    score -= 140;
+    return -400;
   }
-  if (/\bofficial\s+audio\b|\baudio\b|\blyrics?\b/i.test(rawTitle)) {
-    score -= 75;
+  if (/\bofficial\s+audio\b|\baudio\s+only\b|\blyrics?\b/i.test(rawTitle)) {
+    score -= 95;
   }
   if (/\blive\b|\bconcert\b|\btour\b|\bfancam\b/i.test(rawTitle)) {
     score -= 22;
@@ -781,7 +802,7 @@ function scoreMusicVideoCandidate(
   if (expectedDuration && expectedDuration > 40 && item.duration > 40) {
     const diff = Math.abs(item.duration - expectedDuration);
     if (diff <= 15) score += 20;
-    else if (diff <= 50) score += 12;
+    else if (diff <= 50) score += 16;
     else if (diff > 180) score -= 35;
   }
 
@@ -1840,16 +1861,31 @@ function catalogItemsToTracks(items: CatalogApiItem[]): Track[] {
   );
 }
 
+function normalizeBaseAlbumTitle(title: string): string {
+  return normalizeText(
+    String(title || '').replace(
+      /\s*[([]\s*(?:deluxe|bonus(?:\s+track)?|expanded|complete|clean|explicit|edition|version|remaster(?:ed)?).*?[)\]]\s*$/gi,
+      ''
+    )
+  );
+}
+
 function mergeDailyAlbums(liveAlbums?: CatalogAlbum[]): CatalogAlbum[] {
   const seen = new Set<string>();
   const merged: CatalogAlbum[] = [];
   const filteredExtras = (Array.isArray(liveAlbums) ? liveAlbums : []).filter(
-    (a) => a?.id && a?.title && !NON_MUSIC_EXTRA_RE.test(`${a.title} ${a.artist || ''}`)
+    (a) =>
+      a?.id &&
+      a?.title &&
+      (a.nbTracks === undefined || a.nbTracks >= 6) &&
+      !/\b(single|bonus\s*track)\b/i.test(a.title) &&
+      !NON_MUSIC_EXTRA_RE.test(`${a.title} ${a.artist || ''}`) &&
+      !CHART_COUNTRY_CROSSOVER_RE.test(`${a.title} ${a.artist || ''} ${a.genre || ''}`)
   );
-  // Prioritize verified curated studio releases (Global + Indonesia) ahead of dynamic feed extras
+  // Prioritize verified curated studio releases (Global + Indonesia) ahead of verified full-length LP extras
   for (const album of [...FEATURED_RELEASE_ALBUMS, ...filteredExtras]) {
     if (!album?.id || !album?.title) continue;
-    const key = `${normalizeText(album.title)}::${normalizeText((album.artist || '').split(/[,&]|ft\.?/i)[0])}`;
+    const key = `${normalizeBaseAlbumTitle(album.title)}::${normalizeText((album.artist || '').split(/[,&]|ft\.?/i)[0])}`;
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push({
@@ -2442,7 +2478,7 @@ export async function searchPlaylistsOnline(query: string): Promise<CatalogPlayl
   try {
     const res = await fetch(
       `${getApiEndpoint('/api/catalog-search')}?mode=playlists&q=${encodeURIComponent(trimmed)}`,
-      { signal: AbortSignal.timeout(5200) }
+      { signal: AbortSignal.timeout(4800) }
     );
     if (res.ok) {
       const data: { playlists?: CatalogPlaylist[] } = await res.json();
@@ -2459,7 +2495,19 @@ export async function searchPlaylistsOnline(query: string): Promise<CatalogPlayl
     // Graceful fallback handled below
   }
 
-  return [];
+  const tokens = cacheKey.split(/\s+/).filter(Boolean);
+  const curatedMatches = FEATURED_DAILY_PLAYLISTS.filter((p) => {
+    const hay = normalizeText(`${p.title} ${p.description || ''} ${p.creator}`);
+    return tokens.some((tok) => hay.includes(tok));
+  });
+  const fallback =
+    curatedMatches.length > 0 ? curatedMatches : FEATURED_DAILY_PLAYLISTS.slice(0, 8);
+  const mappedFallback = fallback.map((p) => ({
+    ...p,
+    coverUrl: p.coverUrl || DEFAULT_FALLBACK_COVER
+  }));
+  playlistSearchCache.set(cacheKey, mappedFallback);
+  return mappedFallback;
 }
 
 function spacePlaylistArtistsCohesively(tracks: Track[]): Track[] {

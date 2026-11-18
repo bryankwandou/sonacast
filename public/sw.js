@@ -1,5 +1,23 @@
-const CACHE_NAME = 'sonacast-shell-v5';
+const CACHE_NAME = 'sonacast-shell-v6';
 const OFFLINE_AUDIO_CACHE = 'sonacast-offline-audio-v1';
+const offlineAudioPaths = new Set();
+let offlinePathsReady = false;
+
+async function refreshOfflineAudioPaths() {
+  try {
+    const cache = await caches.open(OFFLINE_AUDIO_CACHE);
+    const keys = await cache.keys();
+    offlineAudioPaths.clear();
+    for (const req of keys) {
+      offlineAudioPaths.add(new URL(req.url).pathname);
+    }
+    offlinePathsReady = true;
+  } catch {
+    offlinePathsReady = false;
+  }
+}
+
+void refreshOfflineAudioPaths();
 
 async function serveAudioFromCache(req) {
   const cache = await caches.open(OFFLINE_AUDIO_CACHE);
@@ -60,6 +78,12 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'REFRESH_OFFLINE_AUDIO') {
+    void refreshOfflineAudioPaths();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -75,6 +99,11 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.pathname.startsWith('/audio/')) {
+    const isOfflineMode = self.navigator && self.navigator.onLine === false;
+    const isSavedOffline = offlinePathsReady && offlineAudioPaths.has(url.pathname);
+    if (!isOfflineMode && !isSavedOffline) {
+      return;
+    }
     event.respondWith(
       serveAudioFromCache(req)
         .then((cachedRes) => cachedRes || fetch(req))
