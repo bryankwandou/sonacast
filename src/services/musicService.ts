@@ -770,11 +770,11 @@ function scoreMusicVideoCandidate(
   }
 
   // Reject auto-generated static album-art Topic tracks (bare song title with no video cue)
-  const bareNormalizedTitle = normalizeText(item.title);
+  const bareNormalizedTitle = normalizeText(cleanLyricsTitle(item.title));
   const looksLikeBareTopicArtTrack =
     Boolean(titleNorm) &&
     bareNormalizedTitle === titleNorm &&
-    !/\b(video|mv|klip|live)\b/i.test(rawTitle);
+    !/\b(video|mv|klip|live|visualizer|performance)\b/i.test(rawTitle);
   if (looksLikeBareTopicArtTrack) {
     return -380;
   }
@@ -792,7 +792,13 @@ function scoreMusicVideoCandidate(
   if (rawAuthor.endsWith('- topic') || rawAuthor.includes(' - topic')) {
     return -400;
   }
-  if (/\bofficial\s+audio\b|\baudio\s+only\b|\blyrics?\b/i.test(rawTitle)) {
+  if (
+    /\b(official|full)\s+audio\b|\baudio\s+only\b/i.test(rawTitle) &&
+    !/\b(music\s+)?video\b|\bmv\b|\bvisualizer\b|\blive\b/i.test(rawTitle)
+  ) {
+    return -360;
+  }
+  if (/\blyrics?\b/i.test(rawTitle)) {
     score -= 95;
   }
   if (/\blive\b|\bconcert\b|\btour\b|\bfancam\b/i.test(rawTitle)) {

@@ -1329,13 +1329,17 @@ export class AudioEngine {
           const stillPlayingIntent = shouldResume && this.lastPauseCalledAt < startedAt;
           if (this.audioElement.src !== blobUrl) {
             this.suppressPauseUntilMs = stillPlayingIntent ? performance.now() + 900 : 0;
+            this.pendingHtml5SeekSeconds = clamped;
             this.audioElement.src = blobUrl;
             this.audioElement.load();
           }
-          try {
-            this.audioElement.currentTime = clamped;
-          } catch {
-            // Seek applied cleanly when loaded
+          if (this.audioElement.readyState >= 1) {
+            this.pendingHtml5SeekSeconds = null;
+            try {
+              this.audioElement.currentTime = clamped;
+            } catch {
+              this.pendingHtml5SeekSeconds = clamped;
+            }
           }
           this.html5LastPos = clamped;
           this.html5StallSince = performance.now();
@@ -1758,6 +1762,7 @@ export class AudioEngine {
           event.target.playVideo();
           this.startYouTubePoll();
           this.armYouTubeWatchdog(activeGen);
+          this.armYtVisualGraceTimer(activeGen);
         },
         onStateChange: (event) => {
           const activeGen = this.ytPlayerGen;
@@ -2333,12 +2338,16 @@ export class AudioEngine {
           if (cachedBlobUrl && this.audioElement.src !== cachedBlobUrl) {
             const shouldResume = this.isPlaying || this.html5PlayPending;
             this.suppressPauseUntilMs = shouldResume ? performance.now() + 250 : 0;
+            this.pendingHtml5SeekSeconds = clamped;
             this.audioElement.src = cachedBlobUrl;
             this.audioElement.load();
-            try {
-              this.audioElement.currentTime = clamped;
-            } catch {
-              this.pendingHtml5SeekSeconds = clamped;
+            if (this.audioElement.readyState >= 1) {
+              this.pendingHtml5SeekSeconds = null;
+              try {
+                this.audioElement.currentTime = clamped;
+              } catch {
+                this.pendingHtml5SeekSeconds = clamped;
+              }
             }
             if (shouldResume) {
               this.isPlaying = true;

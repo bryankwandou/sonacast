@@ -921,7 +921,7 @@ export default function App() {
         host.style.top = `${rect.top}px`;
         host.style.width = `${rect.width}px`;
         host.style.height = `${rect.height}px`;
-        const visualAllowed = !streamError && isYtVisualReady;
+        const visualAllowed = !streamError && (isYtVisualReady || (isStageVisible && isVideoStage));
         host.style.opacity = visualAllowed ? '1' : '0.005';
         host.style.pointerEvents = visualAllowed ? 'auto' : 'none';
         host.style.zIndex = visualAllowed ? '25' : '1';
