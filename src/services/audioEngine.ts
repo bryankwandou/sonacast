@@ -979,6 +979,8 @@ export class AudioEngine {
 
   public prepareTrackTransition(duration: number, bpm = 120) {
     ++this.playGeneration;
+    this.activeBackend = 'none';
+    this.pendingYtSeekSeconds = null;
     this.stopHtml5Poll();
     this.stopYouTubePoll();
     this.clearYouTubeWatchdog();
@@ -1391,10 +1393,21 @@ export class AudioEngine {
         this.completeCurrentTrack(pollGen);
         return;
       }
-      if ((!this.isPlaying && !this.html5PlayPending) || activeEl.paused) {
+      if (!this.isPlaying && !this.html5PlayPending) {
         return;
       }
       const nowMs = performance.now();
+      if (activeEl.paused) {
+        const stalledMs = nowMs - this.html5StallSince;
+        if (
+          stalledMs >= 1800 &&
+          !this.blobRecoverInFlight &&
+          performance.now() - this.lastPauseCalledAt > 1200
+        ) {
+          void this.recoverStalledHtml5Seek(pollGen, this.currentTime);
+        }
+        return;
+      }
       if (
         !this.isLiveStream &&
         activeEl.duration &&
@@ -1599,7 +1612,8 @@ export class AudioEngine {
     this.ytNearEndStallSince = 0;
     this.isPlaying = true;
     this.wasPlayingBeforeSleep = true;
-    this.pendingYtSeekSeconds = clampedStart > 0 ? clampedStart : null;
+    const carryPendingSeek = this.pendingYtSeekSeconds;
+    this.pendingYtSeekSeconds = clampedStart > 0 ? clampedStart : carryPendingSeek;
     this.startTransitionKeepalive(0);
     this.notifyTime();
     this.notifyState();
@@ -1625,11 +1639,18 @@ export class AudioEngine {
 
     if (this.ytPlayer && this.ytReady) {
       try {
+        const immediateSeek =
+          this.pendingYtSeekSeconds !== null ? this.pendingYtSeekSeconds : clampedStart;
+        this.pendingYtSeekSeconds = null;
+        if (this.duration >= 30 && immediateSeek >= this.duration - 0.8) {
+          this.completeCurrentTrack(gen);
+          return;
+        }
         this.ytPlayerGen = gen;
         this.ytTrackTransitionUntil = performance.now() + 2600;
         this.applyYouTubeFadeIn(gen);
         this.ytPlayer.loadVideoById(
-          clampedStart > 0 ? { videoId: firstVideoId, startSeconds: clampedStart } : firstVideoId
+          immediateSeek > 0 ? { videoId: firstVideoId, startSeconds: immediateSeek } : firstVideoId
         );
         this.ytPlayer.unMute?.();
         this.ytPlayer.setPlaybackRate?.(this.playbackRate);
@@ -1924,13 +1945,19 @@ export class AudioEngine {
       const cachedBlobUrl = sameOriginAudio ? this.audioBlobCache.get(sameOriginAudio) : undefined;
       const effectiveAudioSrc = cachedBlobUrl || audioUrl;
       const resolvedEffectiveSrc = new URL(effectiveAudioSrc, window.location.href).href;
+      this.suppressPauseUntilMs = performance.now() + 700;
       if (this.audioElement.src !== resolvedEffectiveSrc) {
         this.audioElement.src = effectiveAudioSrc;
+        this.audioElement.load();
       }
       this.html5LastPos = 0;
       this.html5StallSince = performance.now();
       this.blobRecoverInFlight = false;
       this.html5PlayPending = true;
+      this.isPlaying = true;
+      this.wasPlayingBeforeSleep = true;
+      this.startTransitionKeepalive(4000);
+      this.notifyState();
       this.startHtml5Poll();
       if (!this.isLiveStream) {
         try {
@@ -2245,12 +2272,22 @@ export class AudioEngine {
 
     if (
       this.activeBackend === 'youtube' &&
-      this.isPlaying &&
+      (this.isPlaying || this.wasPlayingBeforeSleep) &&
       this.duration >= 30 &&
       clamped >= this.duration - 0.8
     ) {
       this.notifyTime();
       this.completeCurrentTrack(this.playGeneration);
+      return;
+    }
+    if (
+      this.activeBackend === 'none' &&
+      this.isPlaying &&
+      this.duration >= 30 &&
+      clamped >= this.duration - 0.8
+    ) {
+      this.pendingYtSeekSeconds = clamped;
+      this.notifyTime();
       return;
     }
     if (
