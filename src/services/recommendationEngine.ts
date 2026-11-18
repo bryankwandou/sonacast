@@ -351,7 +351,8 @@ export function inferTrackLanguageRegion(
   const genreLower = String(track.genre || '').toLowerCase();
 
   if (
-    genreLower.includes('classic') ||
+    genreLower.includes('classical') ||
+    genreLower.includes('neoclassical') ||
     genreLower.includes('soundtrack') ||
     genreLower.includes('orchestra') ||
     /\b(nocturne|sonata|concerto|prelude|etude|piano solo|symphony|opus|instrumental)\b/i.test(titleLower)
@@ -512,7 +513,7 @@ export function resolveGenreFamily(genre: string, artist = '', title = ''): Genr
   if (g.includes('latin') || g.includes('reggaeton') || g.includes('salsa')) return 'latin';
   if (g.includes('folk') || g.includes('country') || g.includes('acoustic') || g.includes('indie')) return 'acoustic';
   if (g.includes('jazz') || g.includes('blues')) return 'jazz';
-  if (g.includes('classic') || g.includes('soundtrack') || g.includes('orchestra')) return 'classical';
+  if (g.includes('classical') || g.includes('neoclassical') || g.includes('soundtrack') || g.includes('orchestra')) return 'classical';
   if (g.includes('global') || g.includes('world') || g.includes('afro')) return 'global';
   return 'pop';
 }

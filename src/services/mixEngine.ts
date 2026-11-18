@@ -254,6 +254,7 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
   const mix1Pool = combinedPool.filter((t) => {
     const cls = classifyTrackTier(t);
     const reg = inferTrackLanguageRegion(t);
+    if (cls.isInstrumental !== dominantClassProfile.isInstrumental) return false;
     const classOk = cls.classId === dominantClassId || dominantClassProfile.compatibleClasses.includes(cls.classId);
     if (dominantRegion !== 'en' && dominantRegion !== 'instrumental') {
       return reg === dominantRegion && classOk;
