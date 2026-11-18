@@ -2922,8 +2922,9 @@ export default function App() {
     [hydrateTrackStreamInQueues]
   );
 
-  // Immediately pre-warm the next 3 tracks whenever active track or queue updates for zero-stall background auto-next
+  // Pre-warm ONLY the immediate next upcoming track while active playback is underway (avoids saturating origin HTTP sockets on boot)
   useEffect(() => {
+    if (!isPlaying) return;
     const timer = window.setTimeout(() => {
       const nextDecision = pickNextTrackPure({
         currentTrack,
@@ -2934,19 +2935,9 @@ export default function App() {
         mood: activeMood
       }).nextTrack;
       prewarmTrackStream(nextDecision);
-
-      const curIdx = queue.findIndex((q) => q.id === currentTrack.id);
-      const upcoming = queue.filter(
-        (item, idx) =>
-          idx > curIdx &&
-          item.id !== currentTrack.id &&
-          item.id !== nextDecision?.id
-      );
-      prewarmTrackStream(manualQueue[1] || upcoming[0]);
-      prewarmTrackStream(manualQueue[2] || upcoming[1]);
-    }, 350);
+    }, 1200);
     return () => window.clearTimeout(timer);
-  }, [currentTrack, queue, manualQueue, recState, activeMood, prewarmTrackStream]);
+  }, [isPlaying, currentTrack, queue, manualQueue, recState, activeMood, prewarmTrackStream]);
 
   // Background pre-resolve next upcoming track mid-playback in case queue changed dynamically
   useEffect(() => {
@@ -3533,9 +3524,9 @@ export default function App() {
 
             {/* Center Column: Fixed Top Search Bar + Scrollable Main Stage & Views */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-              {/* Persistent Single Top Search Bar (hidden on /search and /radio where view owns search) + Stage Toggle */}
+              {/* Persistent Single Top Search Bar (hidden on /search, /radio, and /podcasts where view owns search) + Stage Toggle */}
               <div className="shrink-0 px-4 sm:px-6 pt-4 pb-2 space-y-3 relative z-30">
-                {currentTab !== 'search' && currentTab !== 'radio' ? (
+                {currentTab !== 'search' && currentTab !== 'radio' && currentTab !== 'podcasts' ? (
                   <form
                     onSubmit={(e) => {
                       setIsTopSearchFocused(false);

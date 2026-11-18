@@ -112,7 +112,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (req.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+  if (req.mode === 'navigate') {
+    if (!self.navigator || self.navigator.onLine !== false) {
+      return;
+    }
+    event.respondWith(caches.match('/index.html'));
+    return;
+  }
+
+  if (url.pathname === '/' || url.pathname === '/index.html') {
     event.respondWith(
       fetch(req, { cache: 'no-store' }).catch(() => caches.match('/index.html'))
     );

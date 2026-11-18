@@ -109,18 +109,12 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [activeArtistFilter, setActiveArtistFilter] = useState('Queen');
   const [selectedGenre, setSelectedGenre] = useState('All Genres');
-  const [artistDirectoryFilter, setArtistDirectoryFilter] = useState('');
   const [showAllArtists, setShowAllArtists] = useState(false);
   const searchRequestIdRef = useRef(0);
 
   const filteredArtists = useMemo(() => {
-    const q = artistDirectoryFilter.trim().toLowerCase();
-    return ARTISTS_DIRECTORY.filter((a) => {
-      const genreOk = selectedGenre === 'All Genres' || a.genre === selectedGenre;
-      const nameOk = !q || a.name.toLowerCase().includes(q) || a.genre.toLowerCase().includes(q);
-      return genreOk && nameOk;
-    });
-  }, [selectedGenre, artistDirectoryFilter]);
+    return ARTISTS_DIRECTORY.filter((a) => selectedGenre === 'All Genres' || a.genre === selectedGenre);
+  }, [selectedGenre]);
 
   const visibleArtists = showAllArtists
     ? filteredArtists
@@ -956,25 +950,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
       {/* Clean Genre & Artist Browser */}
       <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
-            <Users size={15} className="text-[var(--accent-text)] shrink-0" />
-            <span>{t.popularArtists}</span>
-          </div>
-
-          <div className="relative w-full sm:w-56">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" />
-            <input
-              type="text"
-              value={artistDirectoryFilter}
-              onChange={(e) => {
-                setArtistDirectoryFilter(e.target.value);
-                setShowAllArtists(true);
-              }}
-              placeholder={t.searchAction + '...'}
-              className="pl-8 pr-3 py-1.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] w-full"
-            />
-          </div>
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+          <Users size={15} className="text-[var(--accent-text)] shrink-0" />
+          <span>{t.popularArtists}</span>
         </div>
 
         {/* Genre Category Filter Pills */}
@@ -1005,7 +983,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </div>
 
         {/* Clean Horizontal Artist Strip (Collapsed) or Filterable Grid (Expanded) */}
-        {!showAllArtists && !artistDirectoryFilter ? (
+        {!showAllArtists ? (
           <div
             className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-1"
             style={{ scrollbarWidth: 'none' }}
