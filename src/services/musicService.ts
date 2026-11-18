@@ -549,7 +549,7 @@ async function searchSinglePipedMirror(
   filter: 'music_songs' | 'videos' = 'music_songs'
 ): Promise<StreamCandidate[]> {
   if (parentSignal?.aborted) return [];
-  const { signal, cleanup } = createLinkedAbortSignal(3600, parentSignal);
+  const { signal, cleanup } = createLinkedAbortSignal(7000, parentSignal);
   try {
     const url = `${baseUrl}/search?q=${encodeURIComponent(query)}&filter=${filter}`;
     const res = await fetch(url, { signal });
@@ -742,6 +742,17 @@ function scoreMusicVideoCandidate(
   const artistNorm = normalizeText(cleanArtist);
   const rawTitle = (item.title || '').toLowerCase();
   const rawAuthor = (item.author || '').toLowerCase();
+  const authorNorm = normalizeText(item.author);
+
+  if (rawAuthor.endsWith('- topic') || rawAuthor.includes(' - topic')) {
+    return -400;
+  }
+  if (
+    /\b(official|full)\s+audio\b|\baudio\s+only\b/i.test(rawTitle) &&
+    !/\b(music\s+)?video\b|\bmv\b|\bvisualizer\b|\blive\b/i.test(rawTitle)
+  ) {
+    return -360;
+  }
 
   if (NON_MV_PENALTY_RE.test(rawTitle) && !/\bofficial\s+(?:music\s+)?video\b/i.test(rawTitle)) {
     return -200;
@@ -761,7 +772,7 @@ function scoreMusicVideoCandidate(
 
   if (artistNorm) {
     const artistTokens = artistNorm.split(/\s+/).filter((w) => w.length >= 2);
-    if (hay.includes(artistNorm) || normalizeText(item.author).includes(artistNorm)) {
+    if (hay.includes(artistNorm) || authorNorm.includes(artistNorm)) {
       score += 32;
     } else if (artistTokens.some((tok) => hay.includes(tok))) {
       score += 18;
@@ -797,25 +808,30 @@ function scoreMusicVideoCandidate(
     return -380;
   }
 
-  if (rawAuthor.includes('vevo') || (artistNorm && normalizeText(item.author).includes(artistNorm))) {
-    score += 45;
+  const isExactArtistChannel =
+    rawAuthor.includes('vevo') ||
+    Boolean(artistNorm && (authorNorm === artistNorm || authorNorm.includes(artistNorm)));
+  if (isExactArtistChannel) {
+    score += 48;
+    if (
+      titleNorm &&
+      artistNorm &&
+      normalizeText(item.title).includes(artistNorm) &&
+      normalizeText(item.title).includes(titleNorm) &&
+      !/\b(audio|lyric|lirik|instrumental|karaoke)\b/i.test(rawTitle) &&
+      (!item.duration || item.duration >= 90)
+    ) {
+      // Official VEVO / artist channel MV ("Artist - Song" or "Artist - Song (Official Video)")
+      score += 68;
+    }
   } else if (!/\b(records?|recordings?|music|official|entertainment|group)\b/i.test(rawAuthor)) {
-    score -= 35;
+    score -= 50;
   }
 
   if (/\bofficial\b/i.test(rawTitle) || /\bofficial\b/i.test(rawAuthor)) {
     score += 15;
   }
 
-  if (rawAuthor.endsWith('- topic') || rawAuthor.includes(' - topic')) {
-    return -400;
-  }
-  if (
-    /\b(official|full)\s+audio\b|\baudio\s+only\b/i.test(rawTitle) &&
-    !/\b(music\s+)?video\b|\bmv\b|\bvisualizer\b|\blive\b/i.test(rawTitle)
-  ) {
-    return -360;
-  }
   if (/\blyrics?\b/i.test(rawTitle)) {
     score -= 95;
   }
@@ -828,6 +844,7 @@ function scoreMusicVideoCandidate(
     if (diff <= 15) score += 20;
     else if (diff <= 50) score += 16;
     else if (diff > 180) score -= 35;
+    else if (diff > 65) score -= 24;
   }
 
   return score;

@@ -394,7 +394,12 @@ export class AudioEngine {
       const AudioCtx =
         window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.ctx = new AudioCtx();
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+      }
+    }
+    if (!this.ctx) return;
+    if (!this.analyser) {
 
       this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = 512;
@@ -1096,6 +1101,8 @@ export class AudioEngine {
 
     el.addEventListener('playing', () => {
       if (this.activeBackend !== 'html5' || !this.usingPassthroughStream) return;
+      this.suppressPauseUntilMs = 0;
+      this.html5PlayPending = false;
       if (!this.isPlaying) {
         this.isPlaying = true;
         this.notifyState();
@@ -1104,6 +1111,7 @@ export class AudioEngine {
 
     el.addEventListener('pause', () => {
       if (!this.usingPassthroughStream) return;
+      if (performance.now() < this.suppressPauseUntilMs) return;
       this.stopHtml5Poll();
       if (this.activeBackend === 'html5' && !el.ended && this.isPlaying) {
         this.isPlaying = false;
@@ -1125,6 +1133,19 @@ export class AudioEngine {
         if (realDur >= 10 && Math.abs(realDur - this.duration) >= 1) {
           this.duration = realDur;
           this.notifyDurationChange();
+        }
+        if (this.pendingHtml5SeekSeconds !== null && el.readyState >= 1) {
+          const target = Math.max(0, Math.min(el.duration - 0.15, this.pendingHtml5SeekSeconds));
+          this.pendingHtml5SeekSeconds = null;
+          try {
+            el.currentTime = target;
+            this.currentTime = target;
+            this.html5LastPos = target;
+            this.html5StallSince = performance.now();
+            this.notifyTime();
+          } catch {
+            // Ignore seek failure
+          }
         }
       }
     };
@@ -1191,21 +1212,36 @@ export class AudioEngine {
     streamEl.volume = this.volume;
     streamEl.playbackRate = this.playbackRate;
     const resolvedSrc = new URL(url, window.location.href).href;
+    const wantSeek = !this.isLiveStream && fromOffset > 1 ? fromOffset : null;
     if (streamEl.src !== resolvedSrc) {
+      this.pendingHtml5SeekSeconds = wantSeek;
       streamEl.src = url;
-    }
-    if (!this.isLiveStream && fromOffset > 1) {
+      streamEl.load();
+    } else if (wantSeek !== null) {
       try {
-        streamEl.currentTime = fromOffset;
+        if (streamEl.readyState >= 1) {
+          streamEl.currentTime = wantSeek;
+          this.pendingHtml5SeekSeconds = null;
+        } else {
+          this.pendingHtml5SeekSeconds = wantSeek;
+        }
       } catch {
-        // Seek once metadata is ready
+        this.pendingHtml5SeekSeconds = wantSeek;
       }
     }
+
+    this.suppressPauseUntilMs = performance.now() + 1500;
+    this.html5PlayPending = true;
+    this.isPlaying = true;
+    this.wasPlayingBeforeSleep = true;
+    this.startHtml5Poll();
+    this.notifyState();
 
     streamEl
       .play()
       .then(() => {
         if (gen !== this.playGeneration) return;
+        this.html5PlayPending = false;
         this.isPlaying = true;
         this.wasPlayingBeforeSleep = true;
         this.startHtml5Poll();
@@ -2005,7 +2041,10 @@ export class AudioEngine {
           if (gen !== this.playGeneration) return;
           this.html5PlayPending = false;
           if (!this.usingPassthroughStream && !audioUrl.startsWith('blob:')) {
-            this.tryPassthroughStreamFallback(audioUrl, gen, 0);
+            const resumeOffset = this.isLiveStream
+              ? 0
+              : (this.pendingHtml5SeekSeconds ?? this.currentTime);
+            this.tryPassthroughStreamFallback(audioUrl, gen, resumeOffset);
             return;
           }
           if (candidateVideoIds && candidateVideoIds.length > 0) {
