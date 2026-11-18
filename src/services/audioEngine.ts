@@ -156,6 +156,9 @@ export class AudioEngine {
   private transitionKeepaliveTimer: number | null = null;
   private keepaliveOsc: OscillatorNode | null = null;
   private keepaliveGain: GainNode | null = null;
+  private keepaliveAudioEl: HTMLAudioElement | null = null;
+  private keepaliveWavUrl: string | null = null;
+  private pendingYtSeekSeconds: number | null = null;
   private ytBgPauseRecoverCount = 0;
   private ytWallAnchorMs = 0;
   private ytWallAnchorPos = 0;
@@ -171,11 +174,15 @@ export class AudioEngine {
             this.wasPlayingBeforeSleep = true;
           }
           if (this.activeBackend === 'youtube' && this.isPlaying) {
+            this.startTransitionKeepalive(0);
             this.startYouTubePoll();
           } else if (this.activeBackend === 'html5' && this.isPlaying) {
             this.startHtml5Poll();
           }
           return;
+        }
+        if (this.activeBackend === 'youtube' && this.isPlaying) {
+          this.stopTransitionKeepalive();
         }
         this.scheduleWakeRecovery();
       });
@@ -471,6 +478,10 @@ export class AudioEngine {
         if (!this.ctx || this.usingPassthroughStream) return;
         const st = this.ctx.state as string;
         if (this.activeBackend === 'html5' && (st === 'suspended' || st === 'interrupted')) {
+          if (this.isPlaying && this.wasPlayingBeforeSleep && performance.now() - this.lastPauseCalledAt > 1200) {
+            this.ctx.resume().catch(() => {});
+            return;
+          }
           if (this.audioElement && this.audioElement.paused && this.isPlaying) {
             this.isPlaying = false;
             this.notifyState();
@@ -846,42 +857,106 @@ export class AudioEngine {
     }, 120);
   }
 
+  private ensureKeepaliveAudioUrl(): string | null {
+    if (this.keepaliveWavUrl) return this.keepaliveWavUrl;
+    if (typeof Blob === 'undefined' || typeof URL === 'undefined') return null;
+    try {
+      const sampleCount = 4000;
+      const dataSize = sampleCount * 2;
+      const buf = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(buf);
+      const writeStr = (offset: number, s: string) => {
+        for (let i = 0; i < s.length; i += 1) view.setUint8(offset + i, s.charCodeAt(i));
+      };
+      writeStr(0, 'RIFF');
+      view.setUint32(4, 36 + dataSize, true);
+      writeStr(8, 'WAVE');
+      writeStr(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, 8000, true);
+      view.setUint32(28, 16000, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeStr(36, 'data');
+      view.setUint32(40, dataSize, true);
+      const blob = new Blob([buf], { type: 'audio/wav' });
+      this.keepaliveWavUrl = URL.createObjectURL(blob);
+      return this.keepaliveWavUrl;
+    } catch {
+      return null;
+    }
+  }
+
   private startTransitionKeepalive(maxMs = 10000) {
     if (typeof window === 'undefined') return;
-    this.stopTransitionKeepalive();
+    if (this.transitionKeepaliveTimer !== null) {
+      clearTimeout(this.transitionKeepaliveTimer);
+      this.transitionKeepaliveTimer = null;
+    }
     try {
-      const AudioCtx =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!this.ctx && AudioCtx) {
-        this.ctx = new AudioCtx();
-      }
-      if (this.ctx) {
-        if (this.ctx.state !== 'running') {
-          this.ctx.resume().catch(() => {});
+      if (!this.keepaliveAudioEl && typeof Audio !== 'undefined') {
+        const wavUrl = this.ensureKeepaliveAudioUrl();
+        if (wavUrl) {
+          const el = new Audio(wavUrl);
+          el.loop = true;
+          el.volume = 0.01;
+          this.keepaliveAudioEl = el;
         }
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.frequency.value = 1;
-        gain.gain.value = 0.00005;
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start();
-        this.keepaliveOsc = osc;
-        this.keepaliveGain = gain;
+      }
+      if (this.keepaliveAudioEl && this.keepaliveAudioEl.paused) {
+        this.keepaliveAudioEl.play().catch(() => {});
       }
     } catch {
-      // Safe fallback when AudioContext is restricted
+      // Safe fallback when Audio element keepalive is blocked
     }
-    this.transitionKeepaliveTimer = window.setTimeout(() => {
-      this.stopTransitionKeepalive();
-    }, maxMs);
+    if (!this.keepaliveOsc) {
+      try {
+        const AudioCtx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (!this.ctx && AudioCtx) {
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx) {
+          if (this.ctx.state !== 'running') {
+            this.ctx.resume().catch(() => {});
+          }
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.frequency.value = 1;
+          gain.gain.value = 0.00005;
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          this.keepaliveOsc = osc;
+          this.keepaliveGain = gain;
+        }
+      } catch {
+        // Safe fallback when AudioContext is restricted
+      }
+    }
+    if (maxMs > 0) {
+      this.transitionKeepaliveTimer = window.setTimeout(() => {
+        if (this.activeBackend !== 'youtube' || !this.isPlaying) {
+          this.stopTransitionKeepalive();
+        }
+      }, maxMs);
+    }
   }
 
   private stopTransitionKeepalive() {
     if (this.transitionKeepaliveTimer !== null) {
       clearTimeout(this.transitionKeepaliveTimer);
       this.transitionKeepaliveTimer = null;
+    }
+    if (this.keepaliveAudioEl) {
+      try {
+        this.keepaliveAudioEl.pause();
+      } catch {
+        // Ignore pause errors
+      }
     }
     if (this.keepaliveOsc) {
       try {
@@ -1430,7 +1505,9 @@ export class AudioEngine {
           this.notifyTime();
           if (pos >= 0.3) {
             this.clearYouTubeWatchdog();
-            this.stopTransitionKeepalive();
+            if (!this.isDocumentHidden) {
+              this.stopTransitionKeepalive();
+            }
           }
           const wallEstimatedPos =
             this.isDocumentHidden && this.ytWallAnchorMs > 0
@@ -1522,7 +1599,8 @@ export class AudioEngine {
     this.ytNearEndStallSince = 0;
     this.isPlaying = true;
     this.wasPlayingBeforeSleep = true;
-    this.startTransitionKeepalive(9000);
+    this.pendingYtSeekSeconds = clampedStart > 0 ? clampedStart : null;
+    this.startTransitionKeepalive(0);
     this.notifyTime();
     this.notifyState();
 
@@ -1626,9 +1704,12 @@ export class AudioEngine {
           } catch {
             // Ignore unsupported YT rate
           }
-          if (clampedStart > 0) {
+          const ytSeekTarget =
+            this.pendingYtSeekSeconds !== null ? this.pendingYtSeekSeconds : clampedStart;
+          this.pendingYtSeekSeconds = null;
+          if (ytSeekTarget > 0) {
             try {
-              event.target.seekTo(clampedStart, true);
+              event.target.seekTo(ytSeekTarget, true);
             } catch {
               // Ignore pre-start seek error
             }
@@ -1655,7 +1736,22 @@ export class AudioEngine {
             this.wasPlayingBeforeSleep = true;
             this.ytTrackTransitionUntil = 0;
             this.ytBgPauseRecoverCount = 0;
-            this.stopTransitionKeepalive();
+            if (this.pendingYtSeekSeconds !== null) {
+              const deferredSeek = this.pendingYtSeekSeconds;
+              this.pendingYtSeekSeconds = null;
+              if (this.duration >= 30 && deferredSeek >= this.duration - 0.8) {
+                this.completeCurrentTrack(activeGen);
+                return;
+              }
+              try {
+                event.target.seekTo(deferredSeek, true);
+              } catch {
+                // Ignore deferred seek error
+              }
+            }
+            if (!this.isDocumentHidden) {
+              this.stopTransitionKeepalive();
+            }
             this.setYtVisualReady(true);
             this.clearYouTubeResumeCheck();
             this.notifyState();
@@ -1835,6 +1931,7 @@ export class AudioEngine {
       this.html5StallSince = performance.now();
       this.blobRecoverInFlight = false;
       this.html5PlayPending = true;
+      this.startHtml5Poll();
       if (!this.isLiveStream) {
         try {
           this.audioElement.currentTime = 0;
@@ -2241,11 +2338,15 @@ export class AudioEngine {
       } else {
         this.pendingHtml5SeekSeconds = clamped;
       }
-    } else if (this.activeBackend === 'youtube' && this.ytPlayer && this.ytReady) {
-      try {
-        this.ytPlayer.seekTo(clamped, true);
-      } catch {
-        // Ignore
+    } else if (this.activeBackend === 'youtube') {
+      if (this.ytPlayer && this.ytReady) {
+        try {
+          this.ytPlayer.seekTo(clamped, true);
+        } catch {
+          this.pendingYtSeekSeconds = clamped;
+        }
+      } else {
+        this.pendingYtSeekSeconds = clamped;
       }
     }
 
