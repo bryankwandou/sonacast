@@ -6,9 +6,11 @@ import type {
   LyricLine,
   MoodPreset,
   PlaybackContextInfo,
+  TabType,
   Track,
   UserPlaylist
 } from '../../types';
+import { COHESIVE_SEED_TRACKS } from '../../data/curatedPlaylists';
 import {
   fetchAlbumTracksOnline,
   fetchPlaylistTracksOnline,
@@ -83,6 +85,7 @@ interface DiscoverViewProps {
   activeMood?: MoodPreset;
   onSelectMood?: (mood: MoodPreset) => void;
   onRecordSearch?: (query: string, mode: 'songs' | 'albums', matchedTrack?: Track) => void;
+  onNavigateTab?: (tab: TabType) => void;
 }
 
 const FEATURED_ARTISTS = [
@@ -145,7 +148,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onSaveCatalogAlbum,
   activeMood = 'all',
   onSelectMood,
-  onRecordSearch
+  onRecordSearch,
+  onNavigateTab
 }) => {
   const { t } = useAppPreferences();
   const { popularCharts, isLoadingCharts } = usePopularCharts();
@@ -197,13 +201,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     () =>
       buildRecommendationMixes({
         catalogTracks: tracks,
-        chartTracks: [...popularCharts.global, ...popularCharts.indonesia],
+        chartTracks: [...popularCharts.indonesia, ...popularCharts.global],
         recentTracks,
         likedTracks,
         followedArtists,
-        mood: activeMood
+        mood: activeMood,
+        activeTrack: currentTrack
       }),
-    [tracks, popularCharts.global, popularCharts.indonesia, recentTracks, likedTracks, followedArtists, activeMood]
+    [tracks, popularCharts.global, popularCharts.indonesia, recentTracks, likedTracks, followedArtists, activeMood, currentTrack]
   );
 
   const handleOpenAlbum = async (alb: CatalogAlbum) => {
@@ -298,22 +303,35 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   );
   const quickPicks = useMemo(() => {
     const seen = new Set<string>();
+    const artistCount = new Map<string, number>();
+    // Blend user history with curated Indonesian & Global flagship hits (avoiding raw uncategorized RSS noise)
+    const cleanGlobal = popularCharts.global.filter(
+      (g) => !/country/i.test(g.genre || '') && g.duration >= 90
+    );
     const combined = [
       ...recentTracks,
       ...likedTracks,
-      ...popularCharts.global,
-      ...tracks
+      ...COHESIVE_SEED_TRACKS.slice(0, 4),
+      ...tracks.slice(0, 4),
+      ...COHESIVE_SEED_TRACKS.slice(4, 12),
+      ...popularCharts.indonesia,
+      ...cleanGlobal,
+      ...tracks.slice(4)
     ];
     const picked: Track[] = [];
     for (const item of combined) {
-      const key = `${item.title.toLowerCase()}::${item.artist.toLowerCase()}`;
+      if (!item?.id || !item?.title) continue;
+      const artistPrimary = (item.artist || '').split(/[,&]|feat\.?|ft\.?/i)[0].trim().toLowerCase();
+      const key = `${item.title.toLowerCase()}::${artistPrimary}`;
       if (seen.has(key)) continue;
+      if ((artistCount.get(artistPrimary) || 0) >= 1 && picked.length < 6) continue;
       seen.add(key);
+      artistCount.set(artistPrimary, (artistCount.get(artistPrimary) || 0) + 1);
       picked.push(item);
       if (picked.length >= 6) break;
     }
     return picked;
-  }, [recentTracks, likedTracks, popularCharts.global, tracks]);
+  }, [recentTracks, likedTracks, popularCharts.global, popularCharts.indonesia, tracks]);
   const activeCharts =
     chartRegion === 'global' ? popularCharts.global : popularCharts.indonesia;
   const selectedPlaylist =
@@ -359,36 +377,70 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Header & Sub-tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-extrabold text-[var(--text-primary)] tracking-tight">
-            {t.navDiscover}
-          </h2>
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-            Your saved mixes, favorite tracks, and daily recommendations
-          </p>
+      {/* Spotify-Style Home Top Bar: All | Music | Podcasts + Utility Sub-Tabs */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap" data-testid="spotify-home-filter-pills">
+            <button
+              type="button"
+              onClick={() => setLibraryTab('browse')}
+              className="px-4 py-1.5 rounded-full text-xs font-bold bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] transition-colors cursor-pointer"
+            >
+              All
+            </button>
+            {onNavigateTab && (
+              <>
+                <button
+                  type="button"
+                  data-testid="home-pill-music"
+                  onClick={() => onNavigateTab('music')}
+                  className="px-4 py-1.5 rounded-full text-xs font-semibold bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-primary)] transition-colors cursor-pointer"
+                >
+                  {t.navMusic}
+                </button>
+                <button
+                  type="button"
+                  data-testid="home-pill-podcasts"
+                  onClick={() => onNavigateTab('podcasts')}
+                  className="px-4 py-1.5 rounded-full text-xs font-semibold bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-primary)] transition-colors cursor-pointer"
+                >
+                  {t.navPodcasts}
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onUploadTrack(file);
+              }}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer"
+            >
+              <Upload size={13} className="text-[var(--accent-text)]" />
+              <span>{t.uploadLocal}</span>
+            </button>
+          </div>
         </div>
 
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) onUploadTrack(file);
-            }}
-            className="hidden"
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer"
-          >
-            <Upload size={14} className="text-[var(--accent-text)]" />
-            <span>{t.uploadLocal}</span>
-          </button>
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-[var(--text-primary)] tracking-tight">
+              {t.navLanding}
+            </h2>
+            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+              Personal mixes, popular studio albums, daily playlists, and instant continuation
+            </p>
+          </div>
         </div>
       </div>
 
@@ -464,6 +516,94 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       {/* TAB 1: BROWSE CATALOG */}
       {libraryTab === 'browse' && (
         <div className="space-y-8">
+          {/* Spotify-Style 2x4 Quick Access Shortcut Grid */}
+          <section data-testid="spotify-home-shortcuts" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {(() => {
+              const shortcuts: {
+                id: string;
+                title: string;
+                coverUrl: string;
+                fallbackArtist: string;
+                onTrigger: () => void;
+              }[] = [];
+              if (likedTracks.length > 0 && onPlayTrackList) {
+                shortcuts.push({
+                  id: 'sc-liked',
+                  title: t.likedSongs,
+                  coverUrl: likedTracks[0]?.coverUrl || DEFAULT_COVER_DATA_URI,
+                  fallbackArtist: t.likedSongs,
+                  onTrigger: () =>
+                    onPlayTrackList(likedTracks, false, {
+                      id: 'liked-songs',
+                      type: 'playlist',
+                      title: t.likedSongs,
+                      coverUrl: likedTracks[0]?.coverUrl,
+                      ordered: true
+                    })
+                });
+              }
+              for (const pl of popularCharts.playlists.slice(0, 3)) {
+                shortcuts.push({
+                  id: `sc-pl-${pl.id}`,
+                  title: pl.title,
+                  coverUrl: pl.coverUrl || DEFAULT_COVER_DATA_URI,
+                  fallbackArtist: pl.creator,
+                  onTrigger: () => void handlePlayDailyPlaylist(pl, false, 0)
+                });
+              }
+              for (const mix of recommendedMixes.slice(0, 2)) {
+                if (shortcuts.length >= 8) break;
+                shortcuts.push({
+                  id: `sc-${mix.id}`,
+                  title: mix.title,
+                  coverUrl: mix.tracks[0]?.coverUrl || DEFAULT_COVER_DATA_URI,
+                  fallbackArtist: mix.tracks[0]?.artist || mix.title,
+                  onTrigger: () =>
+                    onPlayTrackList?.(mix.tracks, false, {
+                      id: mix.id,
+                      type: 'recommendation',
+                      title: mix.title,
+                      subtitle: mix.subtitle,
+                      coverUrl: mix.tracks[0]?.coverUrl,
+                      ordered: true
+                    })
+                });
+              }
+              for (const alb of popularCharts.albums) {
+                if (shortcuts.length >= 8) break;
+                shortcuts.push({
+                  id: `sc-alb-${alb.id}`,
+                  title: alb.title,
+                  coverUrl: alb.coverUrl || DEFAULT_COVER_DATA_URI,
+                  fallbackArtist: alb.artist,
+                  onTrigger: () => void handlePlayReleaseAlbum(alb, false, 0)
+                });
+              }
+              return shortcuts.slice(0, 8).map((sc) => (
+                <button
+                  key={sc.id}
+                  type="button"
+                  data-testid={`home-shortcut-${sc.id}`}
+                  onClick={sc.onTrigger}
+                  className="group relative flex items-center gap-3 pr-3 rounded-lg overflow-hidden bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)]/70 hover:border-[var(--border-medium)] transition-colors text-left cursor-pointer min-w-0 h-14"
+                >
+                  <img
+                    src={sc.coverUrl}
+                    alt={sc.title}
+                    onError={(e) => applyCoverFallback(e, sc.title, sc.fallbackArtist)}
+                    className="w-14 h-14 object-cover shrink-0 bg-[var(--bg-elevated)]"
+                  />
+                  <span className="text-xs font-bold text-[var(--text-primary)] truncate flex-1">
+                    {sc.title}
+                  </span>
+                  <span className="w-8 h-8 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100 transition-all shrink-0">
+                    <Play size={13} className="fill-current ml-0.5" />
+                  </span>
+                </button>
+              ));
+            })()}
+          </section>
+
           {/* Active Spotlight Card with Adaptive Cover Color */}
           <div
             className="relative overflow-hidden rounded-2xl bg-[var(--bg-tint)] p-5 sm:p-6 border border-[var(--border-subtle)]"
@@ -546,10 +686,29 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           {/* Quick Picks 2-Row Compact Instant Tiles (Spotify / YT Music Parity) */}
           {quickPicks.length > 0 && (
             <section data-testid="discover-quick-picks" className="space-y-2.5">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <h3 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
                   {t.quickPicks}
                 </h3>
+                {onPlayTrackList && (
+                  <button
+                    type="button"
+                    data-testid="quick-picks-play-all"
+                    onClick={() =>
+                      onPlayTrackList(quickPicks, false, {
+                        id: 'quick-picks-mix',
+                        type: 'recommendation',
+                        title: t.quickPicks,
+                        coverUrl: quickPicks[0]?.coverUrl,
+                        ordered: true
+                      })
+                    }
+                    className="h-7 px-3 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border-medium)] text-[11px] font-bold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Play size={10} className="fill-current" />
+                    <span>Play All</span>
+                  </button>
+                )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {quickPicks.map((item) => {
@@ -1234,19 +1393,19 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   </h3>
                 </div>
                 <span className="text-[11px] font-mono text-[var(--text-dim)]">
-                  Daily Curated &middot; {popularCharts.playlists.slice(0, 8).length} lists
+                  Daily Curated &middot; {popularCharts.playlists.slice(0, 12).length} lists
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
-                {popularCharts.playlists.slice(0, 8).map((pl) => {
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3.5">
+                {popularCharts.playlists.slice(0, 12).map((pl) => {
                   const isActivePl = selectedDailyPlaylist?.id === pl.id;
                   const isLoadingPl = loadingPlaylistId === pl.id;
                   return (
                     <div
                       key={pl.id}
                       data-testid={`daily-playlist-${pl.id}`}
-                      className={`group rounded-2xl p-2.5 border transition-all flex flex-col justify-between gap-2 ${
+                      className={`group rounded-2xl p-2.5 border transition-all flex flex-col justify-between gap-2 min-w-0 ${
                         isActivePl
                           ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'
                           : 'bg-[var(--bg-tint)] border-[var(--border-subtle)] hover:border-[var(--border-medium)]'
@@ -1255,7 +1414,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleOpenDailyPlaylist(pl)}
-                        className="text-left space-y-2 cursor-pointer"
+                        className="text-left space-y-2 cursor-pointer min-w-0"
                       >
                         <div className="relative aspect-square rounded-xl overflow-hidden bg-[var(--bg-elevated)]">
                           <img
@@ -1275,7 +1434,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                             {pl.title}
                           </div>
                           <div className="text-[10px] text-[var(--text-dim)] truncate">
-                            {pl.creator}
+                            {pl.description || pl.creator}
                           </div>
                         </div>
                       </button>
@@ -1288,9 +1447,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                           type="button"
                           onClick={() => handlePlayDailyPlaylist(pl, false, 0)}
                           aria-label={`Play ${pl.title}`}
-                          className="w-7 h-7 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] flex items-center justify-center shrink-0 cursor-pointer"
+                          className="h-7 px-2.5 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-[10px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
                         >
-                          <Play size={11} className="fill-current ml-0.5" />
+                          <Play size={10} className="fill-current" />
+                          <span>Play</span>
                         </button>
                       </div>
                     </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { MusicVideoCandidate, Track } from '../../types';
-import { Disc3, Film, Loader2, Maximize2, RefreshCw } from 'lucide-react';
+import { Disc3, ExternalLink, Film, Loader2, Maximize2, RefreshCw } from 'lucide-react';
 import { applyCoverFallback } from '../../utils/coverFallback';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 
@@ -114,7 +114,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 onError={applyCoverFallback}
                 className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-35"
               />
-              <div className="absolute inset-0 bg-[#0a0d12]/90" />
+              <div className="absolute inset-0 bg-[#0a0d12]/45" />
               {!isYtVisualReady && ytStreamError ? (
                 <div className="relative z-10 flex flex-col items-center gap-3 max-w-sm">
                   <div className="w-20 h-20 rounded-2xl overflow-hidden border border-white/15 shadow-2xl">
@@ -125,8 +125,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  <p className="text-xs font-medium text-white/85">{t.videoUnavailable}</p>
-                  <div className="flex items-center justify-center gap-2">
+                  <p className="text-xs font-medium text-white/90">{t.videoUnavailable}</p>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
                     {onRetryVideo && (
                       <button
                         type="button"
@@ -138,6 +138,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         <span>Retry</span>
                       </button>
                     )}
+                    <a
+                      href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${track.artist} ${track.title} official music video`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-semibold cursor-pointer transition-colors"
+                    >
+                      <ExternalLink size={12} />
+                      <span>YouTube</span>
+                    </a>
                     {onSwitchToAudioMode && (
                       <button
                         type="button"
@@ -150,18 +159,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     )}
                   </div>
                 </div>
-              ) : (
-                <div className="relative z-10 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-xs font-medium text-white">
+              ) : !isYtVisualReady ? (
+                <div className="relative z-10 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-xs font-medium text-white">
                   <Loader2 size={14} className="animate-spin text-emerald-400" />
                   <span>
                     {!isResolvingVideo && (activeVideoId || currentCandidate?.videoId)
                       ? track.genre === 'Podcast'
-                        ? 'Buffering video podcast...'
-                        : 'Buffering video stream...'
+                        ? 'Loading video...'
+                        : 'Loading stream...'
                       : t.findingMusicVideo}
                   </span>
                 </div>
-              )}
+              ) : null}
             </div>
             <div
               ref={videoSlotRef}
@@ -245,13 +254,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <div className="flex items-center gap-2 min-w-0 w-full sm:w-auto sm:flex-1">
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
-              hasLiveYouTubeStage
+              hasLiveYouTubeStage && isYtVisualReady && !ytStreamError
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
                 : 'bg-white/10 text-white/75 border border-white/15'
             }`}
           >
             <Film size={11} />
-            <span>{track.genre === 'Podcast' ? 'PODCAST VIDEO' : t.musicVideoBadge}</span>
+            <span>
+              {hasLiveYouTubeStage && !ytStreamError
+                ? track.genre === 'Podcast'
+                  ? 'PODCAST VIDEO'
+                  : t.musicVideoBadge
+                : isResolvingVideo
+                  ? 'Searching'
+                  : 'Audio Stage'}
+            </span>
           </span>
           <div className="min-w-0">
             <div className="text-xs font-semibold text-white truncate">
@@ -282,7 +299,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </button>
           )}
 
-          {onSwitchToAudioMode && track.audioUrl && (
+          {onSwitchToAudioMode && (
             <button
               type="button"
               data-testid="video-to-audio-btn"

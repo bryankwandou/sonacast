@@ -3,7 +3,7 @@ import type { TabType } from '../types';
 export const TAB_ROUTE_MAP: Record<TabType, string> = {
   landing: '/',
   music: '/music',
-  discover: '/library',
+  discover: '/home',
   vibe: '/vibe',
   search: '/search',
   favorites: '/favorites',
@@ -17,15 +17,16 @@ export const TAB_ROUTE_MAP: Record<TabType, string> = {
 
 const ROUTE_ALIAS_TO_TAB: Record<string, TabType> = {
   '/': 'landing',
-  '/home': 'landing',
+  '/landing': 'landing',
+  '/home': 'discover',
+  '/discover': 'discover',
   '/music': 'music',
   '/musik': 'music',
   '/explore': 'music',
   '/albums': 'music',
-  '/library': 'discover',
-  '/discover': 'discover',
   '/vibe': 'vibe',
   '/search': 'search',
+  '/library': 'favorites',
   '/favorites': 'favorites',
   '/collection': 'favorites',
   '/blend': 'blend',
@@ -39,12 +40,12 @@ const ROUTE_ALIAS_TO_TAB: Record<string, TabType> = {
 };
 
 const TAB_PAGE_TITLES: Record<TabType, string> = {
-  landing: 'Sonacast — Full-Length Music Streaming & Synchronized Lyrics',
-  music: 'Music · Popular Albums, Charts & Mixes — Sonacast',
-  discover: 'Your Library — Sonacast',
+  landing: 'Sonacast — Music Streaming & Live Radio',
+  music: 'Music · Popular Studio Albums, Daily Playlists & Charts — Sonacast',
+  discover: 'Home — Sonacast',
   vibe: 'Vibe Feed — Sonacast',
   search: 'Search Catalog — Sonacast',
-  favorites: 'Favorites & Albums — Sonacast',
+  favorites: 'Your Library & Favorites — Sonacast',
   blend: 'Blend Music — Sonacast',
   radio: 'Live Radio — Sonacast',
   podcasts: 'Podcasts — Sonacast',

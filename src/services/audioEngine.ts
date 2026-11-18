@@ -153,6 +153,12 @@ export class AudioEngine {
   private html5PlayPending = false;
   private pendingHtml5SeekSeconds: number | null = null;
   private suppressPauseUntilMs = 0;
+  private transitionKeepaliveTimer: number | null = null;
+  private keepaliveOsc: OscillatorNode | null = null;
+  private keepaliveGain: GainNode | null = null;
+  private ytBgPauseRecoverCount = 0;
+  private ytWallAnchorMs = 0;
+  private ytWallAnchorPos = 0;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -499,6 +505,7 @@ export class AudioEngine {
         if (this.activeBackend !== 'html5' || this.usingPassthroughStream) return;
         this.suppressPauseUntilMs = 0;
         this.html5PlayPending = false;
+        this.stopTransitionKeepalive();
         if (this.ctx && this.ctx.state !== 'running') {
           this.ctx.resume().catch(() => {});
         }
@@ -839,6 +846,84 @@ export class AudioEngine {
     }, 120);
   }
 
+  private startTransitionKeepalive(maxMs = 10000) {
+    if (typeof window === 'undefined') return;
+    this.stopTransitionKeepalive();
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!this.ctx && AudioCtx) {
+        this.ctx = new AudioCtx();
+      }
+      if (this.ctx) {
+        if (this.ctx.state !== 'running') {
+          this.ctx.resume().catch(() => {});
+        }
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.frequency.value = 1;
+        gain.gain.value = 0.00005;
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        this.keepaliveOsc = osc;
+        this.keepaliveGain = gain;
+      }
+    } catch {
+      // Safe fallback when AudioContext is restricted
+    }
+    this.transitionKeepaliveTimer = window.setTimeout(() => {
+      this.stopTransitionKeepalive();
+    }, maxMs);
+  }
+
+  private stopTransitionKeepalive() {
+    if (this.transitionKeepaliveTimer !== null) {
+      clearTimeout(this.transitionKeepaliveTimer);
+      this.transitionKeepaliveTimer = null;
+    }
+    if (this.keepaliveOsc) {
+      try {
+        this.keepaliveOsc.stop();
+        this.keepaliveOsc.disconnect();
+      } catch {
+        // Ignore already stopped oscillator
+      }
+      this.keepaliveOsc = null;
+    }
+    if (this.keepaliveGain) {
+      try {
+        this.keepaliveGain.disconnect();
+      } catch {
+        // Ignore disconnect errors
+      }
+      this.keepaliveGain = null;
+    }
+  }
+
+  public prepareTrackTransition(duration: number, bpm = 120) {
+    ++this.playGeneration;
+    this.stopHtml5Poll();
+    this.stopYouTubePoll();
+    this.clearYouTubeWatchdog();
+    this.clearYouTubeResumeCheck();
+    this.clearYouTubeFade();
+    this.stopHtml5Backend();
+    this.stopYouTubeBackend();
+    this.duration = Math.max(60, duration);
+    this.currentTrackBpm = bpm;
+    this.currentTime = 0;
+    this.ytWallAnchorMs = 0;
+    this.ytWallAnchorPos = 0;
+    this.ytBgPauseRecoverCount = 0;
+    this.wasPlayingBeforeSleep = true;
+    this.isPlaying = true;
+    this.startTransitionKeepalive(10000);
+    this.notifyTime();
+    this.notifyState();
+  }
+
   private completeCurrentTrack(expectedGen: number) {
     if (expectedGen !== this.playGeneration || this.lastEndedGeneration === expectedGen) {
       return;
@@ -849,8 +934,8 @@ export class AudioEngine {
     this.clearYouTubeWatchdog();
     this.clearYouTubeResumeCheck();
     this.clearYouTubeFade();
+    this.startTransitionKeepalive(8000);
     this.isPlaying = false;
-    this.wasPlayingBeforeSleep = false;
     this.currentTime = this.duration;
     this.notifyTime();
     this.notifyState();
@@ -1306,6 +1391,22 @@ export class AudioEngine {
           this.completeCurrentTrack(pollGen);
           return;
         }
+        if (
+          this.isDocumentHidden &&
+          this.isPlaying &&
+          this.wasPlayingBeforeSleep &&
+          performance.now() - this.lastPauseCalledAt > 1500 &&
+          (ytState === 2 || ytState === 5 || ytState === -1) &&
+          this.ytBgPauseRecoverCount < 4
+        ) {
+          this.ytBgPauseRecoverCount += 1;
+          try {
+            this.ytPlayer.unMute?.();
+            this.ytPlayer.playVideo();
+          } catch {
+            // Ignore blocked background kick
+          }
+        }
         const realDur = this.ytPlayer.getDuration?.();
         if (typeof realDur === 'number' && isFinite(realDur) && realDur >= 30) {
           const rounded = Math.floor(realDur);
@@ -1316,13 +1417,25 @@ export class AudioEngine {
         }
         const pos = this.ytPlayer.getCurrentTime();
         if (typeof pos === 'number' && isFinite(pos) && pos >= 0) {
+          if (pos > 0.4 && this.ytWallAnchorMs === 0) {
+            this.ytWallAnchorMs = Date.now();
+            this.ytWallAnchorPos = pos;
+          } else if (pos > this.ytMaxPosSeen + 0.5) {
+            this.ytWallAnchorMs = Date.now();
+            this.ytWallAnchorPos = pos;
+          }
           this.ytMaxPosSeen = Math.max(this.ytMaxPosSeen, pos);
           const effectivePos = Math.max(pos, this.ytMaxPosSeen >= this.duration - 3.5 && pos < 1 ? this.ytMaxPosSeen : pos);
           this.currentTime = this.duration > 0 ? Math.min(effectivePos, this.duration) : effectivePos;
           this.notifyTime();
           if (pos >= 0.3) {
             this.clearYouTubeWatchdog();
+            this.stopTransitionKeepalive();
           }
+          const wallEstimatedPos =
+            this.isDocumentHidden && this.ytWallAnchorMs > 0
+              ? this.ytWallAnchorPos + ((Date.now() - this.ytWallAnchorMs) / 1000) * this.playbackRate
+              : 0;
           const ytEndedNearRealDur =
             typeof realDur === 'number' &&
             isFinite(realDur) &&
@@ -1333,6 +1446,7 @@ export class AudioEngine {
             this.duration >= 30 &&
             (effectivePos >= this.duration - 0.6 ||
               ytEndedNearRealDur ||
+              (wallEstimatedPos >= this.duration + 0.5 && (pos <= 1 || pos >= this.duration - 3.5)) ||
               ((ytState === 2 || ytState === 3 || ytState === 5 || ytState === -1) &&
                 effectivePos >= this.duration - 2.5))
           ) {
@@ -1400,11 +1514,15 @@ export class AudioEngine {
     this.currentTrackBpm = bpm;
     this.currentTime = clampedStart;
     this.ytMaxPosSeen = clampedStart;
+    this.ytWallAnchorMs = Date.now();
+    this.ytWallAnchorPos = clampedStart;
+    this.ytBgPauseRecoverCount = 0;
     this.lastPauseCalledAt = 0;
     this.ytNearEndLastPos = -1;
     this.ytNearEndStallSince = 0;
     this.isPlaying = true;
     this.wasPlayingBeforeSleep = true;
+    this.startTransitionKeepalive(9000);
     this.notifyTime();
     this.notifyState();
 
@@ -1536,14 +1654,20 @@ export class AudioEngine {
             this.isPlaying = true;
             this.wasPlayingBeforeSleep = true;
             this.ytTrackTransitionUntil = 0;
+            this.ytBgPauseRecoverCount = 0;
+            this.stopTransitionKeepalive();
             this.setYtVisualReady(true);
             this.clearYouTubeResumeCheck();
             this.notifyState();
             this.startYouTubePoll();
             try {
               const cur = event.target.getCurrentTime();
-              if (typeof cur === 'number' && cur >= 0.3) {
-                this.clearYouTubeWatchdog();
+              if (typeof cur === 'number' && cur >= 0) {
+                this.ytWallAnchorMs = Date.now();
+                this.ytWallAnchorPos = cur;
+                if (cur >= 0.3) {
+                  this.clearYouTubeWatchdog();
+                }
               }
               const realDur = event.target.getDuration();
               if (realDur && isFinite(realDur) && realDur >= 30) {
@@ -1601,9 +1725,27 @@ export class AudioEngine {
                 return;
               }
             }
+            // In background tabs Chromium may temporarily pause cross-origin YT iframes across track transitions
+            if (
+              this.isDocumentHidden &&
+              this.isPlaying &&
+              this.wasPlayingBeforeSleep &&
+              performance.now() - this.lastPauseCalledAt > 1200 &&
+              this.ytBgPauseRecoverCount < 4
+            ) {
+              this.ytBgPauseRecoverCount += 1;
+              try {
+                event.target.unMute?.();
+                event.target.playVideo();
+              } catch {
+                // Fall through if iframe rejects play
+              }
+              return;
+            }
             this.clearYouTubeWatchdog();
             this.clearYouTubeResumeCheck();
             this.clearYouTubeFade();
+            this.stopTransitionKeepalive();
             this.setYtVisualReady(true);
             this.isPlaying = false;
             this.stopYouTubePoll();
@@ -1770,6 +1912,7 @@ export class AudioEngine {
     this.suppressPauseUntilMs = 0;
     this.html5PlayPending = false;
     this.pendingHtml5SeekSeconds = null;
+    this.stopTransitionKeepalive();
     this.clearHtml5BlobPrefetch();
     this.ytTrackTransitionUntil = 0;
     this.ytNearEndLastPos = -1;
@@ -2280,25 +2423,26 @@ export class AudioEngine {
 
   private armYtVisualGraceTimer(gen: number) {
     this.clearYtVisualGraceTimer();
-    // Reveal iframe after handshake only when YouTube player has a valid loaded state (never expose unplayable error frames)
+    // Reveal iframe promptly once YT player loads so users are never trapped behind an opaque curtain or unable to click Play
     this.ytVisualGraceTimer = window.setTimeout(() => {
       this.ytVisualGraceTimer = null;
       if (
         gen === this.playGeneration &&
         this.activeBackend === 'youtube' &&
-        this.ytPlayer &&
-        this.ytReady
+        this.ytPlayer
       ) {
         try {
           const st = this.ytPlayer.getPlayerState?.();
-          if (st === 1 || st === 2 || st === 5) {
+          if (st === 1 || st === 2 || st === 3 || st === 5 || st === -1) {
             this.setYtVisualReady(true);
           }
         } catch {
-          // Keep artwork placeholder visible if iframe state is unreadable
+          if (this.ytReady) {
+            this.setYtVisualReady(true);
+          }
         }
       }
-    }, 2400);
+    }, 900);
   }
 
   public getYouTubeVisualReady(): boolean {

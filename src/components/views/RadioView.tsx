@@ -1,16 +1,41 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { RadioStation } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import {
+  fetchRadioDirectoryMeta,
+  searchLiveRadioStations,
+  type RadioDirectoryMeta
+} from '../../services/musicService';
 import { MapPin, Radio, Users, Play, Activity, Search, Globe2, Loader2, X, ListMusic } from 'lucide-react';
 
 interface RadioViewProps {
   stations: RadioStation[];
   onSelectStation: (station: RadioStation, mode?: 'live' | 'mix') => void;
-  onSearchStations?: (query: string, countryCode?: string) => Promise<RadioStation[]>;
+  onSearchStations?: (
+    query: string,
+    countryCode?: string,
+    options?: { language?: string; tag?: string; offset?: number; limit?: number }
+  ) => Promise<RadioStation[]>;
   activeStationId?: string;
 }
 
 const RADIO_CATEGORIES = ['All', 'Indonesia', 'Global', 'Focus', 'Dance', 'Talk'] as const;
+
+const REGIONAL_MINORITY_PRESETS: {
+  id: string;
+  label: string;
+  query: string;
+  language?: string;
+  tag?: string;
+}[] = [
+  { id: 'indigenous', label: 'Indigenous & Native', query: 'indigenous', tag: 'indigenous' },
+  { id: 'javanese', label: 'Jawa & Regional ID', query: 'javanese', language: 'javanese' },
+  { id: 'maori', label: 'Māori & Pacific', query: 'maori', language: 'maori' },
+  { id: 'welsh', label: 'Welsh / Cymraeg', query: 'welsh', language: 'welsh' },
+  { id: 'basque', label: 'Basque / Euskara', query: 'basque', language: 'basque' },
+  { id: 'catalan', label: 'Catalan / Català', query: 'catalan', language: 'catalan' },
+  { id: 'community', label: 'Community & Folk', query: 'community', tag: 'community' }
+];
 
 export const RadioView: React.FC<RadioViewProps> = ({
   stations,
@@ -23,23 +48,67 @@ export const RadioView: React.FC<RadioViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [directoryStations, setDirectoryStations] = useState<RadioStation[] | null>(null);
   const [directoryLabel, setDirectoryLabel] = useState<string | null>(null);
+  const [directoryMeta, setDirectoryMeta] = useState<RadioDirectoryMeta | null>(null);
+  const [selectedLang, setSelectedLang] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState('');
+  const [activeSearchArgs, setActiveSearchArgs] = useState<{
+    q: string;
+    countryCode?: string;
+    language?: string;
+    tag?: string;
+  } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  const runLiveDirectorySearch = async (queryText: string, countryCode?: string, label?: string) => {
-    if (!onSearchStations) return;
+  useEffect(() => {
+    let cancelled = false;
+    void fetchRadioDirectoryMeta().then((meta) => {
+      if (!cancelled) setDirectoryMeta(meta);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const runLiveDirectorySearch = async (
+    queryText: string,
+    countryCode?: string,
+    label?: string,
+    extraOpts?: { language?: string; tag?: string; appendOffset?: number }
+  ) => {
+    const fetcher = onSearchStations || searchLiveRadioStations;
     setIsSearching(true);
     setSearchError(null);
+    const offset = extraOpts?.appendOffset || 0;
     try {
-      const results = await onSearchStations(queryText.trim(), countryCode);
-      setDirectoryStations(results);
-      setDirectoryLabel(label || (queryText.trim() ? `"${queryText.trim()}"` : 'Live Directory'));
-      setSelectedCategory('All');
-      if (results.length === 0) {
+      const results = await fetcher(queryText.trim(), countryCode, {
+        language: extraOpts?.language,
+        tag: extraOpts?.tag,
+        offset,
+        limit: 48
+      });
+      if (offset > 0) {
+        setDirectoryStations((prev) => {
+          const base = prev || [];
+          const seen = new Set(base.map((s) => s.streamUrl || s.id));
+          return [...base, ...results.filter((r) => !seen.has(r.streamUrl || r.id))];
+        });
+      } else {
+        setDirectoryStations(results);
+        setDirectoryLabel(label || (queryText.trim() ? `"${queryText.trim()}"` : 'Live Directory'));
+        setSelectedCategory('All');
+        setActiveSearchArgs({
+          q: queryText.trim(),
+          countryCode,
+          language: extraOpts?.language,
+          tag: extraOpts?.tag
+        });
+      }
+      if (offset === 0 && results.length === 0) {
         setSearchError(
           language === 'id'
-            ? 'Tidak ada stasiun live HTTPS yang cocok. Coba kata kunci kota atau genre lain.'
-            : 'No playable HTTPS live stations matched that query. Try another city, genre, or station.'
+            ? 'Tidak ada stasiun live HTTPS yang cocok saat ini. Coba nama kota, bahasa daerah, atau genre lain.'
+            : 'No playable HTTPS live stations matched that query right now. Try another city, regional language, country, or tag.'
         );
       }
     } catch {
@@ -55,19 +124,25 @@ export const RadioView: React.FC<RadioViewProps> = ({
 
   const handleSubmitSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) {
+    if (!searchQuery.trim() && !selectedLang && !selectedCountry) {
       setDirectoryStations(null);
       setDirectoryLabel(null);
+      setActiveSearchArgs(null);
       setSearchError(null);
       return;
     }
-    await runLiveDirectorySearch(searchQuery);
+    await runLiveDirectorySearch(searchQuery, selectedCountry || undefined, undefined, {
+      language: selectedLang || undefined
+    });
   };
 
   const handleClearSearch = () => {
     setSearchQuery('');
+    setSelectedLang('');
+    setSelectedCountry('');
     setDirectoryStations(null);
     setDirectoryLabel(null);
+    setActiveSearchArgs(null);
     setSearchError(null);
   };
 
@@ -88,7 +163,15 @@ export const RadioView: React.FC<RadioViewProps> = ({
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)] text-xs font-bold border border-[var(--accent-border)] mb-2">
               <Radio size={13} className="animate-pulse" />
-              <span>{language === 'id' ? 'SIARAN RADIO LANGSUNG 24/7' : '24/7 LIVE FM & WEB RADIO'}</span>
+              <span>
+                {directoryMeta?.stats?.stations
+                  ? `${directoryMeta.stats.stations.toLocaleString()}+ ${
+                      language === 'id' ? 'Stasiun Global' : 'Indexed Stations'
+                    } · ${directoryMeta.stats.countries} Countries · ${directoryMeta.stats.languages} Languages`
+                  : language === 'id'
+                    ? 'SIARAN RADIO LANGSUNG 24/7'
+                    : '24/7 LIVE FM & WEB RADIO'}
+              </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-[var(--text-primary)]">{t.navRadio}</h2>
             <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-2xl">
@@ -194,6 +277,80 @@ export const RadioView: React.FC<RadioViewProps> = ({
             </button>
           )}
         </div>
+
+        {/* Regional Languages, Countries & Indigenous/Minority Discovery Bar */}
+        <div className="flex flex-col gap-2 pt-2 border-t border-[var(--border-subtle)]/70">
+          <div className="flex flex-wrap items-center gap-2">
+            {directoryMeta && directoryMeta.languages.length > 0 && (
+              <select
+                aria-label="Filter radio by language"
+                data-testid="radio-language-select"
+                value={selectedLang}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedLang(val);
+                  if (val) {
+                    void runLiveDirectorySearch(searchQuery, selectedCountry || undefined, `Language: ${val}`, {
+                      language: val
+                    });
+                  }
+                }}
+                className="h-9 px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] max-w-[200px]"
+              >
+                <option value="">All Languages ({directoryMeta.stats.languages || directoryMeta.languages.length})</option>
+                {directoryMeta.languages.map((lang) => (
+                  <option key={lang.name} value={lang.name}>
+                    {lang.name} ({lang.stationcount.toLocaleString()})
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {directoryMeta && directoryMeta.countries.length > 0 && (
+              <select
+                aria-label="Filter radio by country"
+                data-testid="radio-country-select"
+                value={selectedCountry}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedCountry(val);
+                  if (val) {
+                    const match = directoryMeta.countries.find((c) => c.iso_3166_1 === val);
+                    void runLiveDirectorySearch(searchQuery, val, `Country: ${match?.name || val}`, {
+                      language: selectedLang || undefined
+                    });
+                  }
+                }}
+                className="h-9 px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-primary)] max-w-[210px]"
+              >
+                <option value="">All Countries ({directoryMeta.stats.countries || directoryMeta.countries.length})</option>
+                {directoryMeta.countries.map((c) => (
+                  <option key={c.iso_3166_1 || c.name} value={c.iso_3166_1 || ''}>
+                    {c.name} ({c.stationcount.toLocaleString()})
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {REGIONAL_MINORITY_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                data-testid={`radio-preset-${preset.id}`}
+                onClick={() => {
+                  setSelectedLang(preset.language || '');
+                  void runLiveDirectorySearch(preset.query, undefined, preset.label, {
+                    language: preset.language,
+                    tag: preset.tag
+                  });
+                }}
+                className="h-9 px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent-emerald)] text-[11px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {searchError && (
@@ -297,6 +454,27 @@ export const RadioView: React.FC<RadioViewProps> = ({
           );
         })}
       </div>
+
+      {directoryStations !== null && directoryStations.length >= 24 && activeSearchArgs && (
+        <div className="flex justify-center pt-2">
+          <button
+            type="button"
+            data-testid="radio-load-more-btn"
+            disabled={isSearching}
+            onClick={() =>
+              void runLiveDirectorySearch(activeSearchArgs.q, activeSearchArgs.countryCode, undefined, {
+                language: activeSearchArgs.language,
+                tag: activeSearchArgs.tag,
+                appendOffset: directoryStations.length
+              })
+            }
+            className="min-h-[40px] px-5 py-2 rounded-full bg-[var(--bg-surface)] border border-[var(--border-medium)] hover:border-[var(--accent-emerald)] text-xs font-bold text-[var(--text-primary)] inline-flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-60"
+          >
+            {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Globe2 size={14} className="text-[var(--accent-text)]" />}
+            <span>{language === 'id' ? 'Muat Lebih Banyak Stasiun' : 'Load More Stations'}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

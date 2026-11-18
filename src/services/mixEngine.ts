@@ -1,4 +1,5 @@
 import type { FollowedArtist, MoodPreset, RecommendationMix, Track } from '../types';
+import { COHESIVE_SEED_TRACKS } from '../data/curatedPlaylists';
 import {
   classifyTrackTier,
   computeAudioVectorCosine,
@@ -18,6 +19,7 @@ export interface BuildMixesInput {
   likedTracks: Track[];
   followedArtists: FollowedArtist[];
   mood: MoodPreset;
+  activeTrack?: Track;
 }
 
 function norm(value: string): string {
@@ -44,26 +46,34 @@ function dedupeTracks(tracks: Track[]): Track[] {
   return out;
 }
 
-/** Sequences tracks with strict 3-slot artist cooldown and max 2 tracks per artist while preserving rank order. */
-function interleaveOrdered(scored: Track[], limit: number): Track[] {
-  const pool = [...scored];
+/** Sequences tracks with strict 3-slot artist cooldown, max 2 tracks per artist, and zero duplicate songs across mixes. */
+function interleaveOrderedUnique(
+  scored: Track[],
+  limit: number,
+  usedIdsAcrossMixes: Set<string>,
+  usedBaseTitlesAcrossMixes: Set<string>
+): Track[] {
+  const pool = scored.filter((t) => {
+    const base = normalizeBaseTitle(t.title);
+    return !usedIdsAcrossMixes.has(t.id) && !(base && usedBaseTitlesAcrossMixes.has(base));
+  });
   const result: Track[] = [];
   const artistCounts = new Map<string, number>();
-  const usedBaseTitles = new Set<string>();
+  const localUsedTitles = new Set<string>();
   const recentArtists: string[] = [];
 
   while (pool.length > 0 && result.length < limit) {
     let chosenIdx = pool.findIndex((t) => {
       const a = primaryArtist(t.artist);
       const base = normalizeBaseTitle(t.title);
-      if (base && usedBaseTitles.has(base)) return false;
+      if (base && localUsedTitles.has(base)) return false;
       return !recentArtists.slice(0, 3).includes(a) && (artistCounts.get(a) || 0) < 2;
     });
     if (chosenIdx === -1) {
       chosenIdx = pool.findIndex((t) => {
         const a = primaryArtist(t.artist);
         const base = normalizeBaseTitle(t.title);
-        if (base && usedBaseTitles.has(base)) return false;
+        if (base && localUsedTitles.has(base)) return false;
         return a !== recentArtists[0] && (artistCounts.get(a) || 0) < 3;
       });
     }
@@ -75,7 +85,11 @@ function interleaveOrdered(scored: Track[], limit: number): Track[] {
     const [picked] = pool.splice(chosenIdx, 1);
     const artistKey = primaryArtist(picked.artist);
     const pickedBase = normalizeBaseTitle(picked.title);
-    if (pickedBase) usedBaseTitles.add(pickedBase);
+    if (pickedBase) {
+      localUsedTitles.add(pickedBase);
+      usedBaseTitlesAcrossMixes.add(pickedBase);
+    }
+    usedIdsAcrossMixes.add(picked.id);
     recentArtists.unshift(artistKey);
     if (recentArtists.length > 4) recentArtists.pop();
     artistCounts.set(artistKey, (artistCounts.get(artistKey) || 0) + 1);
@@ -84,26 +98,33 @@ function interleaveOrdered(scored: Track[], limit: number): Track[] {
   return result;
 }
 
+function isMainstreamCohesiveChart(track: Track): boolean {
+  const g = String(track.genre || '').toLowerCase();
+  // Keep Country / niche regional noise out of automated generic pop mixes unless user specifically listens to it
+  if (g.includes('country') || g.includes('holiday') || g.includes('christmas')) return false;
+  return true;
+}
+
 function matchesMoodBpm(track: Track, mood: MoodPreset): boolean {
   const bpm = track.bpm || 115;
   const family = resolveGenreFamily(track.genre, track.artist, track.title);
   switch (mood) {
     case 'focus':
-      return (bpm >= 65 && bpm <= 115) || family === 'classical' || family === 'electronic' || family === 'jazz';
+      return family === 'classical' || family === 'jazz' || (bpm >= 60 && bpm <= 108 && family === 'electronic');
     case 'chill':
       return (bpm >= 60 && bpm <= 108) || family === 'rnb' || family === 'acoustic' || family === 'indonesian';
     case 'lateNight':
-      return (bpm >= 60 && bpm <= 110) || family === 'rnb' || /soul|indie|lo-fi|lofi|slow/i.test(track.genre || '');
+      return family === 'rnb' || (bpm >= 60 && bpm <= 110 && /soul|indie|lo-fi|lofi|slow/i.test(track.genre || ''));
     case 'party':
-      return bpm >= 118 || family === 'electronic' || /dance|edm|hiphop|house|club|party/i.test(track.genre || '');
+      return bpm >= 116 && (family === 'electronic' || family === 'pop' || family === 'kpop' || family === 'hiphop');
     case 'romance':
-      return (bpm >= 62 && bpm <= 112) || family === 'rnb' || family === 'indonesian' || /ballad|soul|love/i.test(track.genre || '');
+      return (bpm >= 62 && bpm <= 112) && (family === 'rnb' || family === 'indonesian' || family === 'pop' || family === 'acoustic');
     case 'sleep':
-      return (bpm >= 50 && bpm <= 95) || family === 'classical' || /ambient|piano|sleep|acoustic/i.test(track.genre || '');
+      return family === 'classical' || (bpm <= 92 && family === 'acoustic');
     case 'upbeat':
-      return bpm >= 115 && bpm <= 165;
+      return bpm >= 112 && bpm <= 165 && (family === 'pop' || family === 'kpop' || family === 'jpop' || family === 'electronic');
     case 'workout':
-      return bpm >= 122 || family === 'hiphop';
+      return bpm >= 120 || family === 'hiphop' || family === 'electronic';
     case 'indonesian':
       return family === 'indonesian' || inferTrackLanguageRegion(track) === 'id';
     case 'classic':
@@ -117,15 +138,17 @@ function matchesMoodBpm(track: Track, mood: MoodPreset): boolean {
 }
 
 /**
- * Generates deterministic Spotify-parity Made For You mixes using dominant taste clusters,
- * language-region coherence, 6D audio-feature centroid cosine similarity, and artist spacing.
+ * Generates deterministic Spotify-parity Made For You mixes across orthogonal sonic clusters,
+ * strict language-region cohesion, 6D audio-feature similarity, and zero cross-card duplicates.
  */
 export function buildRecommendationMixes(input: BuildMixesInput): RecommendationMix[] {
+  const filteredCharts = input.chartTracks.filter(isMainstreamCohesiveChart);
   const combinedPool = dedupeTracks([
     ...input.likedTracks,
     ...input.recentTracks,
+    ...COHESIVE_SEED_TRACKS,
     ...input.catalogTracks,
-    ...input.chartTracks
+    ...filteredCharts
   ]);
 
   if (combinedPool.length === 0) return [];
@@ -184,6 +207,11 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
     familyAffinity.set(fam, (familyAffinity.get(fam) || 0) + 3);
   }
 
+  const anchorTrack = input.likedTracks[0] || input.recentTracks[0] || input.activeTrack || input.catalogTracks[0];
+  if (vecWeightTotal === 0 && anchorTrack) {
+    absorbTaste(anchorTrack, 2);
+  }
+
   const targetBpm = bpmWeightSum > 0 ? Math.round(bpmSum / bpmWeightSum) : 116;
   const centroidVec: AudioFeatureVector | null =
     vecWeightTotal > 0
@@ -197,134 +225,143 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
         }
       : null;
 
-  const dominantClassEntry = Array.from(classAffinity.entries()).sort((a, b) => b[1] - a[1])[0];
-  const dominantClassId = dominantClassEntry?.[0] || null;
-  const dominantClassProfile = dominantClassId
-    ? classifyTrackTier({
-        title: input.recentTracks[0]?.title || input.likedTracks[0]?.title || '',
-        artist: input.recentTracks[0]?.artist || input.likedTracks[0]?.artist || '',
-        genre: input.recentTracks[0]?.genre || input.likedTracks[0]?.genre || '',
-        bpm: targetBpm
-      })
-    : null;
+  const dominantClassId =
+    Array.from(classAffinity.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+    (anchorTrack ? classifyTrackTier(anchorTrack).classId : 'classic_global_legend');
+  const dominantClassProfile = classifyTrackTier({
+    title: anchorTrack?.title || '',
+    artist: anchorTrack?.artist || '',
+    genre: anchorTrack?.genre || '',
+    bpm: targetBpm
+  });
+  const dominantRegion =
+    Array.from(regionAffinity.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+    (anchorTrack ? inferTrackLanguageRegion(anchorTrack) : 'en');
 
-  const dominantRegionEntry = Array.from(regionAffinity.entries()).sort((a, b) => b[1] - a[1])[0];
-  const dominantRegion = dominantRegionEntry?.[0] || null;
+  const usedIdsAcrossMixes = new Set<string>();
+  const usedTitlesAcrossMixes = new Set<string>();
 
-  // Mix 1: Daily Mix 1 · Personal Rotation (cohesive to dominant taste cluster + language region)
-  const dailyMixScored = [...combinedPool].sort((a, b) => {
+  // MIX 1: Daily Mix 1 · Personal Taste Cluster (strictly locked to dominant SonicClass + LanguageRegion)
+  const mix1Pool = combinedPool.filter((t) => {
+    const cls = classifyTrackTier(t);
+    const reg = inferTrackLanguageRegion(t);
+    const classOk = cls.classId === dominantClassId || dominantClassProfile.compatibleClasses.includes(cls.classId);
+    if (dominantRegion !== 'en' && dominantRegion !== 'instrumental') {
+      return reg === dominantRegion && classOk;
+    }
+    if (dominantRegion === 'instrumental') {
+      return cls.isInstrumental;
+    }
+    return classOk && (reg === 'en' || (regionAffinity.get(reg) || 0) >= 2);
+  });
+  const mix1Source = mix1Pool.length >= 6 ? mix1Pool : combinedPool;
+  const dailyMixScored = [...mix1Source].sort((a, b) => {
     const scoreOf = (t: Track) => {
       let s = 0;
       const art = primaryArtist(t.artist);
-      const fam = resolveGenreFamily(t.genre, t.artist, t.title);
       const cls = classifyTrackTier(t);
       const reg = inferTrackLanguageRegion(t);
-
-      if (likedIds.has(t.id)) s += 42;
+      if (likedIds.has(t.id)) s += 44;
       if (recentIds.has(t.id)) s += 26;
       s += (artistAffinity.get(art) || 0) * 14;
-      s += (familyAffinity.get(fam) || 0) * 11;
-      s += (classAffinity.get(cls.classId) || 0) * 16;
-
-      if (dominantClassId) {
-        if (cls.classId === dominantClassId) s += 54;
-        else if (dominantClassProfile?.compatibleClasses.includes(cls.classId)) s += 18;
-        else s -= 48;
-      }
-
-      if (dominantRegion) {
-        if (reg === dominantRegion) s += dominantRegion === 'en' ? 14 : 38;
-        else if (dominantRegion !== 'en' && (regionAffinity.get(reg) || 0) < 2) s -= 65;
-      }
-
+      s += cls.classId === dominantClassId ? 70 : dominantClassProfile.compatibleClasses.includes(cls.classId) ? 24 : -50;
+      if (reg === dominantRegion) s += 32;
       if (centroidVec) {
         const sim = computeAudioVectorCosine(centroidVec, estimateAudioFeatures(t));
-        s += Math.round((sim - 0.72) * 85);
+        s += Math.round((sim - 0.72) * 90);
       }
-
-      if (t.streamSource === 'studio-master') s += 8;
-      s -= Math.min(18, Math.abs((t.bpm || 116) - targetBpm) * 0.4);
+      if (COHESIVE_SEED_TRACKS.some((c) => c.id === t.id) || t.streamSource === 'studio-master') s += 10;
       return s;
     };
     return scoreOf(b) - scoreOf(a);
   });
-  const mix1Tracks = interleaveOrdered(dailyMixScored, 12);
-  const mix1Ids = new Set(mix1Tracks.map((t) => t.id));
+  const mix1Tracks = interleaveOrderedUnique(dailyMixScored, 10, usedIdsAcrossMixes, usedTitlesAcrossMixes);
   const topArtists1 = Array.from(new Set(mix1Tracks.slice(0, 4).map((t) => t.artist))).slice(0, 3);
-  const mix1Subtitle =
-    dominantClassProfile && topArtists1.length > 0
-      ? `${dominantClassProfile.classLabel} · ${topArtists1.slice(0, 2).join(', ')}`
-      : topArtists1.join(' · ') || 'Personal Taste Flow';
+  const mix1Subtitle = `${dominantClassProfile.classLabel} · ${topArtists1.slice(0, 2).join(', ')}`;
 
-  // Mix 2: Discovery Radar · Unheard Adjacent Taste (strictly prioritizes tracks outside current Mix 1 & heavy rotation)
-  const unheardOrStale = combinedPool.filter(
-    (t) =>
-      !mix1Ids.has(t.id) &&
-      (!recentIds.has(t.id) || (input.recentTracks.findIndex((r) => r.id === t.id) > 6 && !likedIds.has(t.id)))
-  );
-  const discoverySource = unheardOrStale.length >= 6 ? unheardOrStale : combinedPool;
-  const discoveryScored = [...discoverySource].sort((a, b) => {
-    const scoreOf = (t: Track) => {
-      let s = 0;
-      const art = primaryArtist(t.artist);
-      const fam = resolveGenreFamily(t.genre, t.artist, t.title);
-      const cls = classifyTrackTier(t);
-      const reg = inferTrackLanguageRegion(t);
-
-      s += (familyAffinity.get(fam) || 0) * 14;
-      s += (classAffinity.get(cls.classId) || 0) * 12;
-      if (dominantClassProfile) {
-        if (cls.classId === dominantClassProfile.classId) s += 36;
-        else if (dominantClassProfile.compatibleClasses.includes(cls.classId)) s += 28;
-        else s -= 36;
-      }
-      if (dominantRegion && dominantRegion !== 'en') {
-        if (reg === dominantRegion) s += 26;
-        else if ((regionAffinity.get(reg) || 0) < 2) s -= 44;
-      }
-      if (centroidVec) {
-        const sim = computeAudioVectorCosine(centroidVec, estimateAudioFeatures(t));
-        s += Math.round((sim - 0.72) * 80);
-      }
-      if (artistAffinity.has(art)) s += 10;
-      if (!likedIds.has(t.id)) s += 14;
-      if (t.streamSource === 'studio-master') s += 6;
-      s -= Math.min(20, Math.abs((t.bpm || 116) - targetBpm) * 0.42);
-      return s;
-    };
-    return scoreOf(b) - scoreOf(a);
+  // MIX 2: Indonesian Cluster Mix (if user's Mix 1 is already Indo Pop, pivot Mix 2 cleanly to Indo Indie & Band; otherwise Hot Hits Indonesia)
+  const mix2FocusIndie = dominantRegion === 'id' && dominantClassId === 'indo_pop_ballad';
+  const indoPool = combinedPool.filter((t) => {
+    if (usedIdsAcrossMixes.has(t.id)) return false;
+    const reg = inferTrackLanguageRegion(t);
+    if (reg !== 'id') return false;
+    const cls = classifyTrackTier(t).classId;
+    if (mix2FocusIndie) {
+      return cls === 'indo_indie_folk' || cls === 'indo_band_rock';
+    }
+    return cls === 'indo_pop_ballad' || cls === 'indo_indie_folk' || cls === 'indo_band_rock';
   });
-  const mix2Tracks = interleaveOrdered(discoveryScored, 12);
+  const mix2FallbackIndo = combinedPool.filter((t) => !usedIdsAcrossMixes.has(t.id) && inferTrackLanguageRegion(t) === 'id');
+  const mix2Source = indoPool.length >= 4 ? indoPool : mix2FallbackIndo;
+  const mix2Scored = [...mix2Source].sort((a, b) => {
+    const aCls = classifyTrackTier(a).classId;
+    const bCls = classifyTrackTier(b).classId;
+    const targetCls = mix2FocusIndie ? 'indo_indie_folk' : 'indo_pop_ballad';
+    const scoreA = (aCls === targetCls ? 40 : 15) + (COHESIVE_SEED_TRACKS.some((c) => c.id === a.id) ? 20 : 0);
+    const scoreB = (bCls === targetCls ? 40 : 15) + (COHESIVE_SEED_TRACKS.some((c) => c.id === b.id) ? 20 : 0);
+    return scoreB - scoreA;
+  });
+  const mix2Tracks = interleaveOrderedUnique(mix2Scored, 10, usedIdsAcrossMixes, usedTitlesAcrossMixes);
   const topArtists2 = Array.from(new Set(mix2Tracks.slice(0, 4).map((t) => t.artist))).slice(0, 3);
 
-  // Mix 3: Tempo & Mood Session (ordered around active mood & target BPM continuity)
-  const moodCandidates = combinedPool.filter((t) => matchesMoodBpm(t, input.mood));
-  const moodPool = moodCandidates.length >= 5 ? moodCandidates : combinedPool;
-  const moodSorted = [...moodPool].sort((a, b) => {
-    const deltaA = Math.abs((a.bpm || 115) - targetBpm);
-    const deltaB = Math.abs((b.bpm || 115) - targetBpm);
-    return deltaA - deltaB;
+  // MIX 3: Orthogonal Pop, Synthwave & R&B (or active Mood cluster) — strictly zero Mix 1/2 overlap!
+  const mix3Pool = combinedPool.filter((t) => {
+    if (usedIdsAcrossMixes.has(t.id)) return false;
+    if (input.mood !== 'all') {
+      return matchesMoodBpm(t, input.mood);
+    }
+    const cls = classifyTrackTier(t).classId;
+    return (
+      cls === 'modern_chart_pop' ||
+      cls === 'rnb_late_soul' ||
+      cls === 'electronic_dance_synth'
+    );
   });
-  const mix3Tracks = interleaveOrdered(moodSorted, 12);
+  const mix3Scored = [...mix3Pool].sort((a, b) => {
+    const scoreOf = (t: Track) => {
+      let s = 0;
+      const cls = classifyTrackTier(t).classId;
+      if (cls === 'rnb_late_soul' || cls === 'modern_chart_pop') s += 28;
+      if (t.streamSource === 'studio-master' || COHESIVE_SEED_TRACKS.some((c) => c.id === t.id)) s += 18;
+      if (input.mood === 'all' && Math.abs((t.bpm || 115) - 110) <= 22) s += 10;
+      return s;
+    };
+    return scoreOf(b) - scoreOf(a);
+  });
+  const mix3Tracks = interleaveOrderedUnique(mix3Scored, 10, usedIdsAcrossMixes, usedTitlesAcrossMixes);
   const topArtists3 = Array.from(new Set(mix3Tracks.slice(0, 4).map((t) => t.artist))).slice(0, 3);
 
-  // Mix 4: Global & Nusantara Essentials (balanced flagship studio tracks + charts with artist diversity)
-  const essentialsPool = dedupeTracks([...input.chartTracks, ...input.catalogTracks]);
-  const essentialsScored = [...essentialsPool].sort((a, b) => {
-    const aRegion = inferTrackLanguageRegion(a) === 'id' ? 12 : 8;
-    const bRegion = inferTrackLanguageRegion(b) === 'id' ? 12 : 8;
-    const aMaster = a.streamSource === 'studio-master' ? 20 : 0;
-    const bMaster = b.streamSource === 'studio-master' ? 20 : 0;
-    return bMaster + bRegion - (aMaster + aRegion);
+  // MIX 4: Discovery Radar (unheard audio-feature-matched picks outside Mix 1-3, filtering out unrelated country spam)
+  const discoveryCandidates = combinedPool.filter((t) => {
+    if (usedIdsAcrossMixes.has(t.id) || recentIds.has(t.id) || likedIds.has(t.id)) return false;
+    const cls = classifyTrackTier(t).classId;
+    if (dominantRegion === 'id') {
+      return inferTrackLanguageRegion(t) === 'id' || cls === 'rnb_late_soul' || cls === 'kpop_idol';
+    }
+    return (
+      cls === 'kpop_idol' ||
+      cls === 'jpop_city_anime' ||
+      cls === 'alt_indie_rock' ||
+      cls === 'modern_chart_pop' ||
+      cls === 'rnb_late_soul' ||
+      cls === 'piano_neoclassical'
+    );
   });
-  const mix4Tracks = interleaveOrdered(essentialsScored, 12);
+  const discoveryScored = [...discoveryCandidates].sort((a, b) => {
+    const simA = centroidVec ? computeAudioVectorCosine(centroidVec, estimateAudioFeatures(a)) : 0.75;
+    const simB = centroidVec ? computeAudioVectorCosine(centroidVec, estimateAudioFeatures(b)) : 0.75;
+    const cohA = COHESIVE_SEED_TRACKS.some((c) => c.id === a.id) || a.streamSource === 'studio-master' ? 20 : 0;
+    const cohB = COHESIVE_SEED_TRACKS.some((c) => c.id === b.id) || b.streamSource === 'studio-master' ? 20 : 0;
+    return simB * 100 + cohB - (simA * 100 + cohA);
+  });
+  const mix4Tracks = interleaveOrderedUnique(discoveryScored, 10, usedIdsAcrossMixes, usedTitlesAcrossMixes);
   const topArtists4 = Array.from(new Set(mix4Tracks.slice(0, 4).map((t) => t.artist))).slice(0, 3);
 
   const mixes: RecommendationMix[] = [];
   if (mix1Tracks.length > 0) {
     mixes.push({
       id: 'mix-daily-1',
-      title: 'Daily Mix 1 · Signature',
+      title: 'Daily Mix 1 · Personal Mix',
       subtitle: mix1Subtitle,
       badge: 'Made For You',
       tracks: mix1Tracks
@@ -332,30 +369,32 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
   }
   if (mix2Tracks.length > 0) {
     mixes.push({
-      id: 'mix-discovery-radar',
-      title: 'Discovery Radar',
-      subtitle: topArtists2.join(' · ') || 'Fresh Adjacent Picks',
-      badge: 'Discovery',
+      id: mix2FocusIndie ? 'mix-indo-indie' : 'mix-daily-indo',
+      title: mix2FocusIndie ? 'Indo Indie & Band Mix' : 'Hot Hits Indonesia',
+      subtitle: topArtists2.join(' · ') || 'Indonesian Favorites',
+      badge: 'Indonesia Mix',
       tracks: mix2Tracks
     });
   }
   if (mix3Tracks.length > 0) {
     const moodTitle =
-      input.mood === 'all' ? 'Continuous Tempo Flow' : `${input.mood.charAt(0).toUpperCase()}${input.mood.slice(1)} Flow`;
+      input.mood === 'all'
+        ? 'Pop, Synth & R&B Mix'
+        : `${input.mood.charAt(0).toUpperCase()}${input.mood.slice(1)} Flow`;
     mixes.push({
       id: `mix-mood-${input.mood}`,
       title: moodTitle,
-      subtitle: topArtists3.join(' · ') || 'BPM Matched Order',
-      badge: 'Mood Mix',
+      subtitle: topArtists3.join(' · ') || 'Cohesive Genre Set',
+      badge: input.mood === 'all' ? 'Daily Mix 3' : 'Mood Mix',
       tracks: mix3Tracks
     });
   }
   if (mix4Tracks.length > 0) {
     mixes.push({
-      id: 'mix-essentials',
-      title: 'Studio & Charts Essentials',
-      subtitle: topArtists4.join(' · ') || 'Top Global & Nusantara',
-      badge: 'Ordered Set',
+      id: 'mix-discovery-radar',
+      title: 'Discovery Radar',
+      subtitle: topArtists4.join(' · ') || 'Audio-Matched Fresh Picks',
+      badge: 'Discovery',
       tracks: mix4Tracks
     });
   }

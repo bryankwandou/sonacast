@@ -28,7 +28,7 @@ function isNonOriginalTitle(title, queryLower) {
   return false;
 }
 
-function mapDeezerTrack(t, fromArtistTop) {
+function mapDeezerTrack(t, fromArtistTop, genreHint = 'Pop') {
   const coverUrl =
     t?.album?.cover_big ||
     t?.album?.cover_xl ||
@@ -39,6 +39,7 @@ function mapDeezerTrack(t, fromArtistTop) {
     title: t.title || t.title_short || '',
     artist: t.artist?.name || '',
     album: t.album?.title || 'Single',
+    genre: genreHint || t?.genres?.data?.[0]?.name || 'Pop',
     duration: Number(t.duration) || 210,
     coverUrl,
     deezerRank: Number(t.rank) || 0,
@@ -374,7 +375,14 @@ export default async function handler(req, res) {
       for (const p of Array.isArray(dzData?.data) ? dzData.data : []) {
         const mapped = mapDeezerPlaylist(p);
         const key = `${normalizeText(mapped.title)}::${normalizeText(mapped.creator)}`;
-        if (!mapped.title || mapped.nbTracks < 2 || seen.has(key)) continue;
+        if (
+          !mapped.title ||
+          mapped.nbTracks < 6 ||
+          /\b(karaoke|sfx|sound effects?|explicit)\b/i.test(mapped.title) ||
+          seen.has(key)
+        ) {
+          continue;
+        }
         seen.add(key);
         playlists.push(mapped);
       }
@@ -439,14 +447,47 @@ export default async function handler(req, res) {
           .catch(() => null)
       ]);
 
-      const BLOCKED_EXPLICIT_RE = /\b(cunt|fuck|shit|shat|bitch|whore|porn|xxx)\b/i;
-      const SEASONAL_RE = /\b(christmas|xmas|natal|holiday)\b/i;
+      const BLOCKED_EXPLICIT_RE = /\b(cunt|fuck|shit|shat|bitch|whore|porn|xxx|sex\s+sound)\b/i;
+      const NON_MUSIC_ALBUM_RE =
+        /\b(sound\s*effects?|sfx|soundtrack|original\s+motion\s+picture|bandai\s+namco|video\s+game|karaoke|lullaby|asmr|white\s*noise|sleep\s*sounds)\b/i;
+      const RETRO_DECADE_PL_RE =
+        /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal)\b/i;
+      const NICHE_CHART_GENRE_RE = /\b(country)\b/i;
+
+      const cleanTracks = (list, defaultGenre) => {
+        const seen = new Set();
+        const out = [];
+        for (const item of list) {
+          if (!item?.title || !item?.artist) continue;
+          const genreStr = String(item.genre || defaultGenre || 'Pop');
+          if (NON_MUSIC_ALBUM_RE.test(`${item.title} ${item.album || ''}`)) continue;
+          const k = `${normalizeText(item.title)}::${normalizeText(item.artist.split(/[,&]|ft\.?/i)[0] || '')}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          out.push({ ...item, genre: genreStr });
+        }
+        return out;
+      };
 
       const dzItems = Array.isArray(dzGlobal?.data)
         ? dzGlobal.data
-            .map((t) => mapDeezerTrack(t, false))
-            .filter((t) => t.title && t.artist && t.duration >= 60 && t.duration <= 1800 && !isNonOriginalTitle(t.title, ''))
+            .map((t) => mapDeezerTrack(t, false, 'Pop'))
+            .filter(
+              (t) =>
+                t.title &&
+                t.artist &&
+                t.duration >= 60 &&
+                t.duration <= 1800 &&
+                !isNonOriginalTitle(t.title, '') &&
+                !NON_MUSIC_ALBUM_RE.test(`${t.title} ${t.album}`)
+            )
         : [];
+
+      const popUsRss = usRss.filter((t) => !NICHE_CHART_GENRE_RE.test(t.genre || ''));
+      const globalCombined = cleanTracks(
+        [...dzItems, ...popUsRss, ...usRss.filter((t) => NICHE_CHART_GENRE_RE.test(t.genre || ''))],
+        'Pop'
+      );
 
       const featuredAlbums = Array.isArray(dzChartAlbums?.data)
         ? dzChartAlbums.data
@@ -455,7 +496,9 @@ export default async function handler(req, res) {
                 a?.id &&
                 a?.title &&
                 a.explicit_lyrics !== true &&
-                !BLOCKED_EXPLICIT_RE.test(`${a.title} ${a.artist?.name || ''}`)
+                (Number(a.nb_tracks) === 0 || Number(a.nb_tracks) >= 5) &&
+                !BLOCKED_EXPLICIT_RE.test(`${a.title} ${a.artist?.name || ''}`) &&
+                !NON_MUSIC_ALBUM_RE.test(`${a.title} ${a.artist?.name || ''}`)
             )
             .slice(0, 16)
             .map((a) => ({
@@ -470,8 +513,8 @@ export default async function handler(req, res) {
         : [];
 
       const rawPlaylists = [
-        ...(Array.isArray(dzTopPlaylists?.data) ? dzTopPlaylists.data : []),
-        ...(Array.isArray(dzChartPlaylists?.data) ? dzChartPlaylists.data : [])
+        ...(Array.isArray(dzChartPlaylists?.data) ? dzChartPlaylists.data : []),
+        ...(Array.isArray(dzTopPlaylists?.data) ? dzTopPlaylists.data : [])
       ];
       const plSeen = new Set();
       const featuredPlaylists = [];
@@ -479,8 +522,9 @@ export default async function handler(req, res) {
         if (
           !p?.id ||
           !p?.title ||
-          (Number(p.nb_tracks) || 0) < 5 ||
-          BLOCKED_EXPLICIT_RE.test(String(p.title))
+          (Number(p.nb_tracks) || 0) < 10 ||
+          BLOCKED_EXPLICIT_RE.test(String(p.title)) ||
+          RETRO_DECADE_PL_RE.test(String(p.title))
         ) {
           continue;
         }
@@ -489,13 +533,12 @@ export default async function handler(req, res) {
         plSeen.add(mappedPl.id);
         featuredPlaylists.push(mappedPl);
       }
-      featuredPlaylists.sort((a, b) => Number(SEASONAL_RE.test(a.title)) - Number(SEASONAL_RE.test(b.title)));
 
       res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
       res.status(200).json({
-        global: dzItems.length > 0 ? dzItems : usRss,
-        us: usRss,
-        indonesia: idRss,
+        global: globalCombined,
+        us: popUsRss.length >= 10 ? popUsRss : usRss,
+        indonesia: cleanTracks(idRss, 'Pop'),
         featuredAlbums,
         featuredPlaylists
       });
@@ -504,6 +547,91 @@ export default async function handler(req, res) {
       res.status(500).json({ global: [], us: [], indonesia: [], featuredAlbums: [], featuredPlaylists: [] });
       return;
     }
+  }
+
+  const RADIO_MIRRORS = [
+    'https://de1.api.radio-browser.info',
+    'https://de2.api.radio-browser.info',
+    'https://all.api.radio-browser.info'
+  ];
+
+  async function fetchRadioJson(path) {
+    for (const host of RADIO_MIRRORS) {
+      try {
+        const r = await fetch(`${host}${path}`, {
+          headers: { 'User-Agent': 'SonacastWeb/1.0' },
+          signal: AbortSignal.timeout(4800)
+        });
+        if (r.ok) return await r.json();
+      } catch {
+        // try next mirror
+      }
+    }
+    return null;
+  }
+
+  if (mode === 'radio_meta') {
+    const [stats, languages, countries] = await Promise.all([
+      fetchRadioJson('/json/stats'),
+      fetchRadioJson('/json/languages?order=stationcount&reverse=true&limit=200'),
+      fetchRadioJson('/json/countries?order=stationcount&reverse=true&limit=250')
+    ]);
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+    res.status(200).json({
+      stats: stats && typeof stats === 'object' ? stats : { stations: 0, countries: 0, languages: 0, tags: 0 },
+      languages: Array.isArray(languages) ? languages.filter((l) => l?.name && Number(l.stationcount) > 0) : [],
+      countries: Array.isArray(countries) ? countries.filter((c) => c?.name && c?.iso_3166_1 && Number(c.stationcount) > 0) : []
+    });
+    return;
+  }
+
+  if (mode === 'radio_search') {
+    const rq = typeof req.query?.q === 'string' ? req.query.q.trim() : '';
+    const rCountry = typeof req.query?.country === 'string' ? req.query.country.trim().toUpperCase() : '';
+    const rLang = typeof req.query?.language === 'string' ? req.query.language.trim().toLowerCase() : '';
+    const rTag = typeof req.query?.tag === 'string' ? req.query.tag.trim().toLowerCase() : '';
+    const offset = Math.max(0, Math.min(2000, Number(req.query?.offset) || 0));
+    const limit = Math.max(10, Math.min(100, Number(req.query?.limit) || 60));
+
+    const paths = [];
+    if (rLang) {
+      paths.push(`/json/stations/search?language=${encodeURIComponent(rLang)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`);
+    }
+    if (rTag) {
+      paths.push(`/json/stations/search?tag=${encodeURIComponent(rTag)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`);
+    }
+    if (rCountry && rCountry !== 'GLOBAL') {
+      paths.push(`/json/stations/search?countrycode=${encodeURIComponent(rCountry)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`);
+    }
+    if (rq) {
+      paths.push(
+        `/json/stations/search?name=${encodeURIComponent(rq)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=45`,
+        `/json/stations/search?language=${encodeURIComponent(rq)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=35`,
+        `/json/stations/search?tag=${encodeURIComponent(rq)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=35`,
+        `/json/stations/search?state=${encodeURIComponent(rq)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=30`,
+        `/json/stations/search?country=${encodeURIComponent(rq)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=30`
+      );
+    }
+    if (paths.length === 0) {
+      paths.push(`/json/stations/search?hidebroken=true&is_https=true&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`);
+    }
+
+    const batches = await Promise.allSettled(paths.map((p) => fetchRadioJson(p)));
+    const seenUuid = new Set();
+    const items = [];
+    for (const b of batches) {
+      if (b.status === 'fulfilled' && Array.isArray(b.value)) {
+        for (const st of b.value) {
+          const uuid = String(st?.stationuuid || st?.url_resolved || st?.url || '');
+          if (!uuid || seenUuid.has(uuid)) continue;
+          seenUuid.add(uuid);
+          items.push(st);
+        }
+      }
+    }
+    res.setHeader('Cache-Control', 'public, s-maxage=1800, stale-while-revalidate=43200');
+    res.status(200).json({ items: items.slice(0, limit * 2), totalFetched: items.length });
+    return;
   }
 
   const q = typeof req.query?.q === 'string' ? req.query.q.trim() : '';

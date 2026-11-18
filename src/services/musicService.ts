@@ -8,6 +8,14 @@ import type {
   PodcastEpisode
 } from '../types';
 import { ARTISTS_DIRECTORY } from '../data/artists800';
+import {
+  FEATURED_DAILY_PLAYLISTS,
+  findCuratedPlaylistDefinition,
+  getCuratedSeedTracksByIds
+} from '../data/curatedPlaylists';
+import { classifyTrackTier, extractPrimaryArtist, inferTrackLanguageRegion } from './recommendationEngine';
+
+export { FEATURED_DAILY_PLAYLISTS };
 
 export function parseLrc(lrcText: string): LyricLine[] {
   const lines = lrcText.split(/\r?\n/);
@@ -634,7 +642,7 @@ async function searchAudiusTracks(query: string): Promise<Track[]> {
   }
 }
 
-const MV_CACHE_STORAGE_KEY = 'sonacast_mv_cache_v1';
+const MV_CACHE_STORAGE_KEY = 'sonacast_mv_cache_v2';
 const mvStreamCache = new Map<
   string,
   {
@@ -760,10 +768,10 @@ function scoreMusicVideoCandidate(
   }
 
   if (rawAuthor.endsWith('- topic') || rawAuthor.includes(' - topic')) {
-    score -= 95;
+    score -= 140;
   }
   if (/\bofficial\s+audio\b|\baudio\b|\blyrics?\b/i.test(rawTitle)) {
-    score -= 70;
+    score -= 75;
   }
   if (/\blive\b|\bconcert\b|\btour\b|\bfancam\b/i.test(rawTitle)) {
     score -= 22;
@@ -1807,8 +1815,10 @@ const DAILY_CHARTS_FEED_URLS = [
   'https://cdn.jsdelivr.net/gh/bryankwandou/sonacast@catalog-data/daily-charts.json',
   'https://raw.githubusercontent.com/bryankwandou/sonacast/catalog-data/daily-charts.json'
 ];
-const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v3';
+const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v4';
 const DAILY_CHARTS_TTL_MS = 12 * 60 * 60 * 1000;
+const NON_MUSIC_EXTRA_RE = /\b(sound\s*effects?|sfx|original\s+motion\s+picture|video\s+game|bandai|asmr|karaoke|lullaby)\b/i;
+const RETRO_PL_RE = /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal)\b/i;
 
 function catalogItemsToTracks(items: CatalogApiItem[]): Track[] {
   const emptyIds = new Set<string>();
@@ -1832,8 +1842,11 @@ function catalogItemsToTracks(items: CatalogApiItem[]): Track[] {
 function mergeDailyAlbums(liveAlbums?: CatalogAlbum[]): CatalogAlbum[] {
   const seen = new Set<string>();
   const merged: CatalogAlbum[] = [];
+  const filteredExtras = (Array.isArray(liveAlbums) ? liveAlbums : []).filter(
+    (a) => a?.id && a?.title && !NON_MUSIC_EXTRA_RE.test(`${a.title} ${a.artist || ''}`)
+  );
   // Prioritize verified curated studio releases (Global + Indonesia) ahead of dynamic feed extras
-  for (const album of [...FEATURED_RELEASE_ALBUMS, ...(Array.isArray(liveAlbums) ? liveAlbums : [])]) {
+  for (const album of [...FEATURED_RELEASE_ALBUMS, ...filteredExtras]) {
     if (!album?.id || !album?.title) continue;
     const key = `${normalizeText(album.title)}::${normalizeText((album.artist || '').split(/[,&]|ft\.?/i)[0])}`;
     if (seen.has(key)) continue;
@@ -1841,6 +1854,25 @@ function mergeDailyAlbums(liveAlbums?: CatalogAlbum[]): CatalogAlbum[] {
     merged.push({
       ...album,
       coverUrl: album.coverUrl || DEFAULT_FALLBACK_COVER
+    });
+  }
+  return merged;
+}
+
+function mergeDailyPlaylists(livePlaylists?: CatalogPlaylist[]): CatalogPlaylist[] {
+  const seen = new Set<string>();
+  const merged: CatalogPlaylist[] = [];
+  const filteredLive = (Array.isArray(livePlaylists) ? livePlaylists : []).filter(
+    (p) => p?.id && p?.title && !RETRO_PL_RE.test(p.title)
+  );
+  for (const pl of [...FEATURED_DAILY_PLAYLISTS, ...filteredLive]) {
+    if (!pl?.id || !pl?.title) continue;
+    const key = normalizeText(pl.title);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push({
+      ...pl,
+      coverUrl: pl.coverUrl || DEFAULT_FALLBACK_COVER
     });
   }
   return merged;
@@ -1858,19 +1890,11 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
       seenGlobal.add(key);
       globalItems.push(item);
     }
-    const playlists = Array.isArray(data.featuredPlaylists)
-      ? data.featuredPlaylists
-          .filter((p) => Boolean(p?.id && p?.title))
-          .map((p) => ({
-            ...p,
-            coverUrl: p.coverUrl || DEFAULT_FALLBACK_COVER
-          }))
-      : [];
     return {
       global: toTrackList(globalItems.slice(0, 30)),
       indonesia: toTrackList((data.indonesia || []).slice(0, 24)),
       albums: mergeDailyAlbums(data.featuredAlbums),
-      playlists
+      playlists: mergeDailyPlaylists(data.featuredPlaylists)
     };
   };
 
@@ -1953,7 +1977,7 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
     global: toTrackList(usItems),
     indonesia: toTrackList(idItems),
     albums: mergeDailyAlbums([]),
-    playlists: []
+    playlists: mergeDailyPlaylists([])
   };
 }
 
@@ -2423,6 +2447,40 @@ export async function searchPlaylistsOnline(query: string): Promise<CatalogPlayl
   return [];
 }
 
+function spacePlaylistArtistsCohesively(tracks: Track[]): Track[] {
+  const pool = [...tracks];
+  const ordered: Track[] = [];
+  const counts = new Map<string, number>();
+  const seenKeys = new Set<string>();
+  let prevArtist = '';
+
+  while (pool.length > 0 && ordered.length < 24) {
+    let idx = pool.findIndex((t) => {
+      const a = extractPrimaryArtist(t.artist);
+      const k = `${normalizeText(stripTitleModifiers(t.title))}::${a}`;
+      if (seenKeys.has(k)) return false;
+      return a !== prevArtist && (counts.get(a) || 0) < 3;
+    });
+    if (idx === -1) {
+      idx = pool.findIndex((t) => {
+        const a = extractPrimaryArtist(t.artist);
+        const k = `${normalizeText(stripTitleModifiers(t.title))}::${a}`;
+        return !seenKeys.has(k) && a !== prevArtist;
+      });
+    }
+    if (idx === -1) idx = 0;
+    const [picked] = pool.splice(idx, 1);
+    const art = extractPrimaryArtist(picked.artist);
+    const k = `${normalizeText(stripTitleModifiers(picked.title))}::${art}`;
+    if (seenKeys.has(k)) continue;
+    seenKeys.add(k);
+    prevArtist = art;
+    counts.set(art, (counts.get(art) || 0) + 1);
+    ordered.push(picked);
+  }
+  return ordered;
+}
+
 /** Fetches the ordered tracklist for a public curated playlist. */
 export async function fetchPlaylistTracksOnline(
   playlist: CatalogPlaylist
@@ -2430,6 +2488,51 @@ export async function fetchPlaylistTracksOnline(
   const cached = playlistTracksCache.get(playlist.id);
   if (cached && cached.tracks.length > 0) {
     return cached;
+  }
+
+  const curatedDef = findCuratedPlaylistDefinition(playlist.id);
+  if (curatedDef) {
+    const seedTracks = getCuratedSeedTracksByIds(curatedDef.trackIds);
+    const anchor = seedTracks[0];
+    const anchorClass = anchor ? classifyTrackTier(anchor) : null;
+    const anchorLang = anchor ? inferTrackLanguageRegion(anchor) : 'en';
+
+    const extras: Track[] = [];
+    try {
+      const batches = await Promise.allSettled(
+        curatedDef.seedArtists.slice(0, 3).map((artistQuery) => searchTracksOnline(artistQuery))
+      );
+      for (const b of batches) {
+        if (b.status !== 'fulfilled' || !Array.isArray(b.value)) continue;
+        for (const cand of b.value.slice(0, 6)) {
+          if (!cand?.title || !cand?.artist) continue;
+          const candCls = classifyTrackTier(cand);
+          const candLang = inferTrackLanguageRegion(cand);
+          const classMatch =
+            !anchorClass ||
+            candCls.classId === anchorClass.classId ||
+            anchorClass.compatibleClasses.includes(candCls.classId);
+          const langMatch =
+            anchorLang === 'en' || anchorLang === 'instrumental' ? true : candLang === anchorLang;
+          if (classMatch && langMatch && cand.duration >= 90) {
+            extras.push(cand);
+          }
+        }
+      }
+    } catch {
+      // Seed tracks guarantee cohesive immediate playback offline
+    }
+
+    const spaced = spacePlaylistArtistsCohesively([...seedTracks, ...extras]);
+    const finalResult = {
+      playlist: {
+        ...curatedDef.playlist,
+        nbTracks: spaced.length
+      },
+      tracks: spaced
+    };
+    playlistTracksCache.set(playlist.id, finalResult);
+    return finalResult;
   }
 
   try {
@@ -2446,7 +2549,7 @@ export async function fetchPlaylistTracksOnline(
           ...(data.playlist || {}),
           coverUrl: data.playlist?.coverUrl || playlist.coverUrl || DEFAULT_FALLBACK_COVER
         };
-        const tracks = catalogItemsToTracks(rawItems);
+        const tracks = spacePlaylistArtistsCohesively(catalogItemsToTracks(rawItems));
         const result = { playlist: resolvedMeta, tracks };
         playlistTracksCache.set(playlist.id, result);
         return result;
@@ -2457,14 +2560,97 @@ export async function fetchPlaylistTracksOnline(
   }
 
   const searchFallback = await searchTracksOnline(playlist.title);
-  const filtered = searchFallback.slice(0, Math.min(18, searchFallback.length));
+  const filtered = spacePlaylistArtistsCohesively(searchFallback).slice(0, 18);
   return { playlist, tracks: filtered };
 }
 
 const RADIO_BROWSER_MIRRORS = [
   'https://de1.api.radio-browser.info',
-  'https://nl1.api.radio-browser.info',
-  'https://at1.api.radio-browser.info'
+  'https://de2.api.radio-browser.info',
+  'https://all.api.radio-browser.info'
+];
+
+export interface RadioDirectoryStats {
+  stations: number;
+  countries: number;
+  languages: number;
+  tags: number;
+}
+
+export interface RadioFacetOption {
+  name: string;
+  iso_3166_1?: string;
+  stationcount: number;
+}
+
+export interface RadioDirectoryMeta {
+  stats: RadioDirectoryStats;
+  languages: RadioFacetOption[];
+  countries: RadioFacetOption[];
+}
+
+export async function fetchRadioDirectoryMeta(): Promise<RadioDirectoryMeta> {
+  try {
+    const res = await fetch(`${getApiEndpoint('/api/catalog-search')}?mode=radio_meta`, {
+      signal: AbortSignal.timeout(5500)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.stats) {
+        return {
+          stats: {
+            stations: Number(data.stats.stations) || 0,
+            countries: Number(data.stats.countries) || 0,
+            languages: Number(data.stats.languages) || 0,
+            tags: Number(data.stats.tags) || 0
+          },
+          languages: Array.isArray(data.languages) ? data.languages : [],
+          countries: Array.isArray(data.countries) ? data.countries : []
+        };
+      }
+    }
+  } catch {
+    // Fallback to direct mirror stats below
+  }
+  for (const host of RADIO_BROWSER_MIRRORS) {
+    try {
+      const [sRes, lRes, cRes] = await Promise.all([
+        fetch(`${host}/json/stats`, { signal: AbortSignal.timeout(4000) }),
+        fetch(`${host}/json/languages?order=stationcount&reverse=true&limit=120`, { signal: AbortSignal.timeout(4000) }),
+        fetch(`${host}/json/countries?order=stationcount&reverse=true&limit=150`, { signal: AbortSignal.timeout(4000) })
+      ]);
+      if (sRes.ok) {
+        const stats = await sRes.json();
+        const languages = lRes.ok ? await lRes.json() : [];
+        const countries = cRes.ok ? await cRes.json() : [];
+        return {
+          stats: {
+            stations: Number(stats?.stations) || 0,
+            countries: Number(stats?.countries) || 0,
+            languages: Number(stats?.languages) || 0,
+            tags: Number(stats?.tags) || 0
+          },
+          languages: Array.isArray(languages) ? languages : [],
+          countries: Array.isArray(countries) ? countries : []
+        };
+      }
+    } catch {
+      // Try next mirror
+    }
+  }
+  return {
+    stats: { stations: 0, countries: 0, languages: 0, tags: 0 },
+    languages: [],
+    countries: []
+  };
+}
+
+const HTTPS_UPGRADE_HOSTS = [
+  'stream.radiojar.com',
+  'playerservices.streamtheworld.com',
+  'stream-node0.rri.co.id',
+  'as-hls-ww-live.akamaized.net',
+  'icecast.live.yle.fi'
 ];
 
 const RADIO_PALETTE = [
@@ -2490,51 +2676,93 @@ function inferRadioCategory(
 
 function isPlayableLiveHttpsStream(rawUrl: unknown, hlsFlag?: unknown): string | null {
   if (typeof rawUrl !== 'string') return null;
-  const trimmed = rawUrl.trim();
+  let trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  if (/^http:\/\//i.test(trimmed)) {
+    try {
+      const host = new URL(trimmed).hostname.toLowerCase();
+      if (HTTPS_UPGRADE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
+        trimmed = trimmed.replace(/^http:\/\//i, 'https://');
+      }
+    } catch {
+      return null;
+    }
+  }
   if (!/^https:\/\//i.test(trimmed)) return null;
-  if (Number(hlsFlag) === 1) return null;
-  if (/\.(m3u8|pls|m3u|asx|xspf)(\?.*)?$/i.test(trimmed)) return null;
+  if (Number(hlsFlag) === 1 || /\.(m3u8|pls|m3u|asx|xspf)(\?.*)?$/i.test(trimmed)) return null;
   return trimmed;
 }
 
 export async function searchLiveRadioStations(
   query: string,
-  countryCode?: string
+  countryCode?: string,
+  options?: { language?: string; tag?: string; offset?: number; limit?: number }
 ): Promise<RadioStation[]> {
   const trimmedQuery = query.trim();
   const normalizedCountry = countryCode?.trim().toUpperCase();
+  const languageOpt = options?.language?.trim() || '';
+  const tagOpt = options?.tag?.trim() || '';
+  const offset = Math.max(0, options?.offset || 0);
+  const limit = Math.max(12, Math.min(80, options?.limit || 48));
 
   let rawItems: Array<Record<string, unknown>> = [];
-  for (const host of RADIO_BROWSER_MIRRORS) {
-    try {
-      const path = trimmedQuery
-        ? `/json/stations/search?name=${encodeURIComponent(trimmedQuery)}&hidebroken=true&is_https=true&order=clickcount&reverse=true&limit=28`
-        : normalizedCountry === 'GLOBAL'
-          ? `/json/stations/topclick/30`
-          : `/json/stations/search?countrycode=${encodeURIComponent(normalizedCountry || 'ID')}&hidebroken=true&is_https=true&order=clickcount&reverse=true&limit=28`;
 
-      const res = await fetch(`${host}${path}`, { signal: AbortSignal.timeout(4500) });
-      if (!res.ok) continue;
-      const json = await res.json();
-      if (Array.isArray(json) && json.length > 0) {
-        rawItems = json;
-        break;
+  try {
+    const apiParams = new URLSearchParams({ mode: 'radio_search', limit: String(limit), offset: String(offset) });
+    if (trimmedQuery) apiParams.set('q', trimmedQuery);
+    if (normalizedCountry) apiParams.set('country', normalizedCountry);
+    if (languageOpt) apiParams.set('language', languageOpt);
+    if (tagOpt) apiParams.set('tag', tagOpt);
+    const apiRes = await fetch(`${getApiEndpoint('/api/catalog-search')}?${apiParams.toString()}`, {
+      signal: AbortSignal.timeout(6500)
+    });
+    if (apiRes.ok) {
+      const apiJson = await apiRes.json();
+      if (Array.isArray(apiJson?.items) && apiJson.items.length > 0) {
+        rawItems = apiJson.items;
       }
-      if (trimmedQuery) {
-        const tagRes = await fetch(
-          `${host}/json/stations/search?tag=${encodeURIComponent(trimmedQuery)}&hidebroken=true&is_https=true&order=clickcount&reverse=true&limit=24`,
-          { signal: AbortSignal.timeout(4500) }
+    }
+  } catch {
+    // Fall back to direct mirror sweep below
+  }
+
+  if (rawItems.length === 0) {
+    for (const host of RADIO_BROWSER_MIRRORS) {
+      try {
+        const directPaths: string[] = [];
+        if (languageOpt) {
+          directPaths.push(`/json/stations/search?language=${encodeURIComponent(languageOpt)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`);
+        } else if (tagOpt) {
+          directPaths.push(`/json/stations/search?tag=${encodeURIComponent(tagOpt)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`);
+        } else if (trimmedQuery) {
+          directPaths.push(
+            `/json/stations/search?name=${encodeURIComponent(trimmedQuery)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=32`,
+            `/json/stations/search?language=${encodeURIComponent(trimmedQuery)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=28`,
+            `/json/stations/search?tag=${encodeURIComponent(trimmedQuery)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=28`,
+            `/json/stations/search?state=${encodeURIComponent(trimmedQuery)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=24`
+          );
+        } else if (normalizedCountry === 'GLOBAL') {
+          directPaths.push(`/json/stations/topclick/${limit}`);
+        } else {
+          directPaths.push(`/json/stations/search?countrycode=${encodeURIComponent(normalizedCountry || 'ID')}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`);
+        }
+
+        const responses = await Promise.allSettled(
+          directPaths.map((p) => fetch(`${host}${p}`, { signal: AbortSignal.timeout(4500) }).then((r) => (r.ok ? r.json() : [])))
         );
-        if (tagRes.ok) {
-          const tagJson = await tagRes.json();
-          if (Array.isArray(tagJson) && tagJson.length > 0) {
-            rawItems = tagJson;
-            break;
+        const collected: Array<Record<string, unknown>> = [];
+        for (const res of responses) {
+          if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+            collected.push(...res.value);
           }
         }
+        if (collected.length > 0) {
+          rawItems = collected;
+          break;
+        }
+      } catch {
+        // Failover cleanly to next verified mirror
       }
-    } catch {
-      // Failover cleanly to next verified mirror
     }
   }
 
@@ -2607,7 +2835,7 @@ export async function searchLiveRadioStations(
       currentTrack: liveStubTrack
     });
 
-    if (stations.length >= 24) break;
+    if (stations.length >= limit) break;
   }
 
   return stations;

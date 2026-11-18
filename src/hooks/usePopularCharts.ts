@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  FEATURED_DAILY_PLAYLISTS,
   FEATURED_RELEASE_ALBUMS,
   fetchPopularCharts,
   type PopularChartsResult
@@ -9,7 +10,7 @@ const EMPTY_CHARTS: PopularChartsResult = {
   global: [],
   indonesia: [],
   albums: FEATURED_RELEASE_ALBUMS,
-  playlists: []
+  playlists: FEATURED_DAILY_PLAYLISTS
 };
 
 let cachedChartsPromise: Promise<PopularChartsResult> | null = null;

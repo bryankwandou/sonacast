@@ -156,13 +156,14 @@ export const MusicView: React.FC<MusicViewProps> = ({
     () =>
       buildRecommendationMixes({
         catalogTracks: tracks,
-        chartTracks: [...popularCharts.global, ...popularCharts.indonesia],
+        chartTracks: [...popularCharts.indonesia, ...popularCharts.global],
         recentTracks,
         likedTracks,
         followedArtists,
-        mood: activeMood
+        mood: activeMood,
+        activeTrack: currentTrack
       }),
-    [tracks, popularCharts.global, popularCharts.indonesia, recentTracks, likedTracks, followedArtists, activeMood]
+    [tracks, popularCharts.global, popularCharts.indonesia, recentTracks, likedTracks, followedArtists, activeMood, currentTrack]
   );
 
   const savedAlbumNames = useMemo(
@@ -785,18 +786,18 @@ export const MusicView: React.FC<MusicViewProps> = ({
               {t.topDailyPlaylists}
             </h3>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
-            {popularCharts.playlists.slice(0, 8).map((pl) => {
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3.5">
+            {popularCharts.playlists.slice(0, 12).map((pl) => {
               const isLoadingPl = loadingPlaylistId === pl.id;
               return (
                 <div
                   key={`music-pl-${pl.id}`}
-                  className="rounded-2xl p-2.5 bg-[var(--bg-tint)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] flex flex-col justify-between gap-2"
+                  className="rounded-2xl p-2.5 bg-[var(--bg-tint)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] flex flex-col justify-between gap-2 min-w-0"
                 >
                   <button
                     type="button"
                     onClick={() => void handleOpenDailyPlaylist(pl)}
-                    className="text-left space-y-2 cursor-pointer"
+                    className="text-left space-y-2 cursor-pointer min-w-0"
                   >
                     <div className="relative aspect-square rounded-xl overflow-hidden bg-[var(--bg-surface)]">
                       <img
@@ -812,7 +813,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
                         {pl.title}
                       </div>
                       <div className="text-[11px] text-[var(--text-dim)] truncate">
-                        {pl.creator}
+                        {pl.description || pl.creator}
                       </div>
                     </div>
                   </button>
@@ -820,10 +821,10 @@ export const MusicView: React.FC<MusicViewProps> = ({
                     type="button"
                     disabled={isLoadingPl}
                     onClick={() => void handlePlayDailyPlaylist(pl, false, 0)}
-                    className="h-7 px-2.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-primary)] inline-flex items-center justify-center gap-1 cursor-pointer"
+                    className="h-7 px-2.5 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-[10px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <Play size={10} className="fill-current" />
-                    <span>Play</span>
+                    <span>Play Playlist</span>
                   </button>
                 </div>
               );

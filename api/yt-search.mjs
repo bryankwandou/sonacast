@@ -94,6 +94,27 @@ function extractYtInitialData(html) {
   return null;
 }
 
+async function filterEmbeddableVideoItems(items) {
+  const head = items.slice(0, 10);
+  const checks = await Promise.allSettled(
+    head.map(async (item) => {
+      try {
+        const res = await fetch(
+          `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${item.videoId}`)}&format=json`,
+          { signal: AbortSignal.timeout(2200) }
+        );
+        return res.ok ? item : null;
+      } catch {
+        return item;
+      }
+    })
+  );
+  const embeddable = checks
+    .map((r) => (r.status === 'fulfilled' ? r.value : null))
+    .filter(Boolean);
+  return embeddable.length > 0 ? [...embeddable, ...items.slice(10)] : items;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -122,7 +143,8 @@ export default async function handler(req, res) {
   if (mode !== 'yt') {
     const cleaned = await queryPipedMusicSongs(q, queryLower, intent);
     if (cleaned.length >= 4) {
-      sendCached({ source: 'piped', items: cleaned });
+      const finalItems = intent === 'video' ? await filterEmbeddableVideoItems(cleaned) : cleaned;
+      sendCached({ source: 'piped', items: finalItems });
       return;
     }
   }
@@ -186,15 +208,24 @@ export default async function handler(req, res) {
     if (items.length < 2) {
       const pipedFallback = await queryPipedMusicSongs(q, queryLower, intent);
       if (pipedFallback.length > items.length) {
-        sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
+        const finalFallback =
+          intent === 'video' ? await filterEmbeddableVideoItems(pipedFallback) : pipedFallback;
+        sendCached(
+          { source: 'piped-fallback', items: finalFallback },
+          finalFallback.length > 0 ? 86400 : 1800
+        );
         return;
       }
     }
 
-    sendCached({ source: 'yt-html', items: items.slice(0, 20) }, items.length > 0 ? 86400 : 1800);
+    const finalYtItems =
+      intent === 'video' ? await filterEmbeddableVideoItems(items.slice(0, 20)) : items.slice(0, 20);
+    sendCached({ source: 'yt-html', items: finalYtItems }, finalYtItems.length > 0 ? 86400 : 1800);
   } catch {
     const pipedFallback = await queryPipedMusicSongs(q, queryLower, intent);
-    sendCached({ source: 'piped-fallback', items: pipedFallback }, pipedFallback.length > 0 ? 86400 : 1800);
+    const finalFallback =
+      intent === 'video' ? await filterEmbeddableVideoItems(pipedFallback) : pipedFallback;
+    sendCached({ source: 'piped-fallback', items: finalFallback }, finalFallback.length > 0 ? 86400 : 1800);
   }
 }
 

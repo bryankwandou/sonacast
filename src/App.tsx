@@ -25,6 +25,7 @@ import type {
   AuthProvidersMeta
 } from './types';
 import { TRACK_CATALOG, PODCAST_CATALOG, RADIO_STATIONS } from './data/catalog';
+import { COHESIVE_SEED_TRACKS } from './data/curatedPlaylists';
 import { sharedAudioEngine } from './services/audioEngine';
 import { solanaService } from './services/solanaService';
 import {
@@ -123,7 +124,6 @@ import { parseTabFromUrl, syncUrlForTab } from './utils/routes';
 import {
   Activity,
   Clock,
-  Compass,
   Disc,
   Disc3,
   Heart,
@@ -921,7 +921,7 @@ export default function App() {
         host.style.top = `${rect.top}px`;
         host.style.width = `${rect.width}px`;
         host.style.height = `${rect.height}px`;
-        const visualAllowed = isYtVisualReady && !streamError;
+        const visualAllowed = !streamError && (isYtVisualReady || (isStageVisible && isVideoStage));
         host.style.opacity = visualAllowed ? '1' : '0.005';
         host.style.pointerEvents = visualAllowed ? 'auto' : 'none';
         host.style.zIndex = visualAllowed ? '25' : '1';
@@ -1005,6 +1005,7 @@ export default function App() {
       ...recStateRef.current.likedTracks,
       ...recStateRef.current.recentTracks,
       ...queueRef.current,
+      ...COHESIVE_SEED_TRACKS,
       ...TRACK_CATALOG
     ]) {
       if (src && src.id && src.id !== excludeTrackId && !merged.has(src.id)) {
@@ -1019,7 +1020,7 @@ export default function App() {
     const currentQ = queueRef.current;
     const idx = currentQ.findIndex((item) => item.id === seedTrack.id);
     const remaining = idx >= 0 ? currentQ.length - 1 - idx : 0;
-    if (!force && remaining > 2) return;
+    if (!force && remaining > 3) return;
 
     isRefillingRadioRef.current = true;
     try {
@@ -1036,11 +1037,13 @@ export default function App() {
           }
         }
       }
-      if (pooled.length === 0) return;
+      const localSeedPool = gatherLocalCandidatePool(seedTrack.id);
+      const combinedPool = [...pooled, ...localSeedPool];
+      if (combinedPool.length === 0) return;
 
       const seedTier = classifyTrackTier(seedTrack);
       const seedLang = inferTrackLanguageRegion(seedTrack);
-      const sameLangAndClass = pooled.filter((c) => {
+      const sameLangAndClass = combinedPool.filter((c) => {
         const ct = classifyTrackTier(c);
         const cl = inferTrackLanguageRegion(c);
         const classMatch = ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
@@ -1051,26 +1054,25 @@ export default function App() {
         return true;
       });
       const sameOrCompatible =
-        sameLangAndClass.length >= 4
+        sameLangAndClass.length >= 6
           ? sameLangAndClass
-          : pooled.filter((c) => {
+          : combinedPool.filter((c) => {
               const ct = classifyTrackTier(c);
               return (
                 ct.classId === seedTier.classId ||
                 seedTier.compatibleClasses.includes(ct.classId)
               );
             });
-      const candidatePool = sameOrCompatible.length >= 4 ? sameOrCompatible : pooled;
+      const candidatePool = sameOrCompatible.length >= 6 ? sameOrCompatible : combinedPool;
 
       setQueue((prev) => {
         const activeId = currentTrackRef.current.id;
         const activeIdx = prev.findIndex((p) => p.id === activeId);
-        // When force-refreshing for an auto-similar class switch, replace unplayed disparate tail cleanly
+        // Only trim old tail when fresh cohesive replacement pool is substantial (>= 8 tracks), preventing 2-track queue truncation
         const preservedHead =
           force && activeIdx >= 0 ? prev.slice(0, activeIdx + 1) : prev;
         const headIds = new Set(preservedHead.map((p) => p.id));
         const freshCandidates = candidatePool.filter((c) => c && c.id && !headIds.has(c.id));
-        if (freshCandidates.length === 0) return prev;
         const rankedFresh = buildSmartQueueFromPool(
           seedTrack,
           freshCandidates,
@@ -1079,6 +1081,15 @@ export default function App() {
           activeMoodRef.current,
           20
         );
+        if (rankedFresh.length < 8 && force && activeIdx >= 0 && prev.length > activeIdx + 1) {
+          const fallbackTail = prev.slice(activeIdx + 1).filter(
+            (t) => t && t.id && !rankedFresh.some((r) => r.id === t.id) && !headIds.has(t.id)
+          );
+          const merged = [...preservedHead, ...rankedFresh, ...fallbackTail].slice(-50);
+          queueRef.current = merged;
+          return merged;
+        }
+        if (rankedFresh.length === 0) return prev;
         const merged = [...preservedHead, ...rankedFresh].slice(-50);
         queueRef.current = merged;
         return merged;
@@ -1088,7 +1099,7 @@ export default function App() {
     } finally {
       isRefillingRadioRef.current = false;
     }
-  }, []);
+  }, [gatherLocalCandidatePool]);
 
   const handleUpdateTrackLyrics = (lyrics: LyricLine[], targetTrackId?: string) => {
     setCurrentTrack((prev) => {
@@ -1651,8 +1662,8 @@ export default function App() {
         return;
       }
 
-      // 4. Resolve 100% full-length official stream dynamically for 85M+ catalog search items
-      sharedAudioEngine.pause();
+      // 4. Resolve 100% full-length official stream dynamically without dropping background audio focus
+      sharedAudioEngine.prepareTrackTransition(track.duration, track.bpm);
       const abortCtrl = new AbortController();
       resolveAbortRef.current = abortCtrl;
       resolvingStartedAtRef.current = Date.now();
@@ -1949,17 +1960,33 @@ export default function App() {
             setPlaybackContext(autoCtx);
 
             const seedTier = classifyTrackTier(seed);
-            let pool = gatherLocalCandidatePool(seed.id).filter((cand) => {
+            const seedLang = inferTrackLanguageRegion(seed);
+            const localPool = gatherLocalCandidatePool(seed.id);
+            const strictPool = localPool.filter((cand) => {
               const ct = classifyTrackTier(cand);
-              return (
+              const classOk =
                 ct.classId === seedTier.classId ||
-                seedTier.compatibleClasses.includes(ct.classId)
-              );
+                seedTier.compatibleClasses.includes(ct.classId);
+              if (!classOk) return false;
+              if (seedLang !== 'en' && seedLang !== 'instrumental') {
+                return inferTrackLanguageRegion(cand) === seedLang;
+              }
+              return true;
             });
+            let pool =
+              strictPool.length >= 4
+                ? strictPool
+                : localPool.filter((cand) => {
+                    const ct = classifyTrackTier(cand);
+                    return (
+                      ct.classId === seedTier.classId ||
+                      seedTier.compatibleClasses.includes(ct.classId)
+                    );
+                  });
 
-            if (pool.length === 0) {
-              pool = gatherLocalCandidatePool(seed.id);
-              const liveQueries = getClassMatchedSeedQueries(seed, activeMoodRef.current, 2);
+            if (pool.length < 4) {
+              pool = localPool;
+              const liveQueries = getClassMatchedSeedQueries(seed, activeMoodRef.current, 3);
               void Promise.allSettled(liveQueries.map((q) => searchTracksOnline(q))).then((batches) => {
                 for (const b of batches) {
                   if (b.status === 'fulfilled' && Array.isArray(b.value)) {
@@ -2881,7 +2908,7 @@ export default function App() {
     [hydrateTrackStreamInQueues]
   );
 
-  // Immediately pre-warm the next 2 tracks whenever active track or queue updates
+  // Immediately pre-warm the next 3 tracks whenever active track or queue updates for zero-stall background auto-next
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const nextDecision = pickNextTrackPure({
@@ -2894,15 +2921,15 @@ export default function App() {
       }).nextTrack;
       prewarmTrackStream(nextDecision);
 
-      const secondUp =
-        manualQueue[1] ||
-        queue.find(
-          (item, idx) =>
-            idx > queue.findIndex((q) => q.id === currentTrack.id) &&
-            item.id !== currentTrack.id &&
-            item.id !== nextDecision?.id
-        );
-      prewarmTrackStream(secondUp);
+      const curIdx = queue.findIndex((q) => q.id === currentTrack.id);
+      const upcoming = queue.filter(
+        (item, idx) =>
+          idx > curIdx &&
+          item.id !== currentTrack.id &&
+          item.id !== nextDecision?.id
+      );
+      prewarmTrackStream(manualQueue[1] || upcoming[0]);
+      prewarmTrackStream(manualQueue[2] || upcoming[1]);
     }, 350);
     return () => window.clearTimeout(timer);
   }, [currentTrack, queue, manualQueue, recState, activeMood, prewarmTrackStream]);
@@ -2954,6 +2981,23 @@ export default function App() {
       // Safe fallback on unsupported browsers
     }
   }, [currentTrack, handlePrev]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    try {
+      ms.playbackState = isPlaying ? 'playing' : 'paused';
+      if (typeof ms.setPositionState === 'function' && currentTrack.duration > 0) {
+        ms.setPositionState({
+          duration: Math.max(1, currentTrack.duration),
+          playbackRate: recState.playbackRate || 1,
+          position: Math.min(Math.max(0, currentTimeRef.current), currentTrack.duration)
+        });
+      }
+    } catch {
+      // Safe fallback on unsupported browsers
+    }
+  }, [isPlaying, currentTrack.id, currentTrack.duration, recState.playbackRate]);
 
   // Low-CPU 24/7 mode, Android Native Foreground Service bridge, WakeLock & Desktop PiP sync
   useEffect(() => {
@@ -3287,9 +3331,8 @@ export default function App() {
   };
 
   const mobileNavChips: { id: TabType; label: string; icon: React.ReactNode }[] = [
-    { id: 'landing', label: t.navLanding, icon: <Home size={13} /> },
+    { id: 'discover', label: t.navLanding, icon: <Home size={13} /> },
     { id: 'music', label: t.navMusic, icon: <Music size={13} /> },
-    { id: 'discover', label: t.navDiscover, icon: <Compass size={13} /> },
     { id: 'favorites', label: t.navFavorites, icon: <Heart size={13} /> },
     { id: 'blend', label: t.navBlend, icon: <Users size={13} /> },
     { id: 'search', label: t.navSearch, icon: <Search size={13} /> },
@@ -4172,6 +4215,7 @@ export default function App() {
                     activeMood={activeMood}
                     onSelectMood={handleSelectMood}
                     onRecordSearch={handleRecordSearch}
+                    onNavigateTab={handleTabChange}
                   />
                 )}
 
@@ -4372,7 +4416,14 @@ export default function App() {
                 isYouTubeActive &&
                 isYtVisualReady &&
                 !streamError &&
-                (!isStageVisible || (stageMode !== 'video-only' && stageMode !== 'video-lyric'))
+                (!isStageVisible || (stageMode !== 'video-only' && stageMode !== 'video-lyric')) &&
+                Boolean(
+                  activeYtVideoId &&
+                    (currentTrack.musicVideoId === activeYtVideoId ||
+                      (currentTrack.musicVideoCandidates || []).some(
+                        (c) => c.videoId === activeYtVideoId
+                      ))
+                )
               }
               onExpandVideoStage={() => handleSelectStageMode('video-lyric')}
               onSaveQueueAsPlaylist={handleSaveQueueAsPlaylist}

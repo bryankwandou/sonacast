@@ -123,7 +123,12 @@ export const openDesktopPipWindow = async (callbacks: {
       artistEl.textContent = payload.track.artist;
       lyricEl.textContent = payload.activeLyricText || '24/7 Background Stream';
       playEl.textContent = payload.isPlaying ? 'Pause' : 'Play';
-      modeEl.textContent = payload.lowCpuMode ? 'ECO 24/7' : 'LIVE';
+      modeEl.textContent =
+        payload.track.sourceTag === 'live-radio'
+          ? 'LIVE'
+          : payload.lowCpuMode
+            ? 'ECO 24/7'
+            : 'AUDIO';
     };
 
     syncUi({

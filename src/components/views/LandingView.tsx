@@ -12,11 +12,8 @@ import {
   SkipForward,
   User
 } from 'lucide-react';
-import type { AuthUser, CatalogAlbum, PlaybackContextInfo, TabType, Track } from '../../types';
+import type { AuthUser, PlaybackContextInfo, TabType, Track } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
-import { usePopularCharts } from '../../hooks/usePopularCharts';
-import { fetchAlbumTracksOnline } from '../../services/musicService';
-import { extractPrimaryArtist } from '../../services/recommendationEngine';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
 import { ThemeLanguageControls } from '../layout/ThemeLanguageControls';
 
@@ -84,42 +81,10 @@ export const LandingView: React.FC<LandingViewProps> = ({
   likedTrackIds,
   onToggleLike,
   onOpenAddToAlbum,
-  onPlayTrackList,
   lyricsOffset = 0
 }) => {
   const { t } = useAppPreferences();
-  const { popularCharts, isLoadingCharts } = usePopularCharts();
-  const [chartRegion, setChartRegion] = useState<'global' | 'indonesia'>('global');
   const [heroQuery, setHeroQuery] = useState('');
-  const [loadingLandingAlbumId, setLoadingLandingAlbumId] = useState<string | null>(null);
-
-  const handlePlayLandingAlbum = async (alb: CatalogAlbum) => {
-    setLoadingLandingAlbumId(alb.id);
-    try {
-      const res = await fetchAlbumTracksOnline(alb);
-      if (res.tracks.length > 0) {
-        if (onPlayTrackList) {
-          onPlayTrackList(
-            res.tracks,
-            false,
-            {
-              id: `release-album-${res.album.id}`,
-              type: 'release-album',
-              title: res.album.title,
-              subtitle: res.album.artist,
-              coverUrl: res.album.coverUrl,
-              ordered: true
-            },
-            0
-          );
-        } else {
-          onSelectTrack(res.tracks[0]);
-        }
-      }
-    } finally {
-      setLoadingLandingAlbumId(null);
-    }
-  };
 
   const curatedPool = useMemo(() => {
     const seen = new Set<string>();
@@ -132,27 +97,6 @@ export const LandingView: React.FC<LandingViewProps> = ({
     }
     return list;
   }, [tracks]);
-
-  const activeCharts = useMemo(() => {
-    const raw = chartRegion === 'global' ? popularCharts.global : popularCharts.indonesia;
-    const deduped: Track[] = [];
-    const seenKeys = new Set<string>();
-    for (const item of raw) {
-      if (!item || !item.id) continue;
-      const titleKey = (item.title || '')
-        .toLowerCase()
-        .replace(/\(.*?\)|\[.*?\]/g, '')
-        .replace(/[^a-z0-9\p{L}\p{N}]+/gu, '')
-        .trim();
-      const artistKey = extractPrimaryArtist(item.artist);
-      const dedupeKey = titleKey && artistKey ? `${titleKey}::${artistKey}` : item.id;
-      if (seenKeys.has(dedupeKey)) continue;
-      seenKeys.add(dedupeKey);
-      deduped.push(item);
-    }
-    if (deduped.length > 0) return deduped.slice(0, 12);
-    return curatedPool.slice(0, 12);
-  }, [chartRegion, popularCharts.global, popularCharts.indonesia, curatedPool]);
 
   const previewTracks = useMemo(() => {
     const candidates = [...curatedPool.slice(0, 6)];
@@ -169,13 +113,13 @@ export const LandingView: React.FC<LandingViewProps> = ({
   }, [curatedPool]);
 
   const collageArtworks = useMemo(() => {
-    const pool = activeCharts.length >= 3 ? activeCharts : curatedPool;
+    const pool = curatedPool;
     return [
-      pool[1] || curatedPool[1] || currentTrack,
-      pool[2] || curatedPool[2] || currentTrack,
-      pool[3] || curatedPool[3] || currentTrack
+      pool[1] || currentTrack,
+      pool[2] || currentTrack,
+      pool[3] || currentTrack
     ];
-  }, [activeCharts, curatedPool, currentTrack]);
+  }, [curatedPool, currentTrack]);
 
   const activeLyricText = useMemo(() => {
     const lines = currentTrack.lyrics || [];
@@ -329,6 +273,16 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 >
                   <span>{t.enterPlayerCta}</span>
                   <ArrowRight size={15} />
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="hero-open-music-btn"
+                  onClick={() => onEnterApp('music')}
+                  className="min-h-[44px] px-5 py-2.5 rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] hover:brightness-110 text-[var(--accent-text)] text-sm font-semibold inline-flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <Disc3 size={15} />
+                  <span>{t.navMusic}</span>
                 </button>
 
                 <button
@@ -614,189 +568,101 @@ export const LandingView: React.FC<LandingViewProps> = ({
           </div>
         </section>
 
-        {/* Borderless Live Global / Indonesia Sleeve Strip */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 py-12 border-t border-[var(--border-subtle)] space-y-6">
+        {/* Dedicated Route Portals — Landing (/) stays cleanly separated from /home and /music */}
+        <section
+          data-testid="landing-portals"
+          className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 py-12 border-t border-[var(--border-subtle)] space-y-6"
+        >
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="space-y-1">
               <p className="text-[11px] font-mono uppercase tracking-[0.16em] text-[var(--text-dim)]">
-                {t.featuredMastersHeading}
+                Dedicated Player Workspaces
               </p>
               <h2 className="font-editorial text-2xl sm:text-3xl text-[var(--text-primary)]">
-                {t.chartsHeading}
+                Explore Every Destination
               </h2>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div className="inline-flex items-center border-b border-[var(--border-subtle)]">
-                {(['global', 'indonesia'] as const).map((region) => (
-                  <button
-                    key={region}
-                    type="button"
-                    onClick={() => setChartRegion(region)}
-                    className={`min-h-[36px] px-3 text-xs font-semibold border-b-2 -mb-px transition-colors cursor-pointer ${
-                      chartRegion === region
-                        ? 'border-[var(--text-primary)] text-[var(--text-primary)]'
-                        : 'border-transparent text-[var(--text-dim)] hover:text-[var(--text-primary)]'
-                    }`}
-                  >
-                    {region === 'global' ? t.chartsGlobal : t.chartsIndonesia}
-                  </button>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => onEnterApp('discover')}
-                className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer transition-colors"
-              >
-                <span>{t.viewFullLibrary}</span>
-                <ArrowRight size={13} />
-              </button>
-            </div>
+            <button
+              type="button"
+              data-testid="landing-browse-music-btn"
+              onClick={() => onEnterApp('music')}
+              className="text-xs font-semibold text-[var(--accent-text)] hover:underline inline-flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              <span>Open /music Hub</span>
+              <ArrowRight size={13} />
+            </button>
           </div>
 
-          {isLoadingCharts && activeCharts.length === 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4 sm:gap-5">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <div key={idx} className="space-y-2 animate-pulse">
-                  <div className="aspect-square rounded-lg bg-[var(--bg-elevated)]" />
-                  <div className="h-3 w-3/4 rounded bg-[var(--bg-elevated)]" />
-                  <div className="h-2.5 w-1/2 rounded bg-[var(--bg-elevated)]" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 sm:gap-5">
-              {activeCharts.map((track) => {
-                const active = track.id === currentTrack.id;
-                const resolving = resolvingTrackId === track.id;
-                return (
-                  <button
-                    key={track.id}
-                    type="button"
-                    onClick={() => (active ? onTogglePlay() : onSelectTrack(track))}
-                    className="group text-left space-y-2 cursor-pointer min-w-0"
-                  >
-                    <div className="relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
-                      <img
-                        src={track.coverUrl || DEFAULT_COVER_DATA_URI}
-                        alt={track.title}
-                        decoding="async"
-                        onError={(e) => applyCoverFallback(e, track.title, track.artist)}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                      />
-                      <div
-                        className={`absolute inset-0 flex items-center justify-center bg-black/35 transition-opacity ${
-                          active || resolving ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                        }`}
-                      >
-                        <div className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg">
-                          {resolving ? (
-                            <Loader2 size={16} className="animate-spin" />
-                          ) : active && isPlaying ? (
-                            <Pause size={16} className="fill-current" />
-                          ) : (
-                            <Play size={16} className="fill-current ml-0.5" />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="min-w-0">
-                      <p
-                        className={`text-xs font-semibold truncate ${
-                          active ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
-                        }`}
-                      >
-                        {track.title}
-                      </p>
-                      <p className="text-[11px] text-[var(--text-dim)] truncate">
-                        {track.artist}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* Borderless Popular Studio Albums Strip */}
-        {popularCharts.albums.length > 0 && (
-          <section
-            data-testid="landing-popular-albums"
-            className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 py-12 border-t border-[var(--border-subtle)] space-y-6"
-          >
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div className="space-y-1">
-                <p className="text-[11px] font-mono uppercase tracking-[0.16em] text-[var(--text-dim)]">
-                  Studio Collections &middot; Global &amp; Indonesia
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button
+              type="button"
+              onClick={() => onEnterApp('discover')}
+              className="p-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--accent-emerald)] text-left transition-all cursor-pointer group flex flex-col justify-between gap-4"
+            >
+              <div className="space-y-1.5">
+                <span className="inline-block text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent-text)] font-bold">
+                  /home
+                </span>
+                <h3 className="text-base font-extrabold text-[var(--text-primary)] group-hover:text-[var(--accent-text)] transition-colors">
+                  {t.navLanding}
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                  Quick Access shortcuts, personalized Daily Mixes, Jump Back In, and seamless queue continuity.
                 </p>
-                <h2 className="font-editorial text-2xl sm:text-3xl text-[var(--text-primary)]">
-                  Popular Studio Albums
-                </h2>
               </div>
-
-              <button
-                type="button"
-                data-testid="landing-browse-music-btn"
-                onClick={() => onEnterApp('music')}
-                className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer transition-colors"
-              >
-                <span>Browse All {popularCharts.albums.length} Albums</span>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--text-primary)]">
+                <span>{t.enterPlayerCta}</span>
                 <ArrowRight size={13} />
-              </button>
-            </div>
+              </span>
+            </button>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 sm:gap-5">
-              {popularCharts.albums.slice(0, 12).map((alb) => {
-                const isLoadingAlb = loadingLandingAlbumId === alb.id;
-                return (
-                  <button
-                    key={alb.id}
-                    type="button"
-                    data-testid={`landing-album-${alb.id}`}
-                    onClick={() => void handlePlayLandingAlbum(alb)}
-                    className="group text-left space-y-2 cursor-pointer min-w-0"
-                  >
-                    <div className="relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
-                      <img
-                        src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
-                        alt={alb.title}
-                        loading="lazy"
-                        decoding="async"
-                        onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                      />
-                      <div
-                        className={`absolute inset-0 flex items-center justify-center bg-black/35 transition-opacity ${
-                          isLoadingAlb ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                        }`}
-                      >
-                        <div className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg">
-                          {isLoadingAlb ? (
-                            <Loader2 size={16} className="animate-spin" />
-                          ) : (
-                            <Play size={16} className="fill-current ml-0.5" />
-                          )}
-                        </div>
-                      </div>
-                    </div>
+            <button
+              type="button"
+              data-testid="landing-music-portal-card"
+              onClick={() => onEnterApp('music')}
+              className="p-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--accent-emerald)] text-left transition-all cursor-pointer group flex flex-col justify-between gap-4"
+            >
+              <div className="space-y-1.5">
+                <span className="inline-block text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent-text)] font-bold">
+                  /music
+                </span>
+                <h3 className="text-base font-extrabold text-[var(--text-primary)] group-hover:text-[var(--accent-text)] transition-colors">
+                  {t.navMusic} Catalog
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                  Popular Studio Albums, cohesive Daily Playlists, Global &amp; Indonesia Charts, and genre mixes.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--text-primary)]">
+                <span>Browse /music</span>
+                <ArrowRight size={13} />
+              </span>
+            </button>
 
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                        {alb.title}
-                      </p>
-                      <p className="text-[11px] text-[var(--text-dim)] truncate">
-                        {alb.artist}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        )}
+            <button
+              type="button"
+              onClick={() => onEnterApp('radio')}
+              className="p-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--accent-emerald)] text-left transition-all cursor-pointer group flex flex-col justify-between gap-4"
+            >
+              <div className="space-y-1.5">
+                <span className="inline-block text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent-text)] font-bold">
+                  /radio
+                </span>
+                <h3 className="text-base font-extrabold text-[var(--text-primary)] group-hover:text-[var(--accent-text)] transition-colors">
+                  {t.navRadio}
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                  Search tens of thousands of indexed broadcasts worldwide by name, language, region, and community tag.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--text-primary)]">
+                <span>Browse /radio</span>
+                <ArrowRight size={13} />
+              </span>
+            </button>
+          </div>
+        </section>
 
         {/* Minimalist 4-Row Typographic Capabilities Index */}
         <section className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 py-12 border-t border-[var(--border-subtle)]">
