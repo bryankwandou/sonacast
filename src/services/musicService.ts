@@ -1879,6 +1879,9 @@ function mergeDailyPlaylists(livePlaylists?: CatalogPlaylist[]): CatalogPlaylist
   return merged;
 }
 
+const CHART_COUNTRY_CROSSOVER_RE =
+  /\b(country|ella\s+langley|morgan\s+wallen|luke\s+combs|zach\s+bryan|bailey\s+zimmerman|megan\s+moroney|riley\s+green|lainey\s+wilson|cody\s+johnson|tucker\s+wetmore|hudson\s+westbrook|jordan\s+davis|tyler\s+childers|chris\s+stapleton|jason\s+aldean|kane\s+brown|dylan\s+marlowe|gavin\s+adcock|zach\s+top|choosin'\s+texas)\b/i;
+
 export async function fetchPopularCharts(): Promise<PopularChartsResult> {
   const toTrackList = catalogItemsToTracks;
 
@@ -1886,15 +1889,26 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
     const seenGlobal = new Set<string>();
     const globalItems: CatalogApiItem[] = [];
     for (const item of [...(data.global || []), ...(data.us || [])]) {
+      if (
+        !item.title ||
+        CHART_COUNTRY_CROSSOVER_RE.test(
+          `${item.genre || ''} ${item.title || ''} ${item.artist || ''} ${item.album || ''}`
+        )
+      ) {
+        continue;
+      }
       const key = `${normalizeText(stripTitleModifiers(item.title))}::${normalizeText(item.artist.split(/[,&]|ft\.?/i)[0] || '')}`;
-      if (!item.title || seenGlobal.has(key)) continue;
+      if (seenGlobal.has(key)) continue;
       seenGlobal.add(key);
       globalItems.push(item);
     }
+    const filteredAlbums = (data.featuredAlbums || []).filter(
+      (a) => !CHART_COUNTRY_CROSSOVER_RE.test(`${a.title || ''} ${a.artist || ''} ${a.genre || ''}`)
+    );
     return {
       global: toTrackList(globalItems.slice(0, 30)),
       indonesia: toTrackList((data.indonesia || []).slice(0, 24)),
-      albums: mergeDailyAlbums(data.featuredAlbums),
+      albums: mergeDailyAlbums(filteredAlbums),
       playlists: mergeDailyPlaylists(data.featuredPlaylists)
     };
   };

@@ -53,11 +53,11 @@ import {
   getClassMatchedSeedQueries,
   getMoodSearchQuery,
   getMoodSeedQueries,
-  inferTrackLanguageRegion,
   loadRecommendationState,
   pickNextTrackPure,
   recordTrackSignal,
   saveRecommendationState,
+  selectCohesiveCandidatePool,
   type RecommendationState
 } from './services/recommendationEngine';
 import {
@@ -1041,29 +1041,7 @@ export default function App() {
       const combinedPool = [...pooled, ...localSeedPool];
       if (combinedPool.length === 0) return;
 
-      const seedTier = classifyTrackTier(seedTrack);
-      const seedLang = inferTrackLanguageRegion(seedTrack);
-      const sameLangAndClass = combinedPool.filter((c) => {
-        const ct = classifyTrackTier(c);
-        const cl = inferTrackLanguageRegion(c);
-        const classMatch = ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
-        if (!classMatch) return false;
-        if (seedLang !== 'en' && seedLang !== 'instrumental') {
-          return cl === seedLang;
-        }
-        return true;
-      });
-      const sameOrCompatible =
-        sameLangAndClass.length >= 6
-          ? sameLangAndClass
-          : combinedPool.filter((c) => {
-              const ct = classifyTrackTier(c);
-              return (
-                ct.classId === seedTier.classId ||
-                seedTier.compatibleClasses.includes(ct.classId)
-              );
-            });
-      const candidatePool = sameOrCompatible.length >= 6 ? sameOrCompatible : combinedPool;
+      const candidatePool = selectCohesiveCandidatePool(seedTrack, combinedPool, 4);
 
       setQueue((prev) => {
         const activeId = currentTrackRef.current.id;
@@ -1415,28 +1393,11 @@ export default function App() {
         playbackContextRef.current = autoCtx;
         setPlaybackContext(autoCtx);
 
-        const seedTier = classifyTrackTier(track);
-        const seedLang = inferTrackLanguageRegion(track);
         const instantPool = gatherLocalCandidatePool(track.id);
-        const langAndClassInstant = instantPool.filter((cand) => {
-          const ct = classifyTrackTier(cand);
-          const classOk = ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
-          if (!classOk) return false;
-          if (seedLang !== 'en' && seedLang !== 'instrumental') {
-            return inferTrackLanguageRegion(cand) === seedLang;
-          }
-          return true;
-        });
-        const classMatchedInstant =
-          langAndClassInstant.length >= 3
-            ? langAndClassInstant
-            : instantPool.filter((cand) => {
-                const ct = classifyTrackTier(cand);
-                return ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
-              });
+        const cohesiveInstant = selectCohesiveCandidatePool(track, instantPool, 3);
         const rankedInstant = buildSmartQueueFromPool(
           track,
-          classMatchedInstant.length >= 3 ? classMatchedInstant : instantPool,
+          cohesiveInstant,
           recStateRef.current.recentTracks,
           recStateRef.current,
           activeMoodRef.current,
@@ -1457,28 +1418,20 @@ export default function App() {
         });
 
         const ctxType = playbackContextRef.current.type;
-        if (ctxType === 'radio' && track.sourceTag !== 'live-radio') {
-          refillRadioQueueIfNeeded(track, false);
-        } else if (
-          autoplayEnabledRef.current &&
-          recStateRef.current.repeatMode !== 'one' &&
+        if (
           track.sourceTag !== 'live-radio' &&
-          track.genre !== 'Podcast'
+          track.genre !== 'Podcast' &&
+          recStateRef.current.repeatMode !== 'one'
         ) {
-          // Preload peer class candidates into discoveredPool before an ordered album/playlist finishes
-          const q = queueRef.current;
-          const idx = q.findIndex((t) => t.id === track.id);
-          if (idx >= 0 && q.length - 1 - idx <= 1) {
-            const peerQueries = getClassMatchedSeedQueries(track, activeMoodRef.current, 2);
-            Promise.allSettled(peerQueries.map((pq) => searchTracksOnline(pq))).then((batches) => {
-              for (const b of batches) {
-                if (b.status === 'fulfilled' && Array.isArray(b.value)) {
-                  for (const cand of b.value) {
-                    if (cand && cand.id) discoveredPoolRef.current.set(cand.id, cand);
-                  }
-                }
-              }
-            });
+          if (
+            ctxType === 'radio' ||
+            ctxType === 'recommendation' ||
+            ctxType === 'charts' ||
+            ctxType === 'search' ||
+            ctxType === 'blend' ||
+            autoplayEnabledRef.current
+          ) {
+            refillRadioQueueIfNeeded(track, false);
           }
         }
       }
@@ -1959,33 +1912,10 @@ export default function App() {
             playbackContextRef.current = autoCtx;
             setPlaybackContext(autoCtx);
 
-            const seedTier = classifyTrackTier(seed);
-            const seedLang = inferTrackLanguageRegion(seed);
             const localPool = gatherLocalCandidatePool(seed.id);
-            const strictPool = localPool.filter((cand) => {
-              const ct = classifyTrackTier(cand);
-              const classOk =
-                ct.classId === seedTier.classId ||
-                seedTier.compatibleClasses.includes(ct.classId);
-              if (!classOk) return false;
-              if (seedLang !== 'en' && seedLang !== 'instrumental') {
-                return inferTrackLanguageRegion(cand) === seedLang;
-              }
-              return true;
-            });
-            let pool =
-              strictPool.length >= 4
-                ? strictPool
-                : localPool.filter((cand) => {
-                    const ct = classifyTrackTier(cand);
-                    return (
-                      ct.classId === seedTier.classId ||
-                      seedTier.compatibleClasses.includes(ct.classId)
-                    );
-                  });
+            const pool = selectCohesiveCandidatePool(seed, localPool, 4);
 
             if (pool.length < 4) {
-              pool = localPool;
               const liveQueries = getClassMatchedSeedQueries(seed, activeMoodRef.current, 3);
               void Promise.allSettled(liveQueries.map((q) => searchTracksOnline(q))).then((batches) => {
                 for (const b of batches) {
@@ -2403,7 +2333,9 @@ export default function App() {
         })()
         : tracksList;
 
-      const resolvedCtx: PlaybackContextInfo = contextInfo || {
+      const initialPos = shouldShuffle ? 0 : safeStart;
+      const initialTrack = resolvedTracks[initialPos] || resolvedTracks[0];
+      const baseCtx: PlaybackContextInfo = contextInfo || {
         id: `list-${resolvedTracks[0]?.id || 'mix'}`,
         type: 'playlist',
         title: resolvedTracks[0]?.album || 'Ordered Collection',
@@ -2412,6 +2344,55 @@ export default function App() {
         ordered: orderedPlay
       };
 
+      let finalQueue = resolvedTracks;
+      let resolvedCtx: PlaybackContextInfo = baseCtx;
+
+      // Charts & generic Search lists cluster dynamically around the selected track's genre/vibe
+      if (!shouldShuffle && (baseCtx.type === 'charts' || baseCtx.type === 'search')) {
+        const remainingList = [
+          ...resolvedTracks.slice(initialPos + 1),
+          ...resolvedTracks.slice(0, initialPos)
+        ];
+        const candidatePool = selectCohesiveCandidatePool(
+          initialTrack,
+          [...remainingList, ...gatherLocalCandidatePool(initialTrack.id)],
+          4
+        );
+        const smartNext = buildSmartQueueFromPool(
+          initialTrack,
+          candidatePool,
+          recStateRef.current.recentTracks,
+          recStateRef.current,
+          activeMoodRef.current,
+          23
+        );
+        finalQueue = [initialTrack, ...smartNext];
+        resolvedCtx = { ...baseCtx, ordered: false };
+      } else if (
+        autoplayEnabledRef.current &&
+        recStateRef.current.repeatMode !== 'one' &&
+        (resolvedTracks.length <= 4 || resolvedTracks.length - 1 - initialPos <= 3)
+      ) {
+        // Short singles/EPs or tail-clicks pre-extend Up Next with cohesive peer tracks so queue never stops at 2
+        const tailSeed = resolvedTracks[resolvedTracks.length - 1] || initialTrack;
+        const existingIds = new Set(resolvedTracks.map((t) => t.id));
+        const localCandidates = gatherLocalCandidatePool(tailSeed.id).filter(
+          (t) => !existingIds.has(t.id)
+        );
+        const cohesiveTailPool = selectCohesiveCandidatePool(tailSeed, localCandidates, 3);
+        const extraAutoplay = buildSmartQueueFromPool(
+          tailSeed,
+          cohesiveTailPool,
+          recStateRef.current.recentTracks,
+          recStateRef.current,
+          activeMoodRef.current,
+          16
+        ).filter((t) => !existingIds.has(t.id));
+        if (extraAutoplay.length > 0) {
+          finalQueue = [...resolvedTracks, ...extraAutoplay];
+        }
+      }
+
       setRecState((prev) => {
         const next = { ...prev, shuffle: shouldShuffle };
         saveRecommendationState(next);
@@ -2419,13 +2400,12 @@ export default function App() {
       });
       playbackContextRef.current = resolvedCtx;
       setPlaybackContext(resolvedCtx);
-      queueRef.current = resolvedTracks;
-      setQueue(resolvedTracks);
+      queueRef.current = finalQueue;
+      setQueue(finalQueue);
 
-      const initialTrack = resolvedTracks[shouldShuffle ? 0 : safeStart] || resolvedTracks[0];
       handleSelectTrack(initialTrack, { fromContextList: true });
     },
-    [handleSelectTrack]
+    [gatherLocalCandidatePool, handleSelectTrack]
   );
 
   const handleToggleShuffle = useCallback(() => {

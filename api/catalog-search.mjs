@@ -455,6 +455,11 @@ export default async function handler(req, res) {
       const RETRO_DECADE_PL_RE =
         /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal|sleep|relaxation|meditation|calm\s+piano|study\s+lofi|chill\s+lofi|country)\b/i;
       const NICHE_CHART_GENRE_RE = /\b(country)\b/i;
+      const COUNTRY_CROSSOVER_RE =
+        /\b(ella\s+langley|morgan\s+wallen|luke\s+combs|zach\s+bryan|bailey\s+zimmerman|megan\s+moroney|riley\s+green|lainey\s+wilson|cody\s+johnson|tucker\s+wetmore|hudson\s+westbrook|jordan\s+davis|tyler\s+childers|chris\s+stapleton|jason\s+aldean|kane\s+brown|dylan\s+marlowe|gavin\s+adcock|zach\s+top|choosin'\s+texas)\b/i;
+      const isChartExcluded = (item) =>
+        NICHE_CHART_GENRE_RE.test(String(item?.genre || '')) ||
+        COUNTRY_CROSSOVER_RE.test(`${item?.title || ''} ${item?.artist || ''} ${item?.album || ''}`);
 
       const cleanTracks = (list, defaultGenre) => {
         const seen = new Set();
@@ -481,15 +486,13 @@ export default async function handler(req, res) {
                 t.duration >= 60 &&
                 t.duration <= 1800 &&
                 !isNonOriginalTitle(t.title, '') &&
-                !NON_MUSIC_ALBUM_RE.test(`${t.title} ${t.album}`)
+                !NON_MUSIC_ALBUM_RE.test(`${t.title} ${t.album}`) &&
+                !isChartExcluded(t)
             )
         : [];
 
-      const popUsRss = usRss.filter((t) => !NICHE_CHART_GENRE_RE.test(t.genre || ''));
-      const globalCombined = cleanTracks(
-        [...dzItems, ...popUsRss, ...usRss.filter((t) => NICHE_CHART_GENRE_RE.test(t.genre || ''))],
-        'Pop'
-      );
+      const popUsRss = usRss.filter((t) => !isChartExcluded(t));
+      const globalCombined = cleanTracks([...dzItems, ...popUsRss], 'Pop');
 
       const appleAlbumList = Array.isArray(appleUsAlbums?.feed?.results)
         ? appleUsAlbums.feed.results
@@ -501,7 +504,8 @@ export default async function handler(req, res) {
                 a?.id &&
                 a?.name &&
                 !BLOCKED_EXPLICIT_RE.test(`${a.name} ${a.artistName || ''}`) &&
-                !NON_MUSIC_ALBUM_RE.test(`${a.name} ${a.artistName || ''} ${genreNames}`)
+                !NON_MUSIC_ALBUM_RE.test(`${a.name} ${a.artistName || ''} ${genreNames}`) &&
+                !COUNTRY_CROSSOVER_RE.test(`${a.name} ${a.artistName || ''} ${genreNames}`)
               );
             })
             .slice(0, 12)
@@ -528,7 +532,8 @@ export default async function handler(req, res) {
                 a.explicit_lyrics !== true &&
                 (Number(a.nb_tracks || 0) === 0 || Number(a.nb_tracks) >= 5) &&
                 !BLOCKED_EXPLICIT_RE.test(`${a.title} ${a.artist?.name || ''}`) &&
-                !NON_MUSIC_ALBUM_RE.test(`${a.title} ${a.artist?.name || ''}`)
+                !NON_MUSIC_ALBUM_RE.test(`${a.title} ${a.artist?.name || ''}`) &&
+                !COUNTRY_CROSSOVER_RE.test(`${a.title} ${a.artist?.name || ''}`)
             )
             .slice(0, 10)
             .map((a) => ({

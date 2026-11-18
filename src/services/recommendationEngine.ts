@@ -1204,6 +1204,68 @@ export function getClassMatchedSeedQueries(
   return result.slice(0, count);
 }
 
+/**
+ * Filter a candidate pool to genre-, vibe-, and language-cohesive tracks around `seedTrack`,
+ * avoiding off-genre catalog fallback whenever cohesive candidates exist.
+ */
+export function selectCohesiveCandidatePool(
+  seedTrack: Track,
+  candidates: Track[],
+  minSameLangClass = 4
+): Track[] {
+  const seedTier = classifyTrackTier(seedTrack);
+  const seedLang = inferTrackLanguageRegion(seedTrack);
+  const deduped: Track[] = [];
+  const seen = new Set<string>();
+
+  for (const cand of candidates) {
+    if (!cand || !cand.id || cand.id === seedTrack.id) continue;
+    if (seen.has(cand.id)) continue;
+    seen.add(cand.id);
+    deduped.push(cand);
+  }
+
+  const sameLangAndClass = deduped.filter((cand) => {
+    const ct = classifyTrackTier(cand);
+    const cl = inferTrackLanguageRegion(cand);
+    const classOk = ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
+    if (!classOk) return false;
+    if (seedLang !== 'en' && seedLang !== 'instrumental') {
+      return cl === seedLang;
+    }
+    if (seedLang === 'en') {
+      return cl === 'en' || ct.classId === seedTier.classId;
+    }
+    return true;
+  });
+
+  if (sameLangAndClass.length >= minSameLangClass) {
+    return sameLangAndClass;
+  }
+
+  const compatibleClassPool = deduped.filter((cand) => {
+    const ct = classifyTrackTier(cand);
+    const cl = inferTrackLanguageRegion(cand);
+    const classOk = ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
+    if (!classOk) return false;
+    if (seedLang === 'en') {
+      return cl === 'en' || ct.classId === seedTier.classId;
+    }
+    return true;
+  });
+
+  if (compatibleClassPool.length >= 2) {
+    return compatibleClassPool;
+  }
+
+  const looseClassPool = deduped.filter((cand) => {
+    const ct = classifyTrackTier(cand);
+    return ct.classId === seedTier.classId || seedTier.compatibleClasses.includes(ct.classId);
+  });
+
+  return looseClassPool.length > 0 ? looseClassPool : deduped;
+}
+
 export function getMoodSeedQueries(mood: MoodPreset): string[] {
   switch (mood) {
     case 'focus':

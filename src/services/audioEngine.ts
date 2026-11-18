@@ -172,9 +172,9 @@ export class AudioEngine {
         if (this.isDocumentHidden) {
           if (this.isPlaying) {
             this.wasPlayingBeforeSleep = true;
+            this.startTransitionKeepalive(0);
           }
           if (this.activeBackend === 'youtube' && this.isPlaying) {
-            this.startTransitionKeepalive(0);
             this.startYouTubePoll();
           } else if (this.activeBackend === 'html5' && this.isPlaying) {
             this.startHtml5Poll();
@@ -516,7 +516,7 @@ export class AudioEngine {
         if (this.activeBackend !== 'html5' || this.usingPassthroughStream) return;
         this.suppressPauseUntilMs = 0;
         this.html5PlayPending = false;
-        this.stopTransitionKeepalive();
+        this.startTransitionKeepalive(0);
         if (this.ctx && this.ctx.state !== 'running') {
           this.ctx.resume().catch(() => {});
         }
@@ -717,6 +717,7 @@ export class AudioEngine {
 
   private armYouTubeResumeCheck(gen: number, expectedPos: number, allowRebuild = true) {
     this.clearYouTubeResumeCheck();
+    const checkDelayMs = this.isDocumentHidden ? 3800 : 1800;
     this.ytResumeCheckTimer = window.setTimeout(() => {
       this.ytResumeCheckTimer = null;
       if (gen !== this.playGeneration || this.activeBackend !== 'youtube' || !this.isPlaying) {
@@ -752,7 +753,7 @@ export class AudioEngine {
         this.wasPlayingBeforeSleep = false;
         this.notifyState();
       }
-    }, 1800);
+    }, checkDelayMs);
   }
 
   private armYouTubeWatchdog(gen: number) {
@@ -996,7 +997,7 @@ export class AudioEngine {
     this.ytBgPauseRecoverCount = 0;
     this.wasPlayingBeforeSleep = true;
     this.isPlaying = true;
-    this.startTransitionKeepalive(10000);
+    this.startTransitionKeepalive(0);
     this.notifyTime();
     this.notifyState();
   }
@@ -1404,7 +1405,14 @@ export class AudioEngine {
           !this.blobRecoverInFlight &&
           performance.now() - this.lastPauseCalledAt > 1200
         ) {
-          void this.recoverStalledHtml5Seek(pollGen, this.currentTime);
+          this.html5StallSince = nowMs;
+          if (this.usingPassthroughStream) {
+            activeEl.play().catch(() => {
+              this.resume(true, true);
+            });
+          } else {
+            void this.recoverStalledHtml5Seek(pollGen, this.currentTime);
+          }
         }
         return;
       }
@@ -1518,9 +1526,7 @@ export class AudioEngine {
           this.notifyTime();
           if (pos >= 0.3) {
             this.clearYouTubeWatchdog();
-            if (!this.isDocumentHidden) {
-              this.stopTransitionKeepalive();
-            }
+            this.startTransitionKeepalive(0);
           }
           const wallEstimatedPos =
             this.isDocumentHidden && this.ytWallAnchorMs > 0
@@ -1770,9 +1776,7 @@ export class AudioEngine {
                 // Ignore deferred seek error
               }
             }
-            if (!this.isDocumentHidden) {
-              this.stopTransitionKeepalive();
-            }
+            this.startTransitionKeepalive(0);
             this.setYtVisualReady(true);
             this.clearYouTubeResumeCheck();
             this.notifyState();
@@ -2061,12 +2065,14 @@ export class AudioEngine {
         // Ignore
       }
     }
+    this.stopTransitionKeepalive();
     this.notifyState();
   }
 
   public resume(forceRecover = false, fromAutoWake = false) {
     if (!forceRecover && this.isPlaying && !this.isPlaybackWedged()) return;
     this.lastPauseCalledAt = 0;
+    this.startTransitionKeepalive(0);
     if (this.currentTime < Math.max(1, this.duration - 2)) {
       this.lastEndedGeneration = -1;
     }
