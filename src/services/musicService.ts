@@ -474,11 +474,14 @@ async function fetchDeezerJsonp<T>(path: string, timeoutMs = 4200): Promise<T | 
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
-      try {
-        delete win[cbName];
-      } catch {
-        win[cbName] = undefined;
-      }
+      win[cbName] = () => {};
+      window.setTimeout(() => {
+        try {
+          delete win[cbName];
+        } catch {
+          win[cbName] = undefined;
+        }
+      }, 25000);
       script.remove();
       resolve(val);
     };

@@ -383,7 +383,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
               }`}
             >
-              <Search size={12} />
+              <Disc3 size={12} />
               <span>{t.searchSongsTab}</span>
             </button>
 

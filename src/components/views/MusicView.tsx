@@ -30,7 +30,6 @@ import {
   Loader2,
   Music,
   Play,
-  Search,
   Shuffle,
   Sparkles,
   TrendingUp
@@ -119,7 +118,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
   currentTrack,
   resolvingTrackId,
   onSelectTrack,
-  onNavigateSearch,
+  onNavigateSearch: _onNavigateSearch,
   likedTracks = [],
   recentTracks = [],
   playlists = [],
@@ -343,16 +342,6 @@ export const MusicView: React.FC<MusicViewProps> = ({
                 <span>{t.shuffleLabel}</span>
               </button>
             </>
-          )}
-          {onNavigateSearch && (
-            <button
-              type="button"
-              onClick={() => onNavigateSearch('')}
-              className="min-h-[38px] px-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <Search size={13} />
-              <span>{t.navSearch}</span>
-            </button>
           )}
         </div>
       </div>
@@ -600,6 +589,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
               return (
                 <div
                   key={alb.id}
+                  data-testid={`featured-album-${alb.id}`}
                   className={`group rounded-2xl p-2.5 border transition-all flex flex-col justify-between gap-2 min-w-0 ${
                     isActiveAlb
                       ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'

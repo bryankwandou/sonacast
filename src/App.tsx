@@ -1248,20 +1248,20 @@ export default function App() {
         setCurrentTrack((prev) =>
           prev.id === track.id
             ? {
-                ...prev,
-                musicVideoId: resolved.youtubeId,
-                musicVideoCandidates: resolved.candidates
-              }
+              ...prev,
+              musicVideoId: resolved.youtubeId,
+              musicVideoCandidates: resolved.candidates
+            }
             : prev
         );
         setQueue((prev) =>
           prev.map((q) =>
             q.id === track.id
               ? {
-                  ...q,
-                  musicVideoId: resolved.youtubeId,
-                  musicVideoCandidates: resolved.candidates
-                }
+                ...q,
+                musicVideoId: resolved.youtubeId,
+                musicVideoCandidates: resolved.candidates
+              }
               : q
           )
         );
@@ -1333,9 +1333,9 @@ export default function App() {
     const host = ytHostRef.current;
     if (!host) return;
     if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
     } else {
-      host.requestFullscreen?.().catch(() => {});
+      host.requestFullscreen?.().catch(() => { });
     }
   }, []);
 
@@ -1610,18 +1610,18 @@ export default function App() {
             setCurrentTrack((prev) =>
               prev.id === track.id
                 ? {
-                    ...hydratedTrack,
-                    lyrics: prev.lyrics.length > hydratedTrack.lyrics.length ? prev.lyrics : hydratedTrack.lyrics
-                  }
+                  ...hydratedTrack,
+                  lyrics: prev.lyrics.length > hydratedTrack.lyrics.length ? prev.lyrics : hydratedTrack.lyrics
+                }
                 : prev
             );
             setQueue((prevQ) =>
               prevQ.map((t) =>
                 t.id === track.id
                   ? {
-                      ...hydratedTrack,
-                      lyrics: t.lyrics.length > hydratedTrack.lyrics.length ? t.lyrics : hydratedTrack.lyrics
-                    }
+                    ...hydratedTrack,
+                    lyrics: t.lyrics.length > hydratedTrack.lyrics.length ? t.lyrics : hydratedTrack.lyrics
+                  }
                   : t
               )
             );
@@ -1655,11 +1655,11 @@ export default function App() {
       try {
         const mvResolved = isVideoStageActive
           ? await resolveMusicVideoStream(
-              track.title,
-              track.artist,
-              track.duration,
-              abortCtrl.signal
-            )
+            track.title,
+            track.artist,
+            track.duration,
+            abortCtrl.signal
+          )
           : null;
         const resolved =
           mvResolved ||
@@ -1683,26 +1683,26 @@ export default function App() {
             streamSource: 'official-stream',
             ...(mvResolved
               ? {
-                  musicVideoId: mvResolved.youtubeId,
-                  musicVideoCandidates: mvResolved.candidates
-                }
+                musicVideoId: mvResolved.youtubeId,
+                musicVideoCandidates: mvResolved.candidates
+              }
               : {})
           };
           setCurrentTrack((prev) =>
             prev.id === track.id
               ? {
-                  ...updatedTrack,
-                  lyrics: prev.lyrics.length > updatedTrack.lyrics.length ? prev.lyrics : updatedTrack.lyrics
-                }
+                ...updatedTrack,
+                lyrics: prev.lyrics.length > updatedTrack.lyrics.length ? prev.lyrics : updatedTrack.lyrics
+              }
               : prev
           );
           setQueue((prevQ) =>
             prevQ.map((t) =>
               t.id === track.id
                 ? {
-                    ...updatedTrack,
-                    lyrics: t.lyrics.length > updatedTrack.lyrics.length ? t.lyrics : updatedTrack.lyrics
-                  }
+                  ...updatedTrack,
+                  lyrics: t.lyrics.length > updatedTrack.lyrics.length ? t.lyrics : updatedTrack.lyrics
+                }
                 : t
             )
           );
@@ -1798,14 +1798,14 @@ export default function App() {
         ? episode.videoCandidates
         : episode.youtubeId
           ? [
-              {
-                videoId: episode.youtubeId,
-                title: episode.title,
-                author: episode.host || episode.podcastName,
-                duration: episode.duration,
-                thumbnail: episode.coverUrl
-              }
-            ]
+            {
+              videoId: episode.youtubeId,
+              title: episode.title,
+              author: episode.host || episode.podcastName,
+              duration: episode.duration,
+              thumbnail: episode.coverUrl
+            }
+          ]
           : [];
     const shouldOpenVideo = Boolean(openVideoStage && (episode.youtubeId || videoCandidates.length > 0));
     const podTrack: Track = {
@@ -2801,10 +2801,10 @@ export default function App() {
       const createdSnap =
         authUserRef.current || hasCloudSessionHint()
           ? await mutateNeonLibrary('create_album', {
-              name: cleanName,
-              description: 'Curated Music Blend Mix',
-              initialTrack: tracksList[0]
-            })
+            name: cleanName,
+            description: 'Curated Music Blend Mix',
+            initialTrack: tracksList[0]
+          })
           : null;
 
       if (createdSnap && createdSnap.connected) {
@@ -2872,8 +2872,8 @@ export default function App() {
           streamSource: item.audioUrl ? item.streamSource : 'official-stream',
           ...(asMusicVideo
             ? {
-                musicVideoId: item.musicVideoId || resolved.youtubeId
-              }
+              musicVideoId: item.musicVideoId || resolved.youtubeId
+            }
             : {})
         };
       };
@@ -3533,49 +3533,51 @@ export default function App() {
 
             {/* Center Column: Fixed Top Search Bar + Scrollable Main Stage & Views */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-              {/* Persistent Top Search Bar + Sound History Dropdown + Stage Toggle */}
+              {/* Persistent Single Top Search Bar (hidden on /search and /radio where view owns search) + Stage Toggle */}
               <div className="shrink-0 px-4 sm:px-6 pt-4 pb-2 space-y-3 relative z-30">
-                <form
-                  onSubmit={(e) => {
-                    setIsTopSearchFocused(false);
-                    handleTopSearchSubmit(e);
-                  }}
-                  className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2 rounded-xl transition-colors"
-                  style={{ boxShadow: 'var(--card-shadow)' }}
-                >
-                  <div className="relative flex-1 min-w-[180px]">
-                    <Search
-                      size={15}
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
-                    />
-                    <input
-                      ref={topSearchInputRef}
-                      type="text"
-                      data-testid="topbar-search-input"
-                      value={topSearchInput}
-                      onFocus={() => setIsTopSearchFocused(true)}
-                      onBlur={() => window.setTimeout(() => setIsTopSearchFocused(false), 160)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          setIsTopSearchFocused(false);
-                          e.currentTarget.blur();
-                        }
-                      }}
-                      onChange={(e) => setTopSearchInput(e.target.value)}
-                      placeholder={t.searchPlaceholder}
-                      aria-label={t.searchPlaceholder}
-                      className="w-full pl-9 pr-3 min-h-[38px] py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-strong)] transition-colors"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                    <button
-                      type="submit"
-                      className="flex-1 sm:flex-none min-h-[38px] px-4 py-1.5 rounded-lg bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] hover:opacity-90 font-semibold text-xs transition-opacity flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                    >
-                      <Search size={14} />
-                      <span>{t.searchAction}</span>
-                    </button>
+                {currentTab !== 'search' && currentTab !== 'radio' ? (
+                  <form
+                    onSubmit={(e) => {
+                      setIsTopSearchFocused(false);
+                      handleTopSearchSubmit(e);
+                    }}
+                    className="flex items-center gap-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2 rounded-xl transition-colors"
+                    style={{ boxShadow: 'var(--card-shadow)' }}
+                  >
+                    <div className="relative flex-1 min-w-[160px]">
+                      <Search
+                        size={15}
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
+                      />
+                      <input
+                        ref={topSearchInputRef}
+                        type="text"
+                        data-testid="topbar-search-input"
+                        value={topSearchInput}
+                        onFocus={() => setIsTopSearchFocused(true)}
+                        onBlur={() => window.setTimeout(() => setIsTopSearchFocused(false), 160)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setIsTopSearchFocused(false);
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        onChange={(e) => setTopSearchInput(e.target.value)}
+                        placeholder={t.searchPlaceholder}
+                        aria-label={t.searchPlaceholder}
+                        className="w-full pl-9 pr-8 min-h-[38px] py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-strong)] transition-colors"
+                      />
+                      {topSearchInput && (
+                        <button
+                          type="button"
+                          onClick={() => setTopSearchInput('')}
+                          aria-label="Clear search"
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)] hover:text-[var(--text-primary)] cursor-pointer"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
 
                     {currentTab !== 'visualizer' && (
                       <button
@@ -3589,8 +3591,21 @@ export default function App() {
                         {t.playerStageToggle}
                       </button>
                     )}
+                  </form>
+                ) : (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsStageOpen((prev) => !prev)}
+                      className={`min-h-[36px] px-3 py-1.5 rounded-lg border text-xs font-medium shrink-0 cursor-pointer transition-colors ${isStageOpen
+                        ? 'bg-[var(--ink-solid)] border-transparent text-[var(--ink-solid-fg)]'
+                        : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                    >
+                      {t.playerStageToggle}
+                    </button>
                   </div>
-                </form>
+                )}
 
                 {isTopSearchFocused && (
                   <div
@@ -3952,145 +3967,96 @@ export default function App() {
                 })}
               </nav>
 
-            <main
-              ref={mainScrollRef}
-              className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 pt-2 pb-6 space-y-5 min-w-0 min-h-0"
-            >
+              <main
+                ref={mainScrollRef}
+                className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 pt-2 pb-6 space-y-5 min-w-0 min-h-0"
+              >
 
-              {/* Top Stage Player Area: 6 Separated & Optimized Modes */}
-              {isStageVisible && (
-                <div className="space-y-3" data-testid="stage-container">
-                  <div
-                    data-testid="stage-mode-bar"
-                    className="flex items-start sm:items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)]/85 backdrop-blur-md border border-[var(--border-subtle)]"
-                  >
+                {/* Top Stage Player Area: 6 Separated & Optimized Modes */}
+                {isStageVisible && (
+                  <div className="space-y-3" data-testid="stage-container">
                     <div
-                      className="flex flex-wrap sm:inline-flex items-center gap-1 sm:gap-0.5 p-1 sm:p-0.5 rounded-lg bg-[var(--bg-elevated)]/80 min-w-0 flex-1"
+                      data-testid="stage-mode-bar"
+                      className="flex items-start sm:items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)]/85 backdrop-blur-md border border-[var(--border-subtle)]"
                     >
-                      {(
-                        [
-                          { id: 'music-only', label: t.modeMusicOnly, icon: <Disc size={13} /> },
-                          { id: 'orbwave-only', label: t.modeOrbwaveOnly, icon: <Activity size={13} /> },
-                          { id: 'video-only', label: t.modeVideoOnly, icon: <Video size={13} /> },
-                          { id: 'lyrics-only', label: t.modeLyricsOnly, icon: <Mic2 size={13} /> },
-                          { id: 'video-lyric', label: t.modeVideoLyric, icon: <Video size={13} /> },
-                          { id: 'music-lyric', label: t.modeMusicLyric, icon: <Disc size={13} /> }
-                        ] as const
-                      ).map((modeOpt) => {
-                        const active = stageMode === modeOpt.id;
-                        return (
-                          <button
-                            key={modeOpt.id}
-                            type="button"
-                            data-stage-mode={modeOpt.id}
-                            onClick={() => handleSelectStageMode(modeOpt.id)}
-                            className={`px-2.5 py-1.5 sm:py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all cursor-pointer ${active
+                      <div
+                        className="flex flex-wrap sm:inline-flex items-center gap-1 sm:gap-0.5 p-1 sm:p-0.5 rounded-lg bg-[var(--bg-elevated)]/80 min-w-0 flex-1"
+                      >
+                        {(
+                          [
+                            { id: 'music-only', label: t.modeMusicOnly, icon: <Disc size={13} /> },
+                            { id: 'orbwave-only', label: t.modeOrbwaveOnly, icon: <Activity size={13} /> },
+                            { id: 'video-only', label: t.modeVideoOnly, icon: <Video size={13} /> },
+                            { id: 'lyrics-only', label: t.modeLyricsOnly, icon: <Mic2 size={13} /> },
+                            { id: 'video-lyric', label: t.modeVideoLyric, icon: <Video size={13} /> },
+                            { id: 'music-lyric', label: t.modeMusicLyric, icon: <Disc size={13} /> }
+                          ] as const
+                        ).map((modeOpt) => {
+                          const active = stageMode === modeOpt.id;
+                          return (
+                            <button
+                              key={modeOpt.id}
+                              type="button"
+                              data-stage-mode={modeOpt.id}
+                              onClick={() => handleSelectStageMode(modeOpt.id)}
+                              className={`px-2.5 py-1.5 sm:py-1 rounded-md text-[11px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all cursor-pointer ${active
                                 ? 'bg-[var(--bg-surface)] text-[var(--accent-text)] shadow-sm ring-1 ring-[var(--accent-border)]'
                                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)]'
-                              }`}
-                          >
-                            {modeOpt.icon}
-                            <span>{modeOpt.label}</span>
-                          </button>
-                        );
-                      })}
+                                }`}
+                            >
+                              {modeOpt.icon}
+                              <span>{modeOpt.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        type="button"
+                        data-testid="stage-close-btn"
+                        onClick={() => setIsStageOpen(false)}
+                        aria-label={t.closeLabel}
+                        title={t.closeLabel}
+                        className="w-7 h-7 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] inline-flex items-center justify-center shrink-0 cursor-pointer transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
 
-                    <button
-                      type="button"
-                      data-testid="stage-close-btn"
-                      onClick={() => setIsStageOpen(false)}
-                      aria-label={t.closeLabel}
-                      title={t.closeLabel}
-                      className="w-7 h-7 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] inline-flex items-center justify-center shrink-0 cursor-pointer transition-colors"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[260px] sm:min-h-[300px] xl:min-h-[400px]">
+                      {stageMode === 'music-only' && (
+                        <div className="lg:col-span-12" data-testid="stage-pane-music-only">
+                          <VinylCover
+                            coverUrl={currentTrack.coverUrl}
+                            title={currentTrack.title}
+                            artist={currentTrack.artist}
+                            album={currentTrack.album}
+                            genre={currentTrack.genre}
+                            isPlaying={isPlaying}
+                            lowCpuMode={lowCpuMode}
+                          />
+                        </div>
+                      )}
 
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-[260px] sm:min-h-[300px] xl:min-h-[400px]">
-                    {stageMode === 'music-only' && (
-                      <div className="lg:col-span-12" data-testid="stage-pane-music-only">
-                        <VinylCover
-                          coverUrl={currentTrack.coverUrl}
-                          title={currentTrack.title}
-                          artist={currentTrack.artist}
-                          album={currentTrack.album}
-                          genre={currentTrack.genre}
-                          isPlaying={isPlaying}
-                          lowCpuMode={lowCpuMode}
-                        />
-                      </div>
-                    )}
+                      {stageMode === 'orbwave-only' && (
+                        <div className="lg:col-span-12" data-testid="stage-pane-orbwave-only">
+                          <OrbwaveCanvas
+                            coverUrl={currentTrack.coverUrl}
+                            title={currentTrack.title}
+                            artist={currentTrack.artist}
+                            lyrics={currentTrack.lyrics}
+                            currentTime={currentTime}
+                            showLyricsOverlay={false}
+                            lowCpuMode={lowCpuMode}
+                            isPlaying={isPlaying}
+                          />
+                        </div>
+                      )}
 
-                    {stageMode === 'orbwave-only' && (
-                      <div className="lg:col-span-12" data-testid="stage-pane-orbwave-only">
-                        <OrbwaveCanvas
-                          coverUrl={currentTrack.coverUrl}
-                          title={currentTrack.title}
-                          artist={currentTrack.artist}
-                          lyrics={currentTrack.lyrics}
-                          currentTime={currentTime}
-                          showLyricsOverlay={false}
-                          lowCpuMode={lowCpuMode}
-                          isPlaying={isPlaying}
-                        />
-                      </div>
-                    )}
-
-                    {stageMode === 'video-only' && (
-                      <div
-                        className="lg:col-span-12 h-[300px] sm:h-[360px] xl:h-[430px]"
-                        data-testid="stage-pane-video-only"
-                      >
-                        <VideoPlayer
-                          track={currentTrack}
-                          isPlaying={isPlaying}
-                          currentTime={currentTime}
-                          hasLiveYouTubeStage={isYouTubeActive}
-                          isYtVisualReady={isYtVisualReady}
-                          ytStreamError={streamError}
-                          isResolvingVideo={resolvingVideoTrackId === currentTrack.id}
-                          videoCandidates={currentTrack.musicVideoCandidates || []}
-                          activeVideoId={activeYtVideoId || currentTrack.musicVideoId || currentTrack.youtubeId || ''}
-                          onSelectVideoCandidate={handleSelectVideoCandidate}
-                          onRetryVideo={() => void activateMusicVideoForTrack(currentTrack)}
-                          onSwitchToAudioMode={handleSwitchToAudioMaster}
-                          onRequestHostFullscreen={handleRequestVideoFullscreen}
-                          lowCpuMode={lowCpuMode}
-                          videoSlotRef={videoSlotRef}
-                        />
-                      </div>
-                    )}
-
-                    {stageMode === 'lyrics-only' && (
-                      <div
-                        className="lg:col-span-12 h-[340px] sm:h-[380px] xl:h-[430px]"
-                        data-testid="stage-pane-lyrics-only"
-                      >
-                        <LiveLyrics
-                          lyrics={currentTrack.lyrics}
-                          currentTime={currentTime}
-                          onSeek={handleSeek}
-                          title={currentTrack.title}
-                          artist={currentTrack.artist}
-                          lyricsStatus={lyricsStatus}
-                          lyricsSynced={lyricsSynced}
-                          lyricsOffset={currentLyricsOffset}
-                          trackDuration={currentTrack.duration}
-                          onRetryLyrics={handleRetryCurrentLyrics}
-                          onOpenLyricCard={handleOpenLyricCard}
-                          onOpenArtist={handleOpenArtistSpotlight}
-                          fullWidth={true}
-                        />
-                      </div>
-                    )}
-
-                    {stageMode === 'video-lyric' && (
-                      <>
+                      {stageMode === 'video-only' && (
                         <div
-                          className="lg:col-span-7 h-[280px] sm:h-[340px] xl:h-[400px]"
-                          data-testid="stage-pane-video-lyric-video"
+                          className="lg:col-span-12 h-[300px] sm:h-[360px] xl:h-[430px]"
+                          data-testid="stage-pane-video-only"
                         >
                           <VideoPlayer
                             track={currentTrack}
@@ -4110,44 +4076,12 @@ export default function App() {
                             videoSlotRef={videoSlotRef}
                           />
                         </div>
-                        <div
-                          className="lg:col-span-5 h-[300px] sm:h-[340px] xl:h-[400px]"
-                          data-testid="stage-pane-video-lyric-lyrics"
-                        >
-                          <LiveLyrics
-                            lyrics={currentTrack.lyrics}
-                            currentTime={currentTime}
-                            onSeek={handleSeek}
-                            title={currentTrack.title}
-                            artist={currentTrack.artist}
-                            lyricsStatus={lyricsStatus}
-                            lyricsSynced={lyricsSynced}
-                            lyricsOffset={currentLyricsOffset}
-                            trackDuration={currentTrack.duration}
-                            onRetryLyrics={handleRetryCurrentLyrics}
-                            onOpenLyricCard={handleOpenLyricCard}
-                            onOpenArtist={handleOpenArtistSpotlight}
-                          />
-                        </div>
-                      </>
-                    )}
+                      )}
 
-                    {stageMode === 'music-lyric' && (
-                      <>
-                        <div className="lg:col-span-7" data-testid="stage-pane-music-lyric-music">
-                          <VinylCover
-                            coverUrl={currentTrack.coverUrl}
-                            title={currentTrack.title}
-                            artist={currentTrack.artist}
-                            album={currentTrack.album}
-                            genre={currentTrack.genre}
-                            isPlaying={isPlaying}
-                            lowCpuMode={lowCpuMode}
-                          />
-                        </div>
+                      {stageMode === 'lyrics-only' && (
                         <div
-                          className="lg:col-span-5 h-[300px] sm:h-[340px] xl:h-[400px]"
-                          data-testid="stage-pane-music-lyric-lyrics"
+                          className="lg:col-span-12 h-[340px] sm:h-[380px] xl:h-[430px]"
+                          data-testid="stage-pane-lyrics-only"
                         >
                           <LiveLyrics
                             lyrics={currentTrack.lyrics}
@@ -4162,241 +4096,322 @@ export default function App() {
                             onRetryLyrics={handleRetryCurrentLyrics}
                             onOpenLyricCard={handleOpenLyricCard}
                             onOpenArtist={handleOpenArtistSpotlight}
+                            fullWidth={true}
                           />
                         </div>
-                      </>
-                    )}
+                      )}
+
+                      {stageMode === 'video-lyric' && (
+                        <>
+                          <div
+                            className="lg:col-span-7 h-[280px] sm:h-[340px] xl:h-[400px]"
+                            data-testid="stage-pane-video-lyric-video"
+                          >
+                            <VideoPlayer
+                              track={currentTrack}
+                              isPlaying={isPlaying}
+                              currentTime={currentTime}
+                              hasLiveYouTubeStage={isYouTubeActive}
+                              isYtVisualReady={isYtVisualReady}
+                              ytStreamError={streamError}
+                              isResolvingVideo={resolvingVideoTrackId === currentTrack.id}
+                              videoCandidates={currentTrack.musicVideoCandidates || []}
+                              activeVideoId={activeYtVideoId || currentTrack.musicVideoId || currentTrack.youtubeId || ''}
+                              onSelectVideoCandidate={handleSelectVideoCandidate}
+                              onRetryVideo={() => void activateMusicVideoForTrack(currentTrack)}
+                              onSwitchToAudioMode={handleSwitchToAudioMaster}
+                              onRequestHostFullscreen={handleRequestVideoFullscreen}
+                              lowCpuMode={lowCpuMode}
+                              videoSlotRef={videoSlotRef}
+                            />
+                          </div>
+                          <div
+                            className="lg:col-span-5 h-[300px] sm:h-[340px] xl:h-[400px]"
+                            data-testid="stage-pane-video-lyric-lyrics"
+                          >
+                            <LiveLyrics
+                              lyrics={currentTrack.lyrics}
+                              currentTime={currentTime}
+                              onSeek={handleSeek}
+                              title={currentTrack.title}
+                              artist={currentTrack.artist}
+                              lyricsStatus={lyricsStatus}
+                              lyricsSynced={lyricsSynced}
+                              lyricsOffset={currentLyricsOffset}
+                              trackDuration={currentTrack.duration}
+                              onRetryLyrics={handleRetryCurrentLyrics}
+                              onOpenLyricCard={handleOpenLyricCard}
+                              onOpenArtist={handleOpenArtistSpotlight}
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {stageMode === 'music-lyric' && (
+                        <>
+                          <div className="lg:col-span-7" data-testid="stage-pane-music-lyric-music">
+                            <VinylCover
+                              coverUrl={currentTrack.coverUrl}
+                              title={currentTrack.title}
+                              artist={currentTrack.artist}
+                              album={currentTrack.album}
+                              genre={currentTrack.genre}
+                              isPlaying={isPlaying}
+                              lowCpuMode={lowCpuMode}
+                            />
+                          </div>
+                          <div
+                            className="lg:col-span-5 h-[300px] sm:h-[340px] xl:h-[400px]"
+                            data-testid="stage-pane-music-lyric-lyrics"
+                          >
+                            <LiveLyrics
+                              lyrics={currentTrack.lyrics}
+                              currentTime={currentTime}
+                              onSeek={handleSeek}
+                              title={currentTrack.title}
+                              artist={currentTrack.artist}
+                              lyricsStatus={lyricsStatus}
+                              lyricsSynced={lyricsSynced}
+                              lyricsOffset={currentLyricsOffset}
+                              trackDuration={currentTrack.duration}
+                              onRetryLyrics={handleRetryCurrentLyrics}
+                              onOpenLyricCard={handleOpenLyricCard}
+                              onOpenArtist={handleOpenArtistSpotlight}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
+                )}
+
+                {/* Sub-Views by Tab */}
+                <div className="flex-1 pb-6 min-w-0">
+                  {currentTab === 'music' && (
+                    <MusicView
+                      tracks={TRACK_CATALOG}
+                      currentTrack={currentTrack}
+                      resolvingTrackId={resolvingTrackId}
+                      onSelectTrack={handleSelectTrack}
+                      onNavigateSearch={navigateToSearch}
+                      likedTracks={recState.likedTracks}
+                      recentTracks={recState.recentTracks}
+                      playlists={recState.playlists}
+                      followedArtists={followedArtists}
+                      likedTrackIds={likedTrackIds}
+                      onToggleLike={handleToggleLike}
+                      onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+                      onPlayNext={handlePlayNext}
+                      onAddToQueue={handleAddToQueue}
+                      onStartRadio={handleStartRadio}
+                      onOpenArtist={handleOpenArtistSpotlight}
+                      onPlayTrackList={handlePlayTrackList}
+                      onSaveCatalogAlbum={handleSaveCatalogAlbum}
+                      activeMood={activeMood}
+                      onSelectMood={handleSelectMood}
+                    />
+                  )}
+
+                  {currentTab === 'discover' && (
+                    <DiscoverView
+                      tracks={TRACK_CATALOG}
+                      currentTrack={currentTrack}
+                      isPlaying={isPlaying}
+                      resolvingTrackId={resolvingTrackId}
+                      onSelectTrack={handleSelectTrack}
+                      onTogglePlay={handleTogglePlay}
+                      onUploadTrack={handleUploadTrack}
+                      onUpdateLyrics={(_trackId, lyrics) => handleUpdateTrackLyrics(lyrics)}
+                      onNavigateSearch={navigateToSearch}
+                      likedTracks={recState.likedTracks}
+                      recentTracks={recState.recentTracks}
+                      playlists={recState.playlists}
+                      likedTrackIds={likedTrackIds}
+                      onToggleLike={handleToggleLike}
+                      onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+                      onPlayNext={handlePlayNext}
+                      onAddToQueue={handleAddToQueue}
+                      onStartRadio={handleStartRadio}
+                      onOpenArtist={handleOpenArtistSpotlight}
+                      lowCpuMode={lowCpuMode}
+                      onPlayTrackList={handlePlayTrackList}
+                      followedArtists={followedArtists}
+                      onCreatePlaylist={(name) => handleCreatePlaylist(name)}
+                      onAddTrackToPlaylist={handleAddTrackToPlaylist}
+                      onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
+                      onDeletePlaylist={handleDeletePlaylist}
+                      onSaveCatalogAlbum={handleSaveCatalogAlbum}
+                      activeMood={activeMood}
+                      onSelectMood={handleSelectMood}
+                      onRecordSearch={handleRecordSearch}
+                      onNavigateTab={handleTabChange}
+                    />
+                  )}
+
+                  {currentTab === 'vibe' && (
+                    <VibeFeedView
+                      tracks={queue.length > 0 ? queue : TRACK_CATALOG}
+                      currentTrack={currentTrack}
+                      isPlaying={isPlaying}
+                      currentTime={currentTime}
+                      duration={currentTrack.duration}
+                      lyrics={currentTrack.lyrics || []}
+                      lyricsSynced={lyricsSynced}
+                      lyricsOffset={currentLyricsOffset}
+                      isLiked={likedTrackIds.has(currentTrack.id)}
+                      isSavedOffline={isTrackSavedOffline(offlineAudioKeys, currentTrack.audioUrl)}
+                      canSaveOffline={isCacheableAudioUrl(currentTrack.audioUrl)}
+                      vocalReductionEnabled={vocalReductionEnabled}
+                      lowCpuMode={lowCpuMode}
+                      onSelectTrack={(tr) => handleSelectTrack(tr)}
+                      onTogglePlay={handleTogglePlay}
+                      onNext={() => handleNext(false)}
+                      onPrevious={handlePrev}
+                      onSeek={handleSeek}
+                      onToggleLike={(id) => {
+                        const targetTrack =
+                          queue.find((q) => q.id === id) ||
+                          TRACK_CATALOG.find((c) => c.id === id) ||
+                          currentTrack;
+                        handleToggleLike(targetTrack);
+                      }}
+                      onPlayNext={handlePlayNext}
+                      onToggleVocalReduction={handleToggleVocalReduction}
+                      onToggleSaveOffline={handleToggleSaveOffline}
+                      onShareTrack={handleShareTrack}
+                      onOpenLyricCard={handleOpenLyricCard}
+                      onOpenArtist={handleOpenArtistSpotlight}
+                      onWatchVideo={() => {
+                        setCurrentTab('discover');
+                        handleSelectStageMode('video-lyric');
+                      }}
+                    />
+                  )}
+
+                  {currentTab === 'favorites' && (
+                    <FavoritesView
+                      favorites={favoritesList}
+                      albums={recState.playlists}
+                      followedArtists={followedArtists}
+                      recentTracks={recState.recentTracks}
+                      profile={listenerProfile}
+                      stats={effectiveStats}
+                      isCloudConnected={cloudConnected}
+                      currentTrack={currentTrack}
+                      onSelectTrack={handleSelectTrack}
+                      onPlayTrackList={handlePlayTrackList}
+                      onToggleLike={handleToggleLike}
+                      onTogglePin={handleTogglePin}
+                      onSaveNote={handleSaveFavoriteNote}
+                      onOpenAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+                      onAddToQueue={handleAddToQueue}
+                      onStartRadio={handleStartRadio}
+                      onCreateAlbum={(name, desc) => handleCreatePlaylist(name, desc)}
+                      onDeleteAlbum={handleDeletePlaylist}
+                      onRemoveTrackFromAlbum={handleRemoveTrackFromPlaylist}
+                      onSaveCatalogAlbum={handleSaveCatalogAlbum}
+                      onToggleFollowArtist={handleToggleFollowArtist}
+                      onSearchArtist={(name) => handleOpenArtistSpotlight(name)}
+                      onUpdateProfile={handleUpdateProfile}
+                      onCloneSharedAlbum={handleCloneSharedAlbum}
+                      onImportLibrary={handleImportLibrary}
+                      onClearHistory={handleClearHistory}
+                      onOpenBlend={() => handleTabChange('blend')}
+                    />
+                  )}
+
+                  {currentTab === 'blend' && (
+                    <BlendView
+                      listenerName={listenerProfile.displayName}
+                      favorites={favoritesList}
+                      recentTracks={recState.recentTracks}
+                      catalogTracks={TRACK_CATALOG}
+                      blends={blends}
+                      initialBlendCode={initialBlendCode}
+                      isCloudConnected={cloudConnected}
+                      currentTrack={currentTrack}
+                      onSelectTrack={handleSelectTrack}
+                      onPlayTrackList={handlePlayTrackList}
+                      onRefreshBlends={handleRefreshBlends}
+                      onSaveBlendAsAlbum={handleSaveBlendAsAlbum}
+                      onOpenAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+                      onToggleLike={handleToggleLike}
+                      likedTrackIds={likedTrackIds}
+                    />
+                  )}
+
+                  {currentTab === 'search' && (
+                    <SearchView
+                      curatedTracks={TRACK_CATALOG}
+                      currentTrack={currentTrack}
+                      isPlaying={isPlaying}
+                      resolvingTrackId={resolvingTrackId}
+                      externalQuery={externalSearchQuery}
+                      externalMode={externalSearchMode}
+                      externalSelectedAlbum={externalSelectedAlbum}
+                      externalSelectedPlaylist={externalSelectedPlaylist}
+                      externalTrigger={externalSearchTrigger}
+                      searchHistory={searchHistory}
+                      onRecordSearch={handleRecordSearch}
+                      onDeleteSearchHistory={handleDeleteSearchHistory}
+                      onClearSearchHistory={handleClearSearchHistory}
+                      activeMood={activeMood}
+                      onSelectMood={handleSelectMood}
+                      onSelectTrack={handleSelectTrack}
+                      onTogglePlay={handleTogglePlay}
+                      onUpdateLyrics={(lyrics) => handleUpdateTrackLyrics(lyrics, currentTrack.id)}
+                      likedTrackIds={likedTrackIds}
+                      onToggleLike={handleToggleLike}
+                      onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
+                      onPlayNext={handlePlayNext}
+                      onAddToQueue={handleAddToQueue}
+                      onStartRadio={handleStartRadio}
+                      onOpenArtist={handleOpenArtistSpotlight}
+                      onPlayTrackList={handlePlayTrackList}
+                    />
+                  )}
+
+                  {currentTab === 'radio' && (
+                    <RadioView
+                      stations={RADIO_STATIONS}
+                      onSelectStation={handleSelectRadio}
+                      onSearchStations={searchLiveRadioStations}
+                      activeStationId={
+                        activeRadioStationId ||
+                        RADIO_STATIONS.find((s) => s.currentTrack.id === currentTrack.id)?.id
+                      }
+                    />
+                  )}
+
+                  {currentTab === 'podcasts' && (
+                    <PodcastsView
+                      podcasts={PODCAST_CATALOG}
+                      onSelectPodcast={handleSelectPodcast}
+                      onSearchPodcasts={searchPodcastsOnline}
+                      activeEpisodeId={currentTrack.id}
+                    />
+                  )}
+
+                  {currentTab === 'visualizer' && (
+                    <VisualizerStudioView
+                      currentTrack={currentTrack}
+                      currentTime={currentTime}
+                      lowCpuMode={lowCpuMode}
+                      isPlaying={isPlaying}
+                    />
+                  )}
+
+                  {currentTab === 'proofOfStream' && (
+                    <ProofOfStreamView
+                      currentTrackTitle={currentTrack.title}
+                      currentArtist={currentTrack.artist}
+                      isPlaying={isPlaying}
+                      listenerId={listenerProfile.listenerId}
+                      listenerName={listenerProfile.displayName}
+                    />
+                  )}
                 </div>
-              )}
-
-              {/* Sub-Views by Tab */}
-              <div className="flex-1 pb-6 min-w-0">
-                {currentTab === 'music' && (
-                  <MusicView
-                    tracks={TRACK_CATALOG}
-                    currentTrack={currentTrack}
-                    resolvingTrackId={resolvingTrackId}
-                    onSelectTrack={handleSelectTrack}
-                    onNavigateSearch={navigateToSearch}
-                    likedTracks={recState.likedTracks}
-                    recentTracks={recState.recentTracks}
-                    playlists={recState.playlists}
-                    followedArtists={followedArtists}
-                    likedTrackIds={likedTrackIds}
-                    onToggleLike={handleToggleLike}
-                    onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
-                    onPlayNext={handlePlayNext}
-                    onAddToQueue={handleAddToQueue}
-                    onStartRadio={handleStartRadio}
-                    onOpenArtist={handleOpenArtistSpotlight}
-                    onPlayTrackList={handlePlayTrackList}
-                    onSaveCatalogAlbum={handleSaveCatalogAlbum}
-                    activeMood={activeMood}
-                    onSelectMood={handleSelectMood}
-                  />
-                )}
-
-                {currentTab === 'discover' && (
-                  <DiscoverView
-                    tracks={TRACK_CATALOG}
-                    currentTrack={currentTrack}
-                    isPlaying={isPlaying}
-                    resolvingTrackId={resolvingTrackId}
-                    onSelectTrack={handleSelectTrack}
-                    onTogglePlay={handleTogglePlay}
-                    onUploadTrack={handleUploadTrack}
-                    onUpdateLyrics={(_trackId, lyrics) => handleUpdateTrackLyrics(lyrics)}
-                    onNavigateSearch={navigateToSearch}
-                    likedTracks={recState.likedTracks}
-                    recentTracks={recState.recentTracks}
-                    playlists={recState.playlists}
-                    likedTrackIds={likedTrackIds}
-                    onToggleLike={handleToggleLike}
-                    onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
-                    onPlayNext={handlePlayNext}
-                    onAddToQueue={handleAddToQueue}
-                    onStartRadio={handleStartRadio}
-                    onOpenArtist={handleOpenArtistSpotlight}
-                    lowCpuMode={lowCpuMode}
-                    onPlayTrackList={handlePlayTrackList}
-                    followedArtists={followedArtists}
-                    onCreatePlaylist={(name) => handleCreatePlaylist(name)}
-                    onAddTrackToPlaylist={handleAddTrackToPlaylist}
-                    onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
-                    onDeletePlaylist={handleDeletePlaylist}
-                    onSaveCatalogAlbum={handleSaveCatalogAlbum}
-                    activeMood={activeMood}
-                    onSelectMood={handleSelectMood}
-                    onRecordSearch={handleRecordSearch}
-                    onNavigateTab={handleTabChange}
-                  />
-                )}
-
-                {currentTab === 'vibe' && (
-                  <VibeFeedView
-                    tracks={queue.length > 0 ? queue : TRACK_CATALOG}
-                    currentTrack={currentTrack}
-                    isPlaying={isPlaying}
-                    currentTime={currentTime}
-                    duration={currentTrack.duration}
-                    lyrics={currentTrack.lyrics || []}
-                    lyricsSynced={lyricsSynced}
-                    lyricsOffset={currentLyricsOffset}
-                    isLiked={likedTrackIds.has(currentTrack.id)}
-                    isSavedOffline={isTrackSavedOffline(offlineAudioKeys, currentTrack.audioUrl)}
-                    canSaveOffline={isCacheableAudioUrl(currentTrack.audioUrl)}
-                    vocalReductionEnabled={vocalReductionEnabled}
-                    lowCpuMode={lowCpuMode}
-                    onSelectTrack={(tr) => handleSelectTrack(tr)}
-                    onTogglePlay={handleTogglePlay}
-                    onNext={() => handleNext(false)}
-                    onPrevious={handlePrev}
-                    onSeek={handleSeek}
-                    onToggleLike={(id) => {
-                      const targetTrack =
-                        queue.find((q) => q.id === id) ||
-                        TRACK_CATALOG.find((c) => c.id === id) ||
-                        currentTrack;
-                      handleToggleLike(targetTrack);
-                    }}
-                    onPlayNext={handlePlayNext}
-                    onToggleVocalReduction={handleToggleVocalReduction}
-                    onToggleSaveOffline={handleToggleSaveOffline}
-                    onShareTrack={handleShareTrack}
-                    onOpenLyricCard={handleOpenLyricCard}
-                    onOpenArtist={handleOpenArtistSpotlight}
-                    onWatchVideo={() => {
-                      setCurrentTab('discover');
-                      handleSelectStageMode('video-lyric');
-                    }}
-                  />
-                )}
-
-                {currentTab === 'favorites' && (
-                  <FavoritesView
-                    favorites={favoritesList}
-                    albums={recState.playlists}
-                    followedArtists={followedArtists}
-                    recentTracks={recState.recentTracks}
-                    profile={listenerProfile}
-                    stats={effectiveStats}
-                    isCloudConnected={cloudConnected}
-                    currentTrack={currentTrack}
-                    onSelectTrack={handleSelectTrack}
-                    onPlayTrackList={handlePlayTrackList}
-                    onToggleLike={handleToggleLike}
-                    onTogglePin={handleTogglePin}
-                    onSaveNote={handleSaveFavoriteNote}
-                    onOpenAddToAlbum={(tr) => setAlbumModalTrack(tr)}
-                    onAddToQueue={handleAddToQueue}
-                    onStartRadio={handleStartRadio}
-                    onCreateAlbum={(name, desc) => handleCreatePlaylist(name, desc)}
-                    onDeleteAlbum={handleDeletePlaylist}
-                    onRemoveTrackFromAlbum={handleRemoveTrackFromPlaylist}
-                    onSaveCatalogAlbum={handleSaveCatalogAlbum}
-                    onToggleFollowArtist={handleToggleFollowArtist}
-                    onSearchArtist={(name) => handleOpenArtistSpotlight(name)}
-                    onUpdateProfile={handleUpdateProfile}
-                    onCloneSharedAlbum={handleCloneSharedAlbum}
-                    onImportLibrary={handleImportLibrary}
-                    onClearHistory={handleClearHistory}
-                    onOpenBlend={() => handleTabChange('blend')}
-                  />
-                )}
-
-                {currentTab === 'blend' && (
-                  <BlendView
-                    listenerName={listenerProfile.displayName}
-                    favorites={favoritesList}
-                    recentTracks={recState.recentTracks}
-                    catalogTracks={TRACK_CATALOG}
-                    blends={blends}
-                    initialBlendCode={initialBlendCode}
-                    isCloudConnected={cloudConnected}
-                    currentTrack={currentTrack}
-                    onSelectTrack={handleSelectTrack}
-                    onPlayTrackList={handlePlayTrackList}
-                    onRefreshBlends={handleRefreshBlends}
-                    onSaveBlendAsAlbum={handleSaveBlendAsAlbum}
-                    onOpenAddToAlbum={(tr) => setAlbumModalTrack(tr)}
-                    onToggleLike={handleToggleLike}
-                    likedTrackIds={likedTrackIds}
-                  />
-                )}
-
-                {currentTab === 'search' && (
-                  <SearchView
-                    curatedTracks={TRACK_CATALOG}
-                    currentTrack={currentTrack}
-                    isPlaying={isPlaying}
-                    resolvingTrackId={resolvingTrackId}
-                    externalQuery={externalSearchQuery}
-                    externalMode={externalSearchMode}
-                    externalSelectedAlbum={externalSelectedAlbum}
-                    externalSelectedPlaylist={externalSelectedPlaylist}
-                    externalTrigger={externalSearchTrigger}
-                    searchHistory={searchHistory}
-                    onRecordSearch={handleRecordSearch}
-                    onDeleteSearchHistory={handleDeleteSearchHistory}
-                    onClearSearchHistory={handleClearSearchHistory}
-                    activeMood={activeMood}
-                    onSelectMood={handleSelectMood}
-                    onSelectTrack={handleSelectTrack}
-                    onTogglePlay={handleTogglePlay}
-                    onUpdateLyrics={(lyrics) => handleUpdateTrackLyrics(lyrics, currentTrack.id)}
-                    likedTrackIds={likedTrackIds}
-                    onToggleLike={handleToggleLike}
-                    onAddToAlbum={(tr) => setAlbumModalTrack(tr)}
-                    onPlayNext={handlePlayNext}
-                    onAddToQueue={handleAddToQueue}
-                    onStartRadio={handleStartRadio}
-                    onOpenArtist={handleOpenArtistSpotlight}
-                    onPlayTrackList={handlePlayTrackList}
-                  />
-                )}
-
-                {currentTab === 'radio' && (
-                  <RadioView
-                    stations={RADIO_STATIONS}
-                    onSelectStation={handleSelectRadio}
-                    onSearchStations={searchLiveRadioStations}
-                    activeStationId={
-                      activeRadioStationId ||
-                      RADIO_STATIONS.find((s) => s.currentTrack.id === currentTrack.id)?.id
-                    }
-                  />
-                )}
-
-                {currentTab === 'podcasts' && (
-                  <PodcastsView
-                    podcasts={PODCAST_CATALOG}
-                    onSelectPodcast={handleSelectPodcast}
-                    onSearchPodcasts={searchPodcastsOnline}
-                    activeEpisodeId={currentTrack.id}
-                  />
-                )}
-
-                {currentTab === 'visualizer' && (
-                  <VisualizerStudioView
-                    currentTrack={currentTrack}
-                    currentTime={currentTime}
-                    lowCpuMode={lowCpuMode}
-                    isPlaying={isPlaying}
-                  />
-                )}
-
-                {currentTab === 'proofOfStream' && (
-                  <ProofOfStreamView
-                    currentTrackTitle={currentTrack.title}
-                    currentArtist={currentTrack.artist}
-                    isPlaying={isPlaying}
-                    listenerId={listenerProfile.listenerId}
-                    listenerName={listenerProfile.displayName}
-                  />
-                )}
-              </div>
-            </main>
+              </main>
             </div>
 
             {/* Right Sidebar Queue & Lyrics Panel */}
@@ -4433,10 +4448,10 @@ export default function App() {
                 (!isStageVisible || (stageMode !== 'video-only' && stageMode !== 'video-lyric')) &&
                 Boolean(
                   activeYtVideoId &&
-                    (currentTrack.musicVideoId === activeYtVideoId ||
-                      (currentTrack.musicVideoCandidates || []).some(
-                        (c) => c.videoId === activeYtVideoId
-                      ))
+                  (currentTrack.musicVideoId === activeYtVideoId ||
+                    (currentTrack.musicVideoCandidates || []).some(
+                      (c) => c.videoId === activeYtVideoId
+                    ))
                 )
               }
               onExpandVideoStage={() => handleSelectStageMode('video-lyric')}
@@ -4646,8 +4661,8 @@ export default function App() {
         isFollowed={
           artistSpotlightName
             ? followedArtists.some(
-                (a) => a.name.toLowerCase() === artistSpotlightName.toLowerCase()
-              )
+              (a) => a.name.toLowerCase() === artistSpotlightName.toLowerCase()
+            )
             : false
         }
         likedTrackIds={likedTrackIds}

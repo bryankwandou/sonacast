@@ -8,6 +8,7 @@ import {
   isRecognizedCatalogArtist,
   normalizeBaseTitle,
   resolveGenreFamily,
+  SONIC_CLASS_PROFILES,
   type AudioFeatureVector,
   type SonicClassId,
   type TrackLanguageRegion
@@ -178,8 +179,6 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
     tempoNorm: 0
   };
   let vecWeightTotal = 0;
-  let bpmSum = 0;
-  let bpmWeightSum = 0;
 
   const absorbTaste = (track: Track, weight: number) => {
     const a = primaryArtist(track.artist);
@@ -199,9 +198,6 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
     vecAccum.instrumentalness += v.instrumentalness * weight;
     vecAccum.tempoNorm += v.tempoNorm * weight;
     vecWeightTotal += weight;
-
-    bpmSum += (track.bpm || 116) * weight;
-    bpmWeightSum += weight;
   };
 
   for (const t of input.likedTracks) absorbTaste(t, 4);
@@ -221,7 +217,6 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
     absorbTaste(anchorTrack, 2);
   }
 
-  const targetBpm = bpmWeightSum > 0 ? Math.round(bpmSum / bpmWeightSum) : 116;
   const centroidVec: AudioFeatureVector | null =
     vecWeightTotal > 0
       ? {
@@ -237,12 +232,7 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
   const dominantClassId =
     Array.from(classAffinity.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ||
     (anchorTrack ? classifyTrackTier(anchorTrack).classId : 'classic_global_legend');
-  const dominantClassProfile = classifyTrackTier({
-    title: anchorTrack?.title || '',
-    artist: anchorTrack?.artist || '',
-    genre: anchorTrack?.genre || '',
-    bpm: targetBpm
-  });
+  const dominantClassProfile = SONIC_CLASS_PROFILES[dominantClassId];
   const dominantRegion =
     Array.from(regionAffinity.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ||
     (anchorTrack ? inferTrackLanguageRegion(anchorTrack) : 'en');
@@ -299,7 +289,8 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
   const mix1Limit = combinedPool.length < 28 ? 6 : 10;
   const mix1Tracks = interleaveOrderedUnique(dailyMixScored, mix1Limit, usedIdsAcrossMixes, usedTitlesAcrossMixes);
   const topArtists1 = Array.from(new Set(mix1Tracks.slice(0, 4).map((t) => t.artist))).slice(0, 3);
-  const mix1Subtitle = `${dominantClassProfile.classLabel} · ${topArtists1.slice(0, 2).join(', ')}`;
+  const mix1LeadClass = mix1Tracks[0] ? classifyTrackTier(mix1Tracks[0]) : dominantClassProfile;
+  const mix1Subtitle = `${mix1LeadClass.classLabel} · ${topArtists1.slice(0, 2).join(', ')}`;
 
   // MIX 2: Indonesian Cluster Mix (if user's Mix 1 is already Indo Pop, pivot Mix 2 cleanly to Indo Indie & Band; otherwise Hot Hits Indonesia)
   const mix2FocusIndie = dominantRegion === 'id' && dominantClassId === 'indo_pop_ballad';

@@ -34,12 +34,10 @@ import {
   ChevronUp,
   Clock,
   Disc3,
-  Globe,
   ListMusic,
   Loader2,
   Play,
   Plus,
-  Search,
   Shuffle,
   Sparkles,
   TrendingUp,
@@ -125,7 +123,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onTogglePlay: _onTogglePlay,
   onUploadTrack,
   onUpdateLyrics,
-  onNavigateSearch,
+  onNavigateSearch: _onNavigateSearch,
   likedTracks = [],
   recentTracks = [],
   playlists = [],
@@ -788,54 +786,12 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </div>
           )}
 
-          {/* Compact Local Shelf Filter + Artist Chips */}
+          {/* Compact Artist Chips Filter (Single Global Search Bar stays cleanly in Top Header) */}
           <div className="space-y-2.5">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <div className="relative flex-1">
-                <Search
-                  size={14}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]"
-                />
-                <input
-                  type="text"
-                  value={inlineQuery}
-                  onChange={(e) => setInlineQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && inlineQuery.trim() && filteredMasters.length === 0 && onNavigateSearch) {
-                      onNavigateSearch(inlineQuery.trim());
-                    }
-                  }}
-                  placeholder={t.filterBelowPlaceholder}
-                  className="w-full h-9 pl-9 pr-8 rounded-full bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-emerald)]"
-                />
-                {inlineQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setInlineQuery('')}
-                    aria-label="Clear filter"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)] hover:text-[var(--text-primary)] cursor-pointer"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-              {onNavigateSearch && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateSearch(inlineQuery.trim() || 'Queen')}
-                  className="h-9 px-3.5 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  {isSearchingInline ? (
-                    <Loader2 size={13} className="animate-spin text-[var(--accent-text)]" />
-                  ) : (
-                    <Globe size={13} className="text-[var(--accent-text)]" />
-                  )}
-                  <span>{t.navSearch}</span>
-                </button>
-              )}
-            </div>
-
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+              {isSearchingInline && (
+                <Loader2 size={14} className="animate-spin text-[var(--accent-text)] shrink-0 mr-1" />
+              )}
               <button
                 type="button"
                 onClick={() => {
