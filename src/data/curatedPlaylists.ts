@@ -560,6 +560,77 @@ export const CURATED_DAILY_PLAYLIST_DEFS: CuratedPlaylistDefinition[] = [
       'track-edsheeran-shapeofyou'
     ],
     seedArtists: ['Eminem', 'Kendrick Lamar', 'Daft Punk', 'Calvin Harris']
+  },
+  {
+    playlist: {
+      id: 'daily-pl-synth-pop',
+      title: 'Synth-Pop & After Hours',
+      creator: 'Sonacast Editorial',
+      coverUrl:
+        'https://cdn-images.dzcdn.net/images/cover/f520bf0be2e3cfc476824e75d20a164a/1000x1000-000000-80-0-0.jpg',
+      nbTracks: 8,
+      description: 'The Weeknd, Daft Punk, Dua Lipa & Bruno Mars'
+    },
+    trackIds: [
+      'track-weeknd-blinding',
+      'track-daftpunk-getlucky',
+      'track-dualipa-levitating',
+      'track-bruno-thatswhatilike',
+      'dz-2743578151'
+    ],
+    seedArtists: ['The Weeknd', 'Dua Lipa', 'Daft Punk', 'Calvin Harris']
+  },
+  {
+    playlist: {
+      id: 'daily-pl-acoustic-ballads',
+      title: 'Acoustic & Heartfelt Pop',
+      creator: 'Sonacast Editorial',
+      coverUrl:
+        'https://cdn-images.dzcdn.net/images/cover/5d284b31cb9ddeb1a0c79aede5a94e1c/1000x1000-000000-80-0-0.jpg',
+      nbTracks: 8,
+      description: 'Billie Eilish, Adele, Lukas Graham & Ed Sheeran'
+    },
+    trackIds: [
+      'dz-2801558052',
+      'track-adele-rollinginthedeep',
+      'track-lukas-7years',
+      'track-edsheeran-shapeofyou',
+      'track-postmalone-circles'
+    ],
+    seedArtists: ['Adele', 'Billie Eilish', 'Ed Sheeran', 'Sam Smith']
+  },
+  {
+    playlist: {
+      id: 'daily-pl-indo-nostalgia',
+      title: 'Nostalgia Band Indonesia',
+      creator: 'Sonacast Editorial',
+      coverUrl:
+        'https://cdn-images.dzcdn.net/images/cover/bb35130431c8c23b8b8f5010bd199f2b/500x500-000000-80-0-0.jpg',
+      nbTracks: 8,
+      description: 'Sheila On 7, Dewa 19, Payung Teduh & Hindia'
+    },
+    trackIds: ['dz-13248108', 'dz-14203655', 'dz-1333046382', 'dz-1452295082', 'dz-89506543'],
+    seedArtists: ['Sheila On 7', 'Dewa 19', 'NOAH', 'Padi']
+  },
+  {
+    playlist: {
+      id: 'daily-pl-modern-pop',
+      title: 'Global Pop Favorites',
+      creator: 'Sonacast Editorial',
+      coverUrl:
+        'https://cdn-images.dzcdn.net/images/cover/0fd6e3b346b959a8781ccfa89b63607a/1000x1000-000000-80-0-0.jpg',
+      nbTracks: 9,
+      description: 'Sabrina Carpenter, Taylor Swift, Billie Eilish & SZA'
+    },
+    trackIds: [
+      'dz-2743578151',
+      'dz-737967292',
+      'track-taylor-blankspace',
+      'dz-2801558052',
+      'track-billie-badguy',
+      'dz-2055292027'
+    ],
+    seedArtists: ['Sabrina Carpenter', 'Taylor Swift', 'Ariana Grande', 'Olivia Rodrigo']
   }
 ];
 

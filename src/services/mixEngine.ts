@@ -5,6 +5,7 @@ import {
   computeAudioVectorCosine,
   estimateAudioFeatures,
   inferTrackLanguageRegion,
+  isRecognizedCatalogArtist,
   normalizeBaseTitle,
   resolveGenreFamily,
   type AudioFeatureVector,
@@ -142,7 +143,15 @@ function matchesMoodBpm(track: Track, mood: MoodPreset): boolean {
  * strict language-region cohesion, 6D audio-feature similarity, and zero cross-card duplicates.
  */
 export function buildRecommendationMixes(input: BuildMixesInput): RecommendationMix[] {
-  const filteredCharts = input.chartTracks.filter(isMainstreamCohesiveChart);
+  const userTrackIds = new Set([
+    ...input.likedTracks.map((t) => t.id),
+    ...input.recentTracks.map((t) => t.id)
+  ]);
+  const filteredCharts = input.chartTracks.filter(
+    (t) =>
+      isMainstreamCohesiveChart(t) &&
+      (isRecognizedCatalogArtist(t) || userTrackIds.has(t.id))
+  );
   const combinedPool = dedupeTracks([
     ...input.likedTracks,
     ...input.recentTracks,
@@ -254,7 +263,18 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
     }
     return classOk && (reg === 'en' || (regionAffinity.get(reg) || 0) >= 2);
   });
-  const mix1Source = mix1Pool.length >= 6 ? mix1Pool : combinedPool;
+  const mix1RegionalPool = combinedPool.filter((t) => {
+    const cls = classifyTrackTier(t);
+    const reg = inferTrackLanguageRegion(t);
+    if (cls.isInstrumental !== dominantClassProfile.isInstrumental) return false;
+    return reg === dominantRegion || (reg !== 'id' && dominantRegion === 'en' && cls.classId !== 'kpop_idol' && cls.classId !== 'jpop_city_anime');
+  });
+  const mix1Source =
+    mix1Pool.length >= 4
+      ? mix1Pool
+      : mix1RegionalPool.length >= 4
+        ? mix1RegionalPool
+        : combinedPool;
   const dailyMixScored = [...mix1Source].sort((a, b) => {
     const scoreOf = (t: Track) => {
       let s = 0;
@@ -275,7 +295,8 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
     };
     return scoreOf(b) - scoreOf(a);
   });
-  const mix1Tracks = interleaveOrderedUnique(dailyMixScored, 10, usedIdsAcrossMixes, usedTitlesAcrossMixes);
+  const mix1Limit = combinedPool.length < 28 ? 6 : 10;
+  const mix1Tracks = interleaveOrderedUnique(dailyMixScored, mix1Limit, usedIdsAcrossMixes, usedTitlesAcrossMixes);
   const topArtists1 = Array.from(new Set(mix1Tracks.slice(0, 4).map((t) => t.artist))).slice(0, 3);
   const mix1Subtitle = `${dominantClassProfile.classLabel} · ${topArtists1.slice(0, 2).join(', ')}`;
 
@@ -304,18 +325,16 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
   const mix2Tracks = interleaveOrderedUnique(mix2Scored, 10, usedIdsAcrossMixes, usedTitlesAcrossMixes);
   const topArtists2 = Array.from(new Set(mix2Tracks.slice(0, 4).map((t) => t.artist))).slice(0, 3);
 
-  // MIX 3: Orthogonal Pop, Synthwave & R&B (or active Mood cluster) — strictly zero Mix 1/2 overlap!
+  // MIX 3: Cohesive Global Pop & R&B (or active Mood cluster) — zero viral remix or country noise
   const mix3Pool = combinedPool.filter((t) => {
     if (usedIdsAcrossMixes.has(t.id)) return false;
     if (input.mood !== 'all') {
       return matchesMoodBpm(t, input.mood);
     }
-    const cls = classifyTrackTier(t).classId;
-    return (
-      cls === 'modern_chart_pop' ||
-      cls === 'rnb_late_soul' ||
-      cls === 'electronic_dance_synth'
-    );
+    const cls = classifyTrackTier(t);
+    const reg = inferTrackLanguageRegion(t);
+    if (cls.isInstrumental || reg !== 'en') return false;
+    return cls.classId === 'modern_chart_pop' || cls.classId === 'rnb_late_soul';
   });
   const mix3Scored = [...mix3Pool].sort((a, b) => {
     const scoreOf = (t: Track) => {
@@ -331,22 +350,36 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
   const mix3Tracks = interleaveOrderedUnique(mix3Scored, 10, usedIdsAcrossMixes, usedTitlesAcrossMixes);
   const topArtists3 = Array.from(new Set(mix3Tracks.slice(0, 4).map((t) => t.artist))).slice(0, 3);
 
-  // MIX 4: Discovery Radar (unheard audio-feature-matched picks outside Mix 1-3, filtering out unrelated country spam)
-  const discoveryCandidates = combinedPool.filter((t) => {
+  // MIX 4: Discovery Radar (cohesive class & language radar; cold-start focuses strictly on East Asia studio hits)
+  const hasUserTaste = input.likedTracks.length > 0 || input.recentTracks.length > 0;
+  let discoveryCandidates = combinedPool.filter((t) => {
     if (usedIdsAcrossMixes.has(t.id) || recentIds.has(t.id) || likedIds.has(t.id)) return false;
-    const cls = classifyTrackTier(t).classId;
-    if (dominantRegion === 'id') {
-      return inferTrackLanguageRegion(t) === 'id' || cls === 'rnb_late_soul' || cls === 'kpop_idol';
+    const cls = classifyTrackTier(t);
+    const reg = inferTrackLanguageRegion(t);
+    if (!hasUserTaste) {
+      return cls.classId === 'kpop_idol' || cls.classId === 'jpop_city_anime';
     }
-    return (
-      cls === 'kpop_idol' ||
-      cls === 'jpop_city_anime' ||
-      cls === 'alt_indie_rock' ||
-      cls === 'modern_chart_pop' ||
-      cls === 'rnb_late_soul' ||
-      cls === 'piano_neoclassical'
-    );
+    if (cls.isInstrumental !== dominantClassProfile.isInstrumental) return false;
+    const classOk =
+      cls.classId === dominantClassId ||
+      dominantClassProfile.compatibleClasses.includes(cls.classId);
+    if (!classOk) return false;
+    if (dominantRegion !== 'en' && dominantRegion !== 'instrumental') {
+      return reg === dominantRegion || reg === 'ko' || reg === 'ja';
+    }
+    return reg === dominantRegion || cls.classId === 'kpop_idol';
   });
+  if (hasUserTaste && discoveryCandidates.length < 4) {
+    discoveryCandidates = combinedPool.filter((t) => {
+      if (usedIdsAcrossMixes.has(t.id) || recentIds.has(t.id) || likedIds.has(t.id)) return false;
+      const cls = classifyTrackTier(t);
+      return (
+        cls.isInstrumental === dominantClassProfile.isInstrumental &&
+        cls.classId !== 'indo_koplo_dangdut' &&
+        cls.classId !== 'heavy_metal_hard'
+      );
+    });
+  }
   const discoveryScored = [...discoveryCandidates].sort((a, b) => {
     const simA = centroidVec ? computeAudioVectorCosine(centroidVec, estimateAudioFeatures(a)) : 0.75;
     const simB = centroidVec ? computeAudioVectorCosine(centroidVec, estimateAudioFeatures(b)) : 0.75;

@@ -13,7 +13,12 @@ import {
   findCuratedPlaylistDefinition,
   getCuratedSeedTracksByIds
 } from '../data/curatedPlaylists';
-import { classifyTrackTier, extractPrimaryArtist, inferTrackLanguageRegion } from './recommendationEngine';
+import {
+  classifyTrackTier,
+  extractPrimaryArtist,
+  inferTrackLanguageRegion,
+  isRecognizedCatalogArtist
+} from './recommendationEngine';
 
 export { FEATURED_DAILY_PLAYLISTS };
 
@@ -1811,10 +1816,10 @@ const DAILY_CHARTS_FEED_URLS = [
   'https://cdn.jsdelivr.net/gh/bryankwandou/sonacast@catalog-data/daily-charts.json',
   'https://raw.githubusercontent.com/bryankwandou/sonacast/catalog-data/daily-charts.json'
 ];
-const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v4';
+const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v5';
 const DAILY_CHARTS_TTL_MS = 12 * 60 * 60 * 1000;
-const NON_MUSIC_EXTRA_RE = /\b(sound\s*effects?|sfx|original\s+motion\s+picture|video\s+game|bandai|asmr|karaoke|lullaby)\b/i;
-const RETRO_PL_RE = /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal)\b/i;
+const NON_MUSIC_EXTRA_RE = /\b(sound\s*effects?|sfx|original\s+motion\s+picture|video\s+game|minecraft|bandai|asmr|karaoke|lullaby|gorguts|obscura|magical\s+strings|cynthoni|death\s+metal)\b/i;
+const RETRO_PL_RE = /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal|sleep|relaxation|meditation|calm\s+piano|study\s+lofi|chill\s+lofi|country)\b/i;
 
 function catalogItemsToTracks(items: CatalogApiItem[]): Track[] {
   const emptyIds = new Set<string>();
@@ -2507,9 +2512,13 @@ export async function fetchPlaylistTracksOnline(
           const classMatch =
             !anchorClass ||
             candCls.classId === anchorClass.classId ||
-            anchorClass.compatibleClasses.includes(candCls.classId);
+            (anchorClass.compatibleClasses.includes(candCls.classId) &&
+              candCls.isInstrumental === anchorClass.isInstrumental &&
+              isRecognizedCatalogArtist(cand));
           const langMatch =
-            anchorLang === 'en' || anchorLang === 'instrumental' ? true : candLang === anchorLang;
+            anchorLang === 'en' || anchorLang === 'instrumental'
+              ? inferTrackLanguageRegion(cand) === anchorLang || candCls.classId === anchorClass?.classId
+              : candLang === anchorLang;
           if (classMatch && langMatch && cand.duration >= 90) {
             extras.push(cand);
           }

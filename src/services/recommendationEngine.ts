@@ -189,9 +189,9 @@ const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     classId: 'indo_koplo_dangdut',
     classLabel: 'Indo Dangdut & Koplo',
     isInstrumental: false,
-    compatibleClasses: ['indo_band_rock', 'latin_global'],
+    compatibleClasses: ['indo_band_rock'],
     peerArtists: ['Denny Caknan', 'Happy Asmara', 'Guyon Waton', 'NDX A.K.A.', 'Wali', 'Didi Kempot'],
-    keywords: ['denny caknan', 'happy asmara', 'ndx', 'guyon waton', 'wali', 'kangen band', 'st12', 'didi kempot', 'rhoma irama']
+    keywords: ['denny caknan', 'happy asmara', 'ndx', 'guyon waton', 'wali', 'kangen band', 'st12', 'didi kempot', 'rhoma irama', 'muslih fvnky', 'masdddho', 'ndarboy', 'aftershine', 'wahyu', 'nyong franco']
   },
   rnb_late_soul: {
     classId: 'rnb_late_soul',
@@ -237,7 +237,7 @@ const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     classId: 'alt_indie_rock',
     classLabel: 'Alternative & Indie Rock',
     isInstrumental: false,
-    compatibleClasses: ['classic_global_legend', 'modern_chart_pop', 'indo_indie_folk', 'heavy_metal_hard'],
+    compatibleClasses: ['classic_global_legend', 'modern_chart_pop', 'electronic_dance_synth', 'rnb_late_soul'],
     peerArtists: ['Coldplay', 'Arctic Monkeys', 'Radiohead', 'Tame Impala', 'Lana Del Rey', 'The 1975', 'Muse', 'Oasis', 'Cigarettes After Sex'],
     keywords: ['coldplay', 'arctic monkeys', 'radiohead', 'muse', 'oasis', 'tame impala', 'lana del rey', 'cigarettes after sex', 'mac demarco', 'the 1975', 'the neighbourhood', 'imagine dragons', 'onerepublic', 'linkin park', 'nirvana', 'foo fighters', 'green day', 'red hot chili peppers', 'the killers', 'vampire weekend', 'clairo', 'phoebe bridgers', 'mitski']
   },
@@ -295,7 +295,34 @@ export interface AudioFeatureVector {
 }
 
 const INDONESIAN_TITLE_CUES =
-  /\b(sayang|cinta|rindu|hati|kenangan|kisah|tertawan|trakan|mendua|dirimu|sialnya|sempurna|kasih|separuh|monokrom|tujuh belas|berdua|bertahan|menunggu|selamanya|karena|jangan|terlalu|karna|jang|komang|tak segampang itu|sisa rasa|hilang tanpa bilang|tak ingin usai|pesan terakhir|penjaga hati|semata karenamu|berhenti berharap|seluruh nafas|cukup tahu|dan\.\.\.|kangen)\b/i;
+  /\b(sayang|cinta|rindu|hati|kenangan|kisah|tertawan|trakan|mendua|dirimu|sialnya|sempurna|kasih|separuh|monokrom|tujuh belas|berdua|bertahan|menunggu|selamanya|karena|jangan|terlalu|karna|jang|komang|tak segampang itu|sisa rasa|hilang tanpa bilang|tak ingin usai|pesan terakhir|penjaga hati|semata karenamu|berhenti berharap|seluruh nafas|cukup tahu|dan\.\.\.|kangen|negoro|angin|mendung|rungkad|ojo|lali|saliva|gomu)\b/i;
+
+const RECOGNIZED_ARTIST_SET: Set<string> = (() => {
+  const set = new Set<string>();
+  for (const entry of ARTISTS_DIRECTORY) {
+    const clean = entry.name.toLowerCase().trim();
+    if (clean) set.add(clean);
+  }
+  for (const profile of Object.values(SONIC_CLASS_PROFILES)) {
+    for (const p of profile.peerArtists) set.add(p.toLowerCase().trim());
+    for (const kw of profile.keywords) set.add(kw.toLowerCase().trim());
+  }
+  return set;
+})();
+
+export function isRecognizedCatalogArtist(
+  track: Pick<Track, 'artist'>
+): boolean {
+  const primary = extractPrimaryArtist(track.artist);
+  if (!primary) return false;
+  if (RECOGNIZED_ARTIST_SET.has(primary)) return true;
+  for (const known of RECOGNIZED_ARTIST_SET) {
+    if (known.length >= 4 && isWordBoundaryMatch(primary, known)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function isWordBoundaryMatch(haystack: string, keyword: string): boolean {
   if (!keyword || !haystack) return false;
@@ -753,7 +780,7 @@ export function scoreCandidateTrack(
   const seedLang = inferTrackLanguageRegion(seedTrack);
   const candLang = inferTrackLanguageRegion(candidate);
 
-  // 0. Equivalent Sonic Class / Style Tier Matching
+  // 0. Equivalent Sonic Class / Style Tier Matching & Spotify Peer-Artist Graph
   if (candClass.classId === seedClass.classId) {
     score += 62;
   } else if (seedClass.compatibleClasses.includes(candClass.classId)) {
@@ -766,15 +793,29 @@ export function scoreCandidateTrack(
     score -= 60;
   }
 
-  // 0b. Language / Market Coherence (prevents Indonesian Timur -> US Pop drift while respecting multi-lingual listeners)
+  if (
+    candArtist &&
+    seedClass.peerArtists.some((peer) => {
+      const p = peer.toLowerCase();
+      return candArtist === p || isWordBoundaryMatch(candArtist, p);
+    })
+  ) {
+    score += 42;
+  } else if (isRecognizedCatalogArtist(candidate)) {
+    score += 22;
+  } else if (mood === 'all' && candArtist !== seedArtist) {
+    score -= 110;
+  }
+
+  // 0b. Language / Market Coherence (prevents Indonesian Timur <-> US Pop drift while respecting explicit multi-lingual listeners)
   if (seedLang === candLang) {
-    score += seedLang === 'en' ? 14 : 34;
+    score += seedLang === 'en' ? 16 : 36;
   } else if (seedLang !== 'en' && seedLang !== 'instrumental') {
     const userBridgesLanguage = (state.genreAffinity[candFamily] || 0) >= 4;
     score -= userBridgesLanguage ? 18 : 75;
   } else if (seedLang === 'en' && candLang !== 'en' && candLang !== 'instrumental') {
-    const userPrefersRegion = (state.genreAffinity[candFamily] || 0) >= 3;
-    score -= userPrefersRegion ? 10 : 34;
+    const userPrefersRegion = (state.genreAffinity[candFamily] || 0) >= 4;
+    score -= userPrefersRegion ? 14 : 75;
   }
 
   const seedBaseTitle = normalizeBaseTitle(seedTrack.title);

@@ -430,28 +430,30 @@ export default async function handler(req, res) {
 
   if (mode === 'charts') {
     try {
-      const [dzGlobal, usRss, idRss, dzChartAlbums, dzChartPlaylists, dzTopPlaylists] = await Promise.all([
+      const [dzGlobal, usRss, idRss, appleUsAlbums, dzChartAlbums, dzTopPlaylists] = await Promise.all([
         fetch('https://api.deezer.com/chart/0/tracks?limit=35', { signal: AbortSignal.timeout(3800) })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
         fetchAppleRssWithDurations('us', 25).catch(() => []),
         fetchAppleRssWithDurations('id', 25).catch(() => []),
+        fetch('https://rss.marketingtools.apple.com/api/v2/us/music/most-played/20/albums.json', {
+          signal: AbortSignal.timeout(3800)
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
         fetch('https://api.deezer.com/chart/0/albums?limit=24', { signal: AbortSignal.timeout(3800) })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
-        fetch('https://api.deezer.com/chart/0/playlists?limit=20', { signal: AbortSignal.timeout(3800) })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
-        fetch('https://api.deezer.com/search/playlist?q=Top%20Hits&limit=10', { signal: AbortSignal.timeout(3800) })
+        fetch('https://api.deezer.com/search/playlist?q=Top%20Hits%20Global&limit=16', { signal: AbortSignal.timeout(3800) })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null)
       ]);
 
       const BLOCKED_EXPLICIT_RE = /\b(cunt|fuck|shit|shat|bitch|whore|porn|xxx|sex\s+sound)\b/i;
       const NON_MUSIC_ALBUM_RE =
-        /\b(sound\s*effects?|sfx|soundtrack|original\s+motion\s+picture|bandai\s+namco|video\s+game|karaoke|lullaby|asmr|white\s*noise|sleep\s*sounds)\b/i;
+        /\b(sound\s*effects?|sfx|soundtrack|original\s+motion\s+picture|bandai\s+namco|video\s+game|minecraft|karaoke|lullaby|asmr|white\s*noise|sleep\s*sounds|gorguts|obscura|magical\s+strings|cynthoni|grindcore|death\s+metal|country)\b/i;
       const RETRO_DECADE_PL_RE =
-        /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal)\b/i;
+        /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal|sleep|relaxation|meditation|calm\s+piano|study\s+lofi|chill\s+lofi|country)\b/i;
       const NICHE_CHART_GENRE_RE = /\b(country)\b/i;
 
       const cleanTracks = (list, defaultGenre) => {
@@ -489,7 +491,35 @@ export default async function handler(req, res) {
         'Pop'
       );
 
-      const featuredAlbums = Array.isArray(dzChartAlbums?.data)
+      const appleAlbumList = Array.isArray(appleUsAlbums?.feed?.results)
+        ? appleUsAlbums.feed.results
+            .filter((a) => {
+              const genreNames = Array.isArray(a?.genres)
+                ? a.genres.map((g) => g?.name || '').join(' ')
+                : '';
+              return (
+                a?.id &&
+                a?.name &&
+                !BLOCKED_EXPLICIT_RE.test(`${a.name} ${a.artistName || ''}`) &&
+                !NON_MUSIC_ALBUM_RE.test(`${a.name} ${a.artistName || ''} ${genreNames}`)
+              );
+            })
+            .slice(0, 12)
+            .map((a) => ({
+              id: `it-${a.id}`,
+              title: String(a.name || ''),
+              artist: String(a.artistName || 'Various Artists'),
+              coverUrl:
+                typeof a.artworkUrl100 === 'string'
+                  ? a.artworkUrl100.replace('100x100bb', '600x600bb')
+                  : '',
+              releaseDate: String(a.releaseDate || ''),
+              genre: String(a.genres?.find((g) => g?.name && g.name !== 'Music')?.name || 'Pop'),
+              recordType: 'album'
+            }))
+        : [];
+
+      const dzFeaturedAlbums = Array.isArray(dzChartAlbums?.data)
         ? dzChartAlbums.data
             .filter(
               (a) =>
@@ -500,7 +530,7 @@ export default async function handler(req, res) {
                 !BLOCKED_EXPLICIT_RE.test(`${a.title} ${a.artist?.name || ''}`) &&
                 !NON_MUSIC_ALBUM_RE.test(`${a.title} ${a.artist?.name || ''}`)
             )
-            .slice(0, 16)
+            .slice(0, 10)
             .map((a) => ({
               id: `dz-alb-${a.id}`,
               title: String(a.title || ''),
@@ -512,10 +542,9 @@ export default async function handler(req, res) {
             }))
         : [];
 
-      const rawPlaylists = [
-        ...(Array.isArray(dzChartPlaylists?.data) ? dzChartPlaylists.data : []),
-        ...(Array.isArray(dzTopPlaylists?.data) ? dzTopPlaylists.data : [])
-      ];
+      const featuredAlbums = [...appleAlbumList, ...dzFeaturedAlbums].slice(0, 16);
+
+      const rawPlaylists = Array.isArray(dzTopPlaylists?.data) ? dzTopPlaylists.data : [];
       const plSeen = new Set();
       const featuredPlaylists = [];
       for (const p of rawPlaylists) {
