@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sonacast-shell-v4';
+const CACHE_NAME = 'sonacast-shell-v5';
 const OFFLINE_AUDIO_CACHE = 'sonacast-offline-audio-v1';
 
 async function serveAudioFromCache(req) {

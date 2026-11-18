@@ -11,6 +11,7 @@ import type {
   UserPlaylist
 } from '../../types';
 import { COHESIVE_SEED_TRACKS } from '../../data/curatedPlaylists';
+import { PODCAST_CATALOG } from '../../data/catalog';
 import {
   fetchAlbumTracksOnline,
   fetchPlaylistTracksOnline,
@@ -34,16 +35,13 @@ import {
   Clock,
   Disc3,
   Globe,
-  Heart,
   ListMusic,
   Loader2,
-  Pause,
   Play,
   Plus,
   Search,
   Shuffle,
   Sparkles,
-  Trash2,
   TrendingUp,
   Upload,
   X
@@ -89,11 +87,11 @@ interface DiscoverViewProps {
 }
 
 const FEATURED_ARTISTS = [
-  'Queen', 'Michael Jackson', 'The Weeknd', 'Taylor Swift', 'Bruno Mars', 'Eminem',
-  'Billie Eilish', 'Tulus', 'NOAH', 'Sheila On 7', 'YOASOBI', 'NewJeans'
+  'Tulus', 'Bernadya', 'Mahalini', 'Queen', 'The Weeknd', 'Taylor Swift',
+  'Billie Eilish', 'Michael Jackson', 'Bruno Mars', 'Eminem', 'YOASOBI', 'NewJeans'
 ];
 
-type LibrarySubTab = 'browse' | 'liked' | 'recent' | 'playlists';
+type HomeFilterTab = 'all' | 'music' | 'podcasts';
 type AlbumCategoryFilter = 'all' | 'indonesia' | 'global' | 'rnb-hiphop' | 'rock-indie' | 'kjpop';
 
 function matchesAlbumCategory(alb: CatalogAlbum, cat: AlbumCategoryFilter): boolean {
@@ -124,7 +122,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   isPlaying,
   resolvingTrackId,
   onSelectTrack,
-  onTogglePlay,
+  onTogglePlay: _onTogglePlay,
   onUploadTrack,
   onUpdateLyrics,
   onNavigateSearch,
@@ -141,10 +139,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onOpenArtist,
   lowCpuMode = false,
   onPlayTrackList,
-  onCreatePlaylist,
-  onAddTrackToPlaylist,
-  onRemoveTrackFromPlaylist,
-  onDeletePlaylist,
+  onCreatePlaylist: _onCreatePlaylist,
+  onAddTrackToPlaylist: _onAddTrackToPlaylist,
+  onRemoveTrackFromPlaylist: _onRemoveTrackFromPlaylist,
+  onDeletePlaylist: _onDeletePlaylist,
   onSaveCatalogAlbum,
   activeMood = 'all',
   onSelectMood,
@@ -153,7 +151,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 }) => {
   const { t } = useAppPreferences();
   const { popularCharts, isLoadingCharts } = usePopularCharts();
-  const [libraryTab, setLibraryTab] = useState<LibrarySubTab>('browse');
+  const [homeFilter, setHomeFilter] = useState<HomeFilterTab>('all');
+  const [showAllArtists, setShowAllArtists] = useState(false);
   const [selectedArtist, setSelectedArtist] = useState<string>('All');
   const [inlineQuery, setInlineQuery] = useState('');
   const [inlineResults, setInlineResults] = useState<Track[]>([]);
@@ -162,8 +161,6 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const [albumCategory, setAlbumCategory] = useState<AlbumCategoryFilter>('all');
   const [showAllAlbums, setShowAllAlbums] = useState(false);
   const [savingAlbumId, setSavingAlbumId] = useState<string | null>(null);
-  const [newPlaylistName, setNewPlaylistName] = useState('');
-  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [selectedAlbum, setSelectedAlbum] = useState<CatalogAlbum | null>(null);
   const [selectedAlbumTracks, setSelectedAlbumTracks] = useState<Track[]>([]);
   const [loadingAlbumId, setLoadingAlbumId] = useState<string | null>(null);
@@ -334,8 +331,25 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   }, [recentTracks, likedTracks, popularCharts.global, popularCharts.indonesia, tracks]);
   const activeCharts =
     chartRegion === 'global' ? popularCharts.global : popularCharts.indonesia;
-  const selectedPlaylist =
-    playlists.find((p) => p.id === activePlaylistId) || playlists[0] || null;
+
+  const popularArtistCards = useMemo(() => {
+    const pool = [
+      ...popularCharts.indonesia,
+      ...popularCharts.global,
+      ...COHESIVE_SEED_TRACKS,
+      ...tracks
+    ];
+    return FEATURED_ARTISTS.map((name) => {
+      const lower = name.toLowerCase();
+      const matchedTrack = pool.find((tr) => tr.artist.toLowerCase().includes(lower));
+      const matchedAlbum = popularCharts.albums.find((alb) => alb.artist.toLowerCase().includes(lower));
+      return {
+        name,
+        coverUrl: matchedTrack?.coverUrl || matchedAlbum?.coverUrl || DEFAULT_COVER_DATA_URI,
+        seedTrack: matchedTrack || tracks[0]
+      };
+    });
+  }, [popularCharts.indonesia, popularCharts.global, popularCharts.albums, tracks]);
 
   const normalizedFilter = inlineQuery.trim().toLowerCase();
   const filteredMasters = tracks.filter((item) => {
@@ -367,157 +381,141 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     }
   };
 
-  const handleCreatePlaylistSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = newPlaylistName.trim();
-    if (!trimmed || !onCreatePlaylist) return;
-    onCreatePlaylist(trimmed);
-    setNewPlaylistName('');
-  };
-
   return (
-    <div className="space-y-6 pb-8">
-      {/* Spotify-Style Home Top Bar: All | Music | Podcasts + Utility Sub-Tabs */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-wrap" data-testid="spotify-home-filter-pills">
+    <div
+      className="space-y-6 pb-8 rounded-2xl -mx-1 px-1 pt-1"
+      style={{
+        backgroundImage: `linear-gradient(180deg, rgba(${spotlightAccentRgb}, 0.14) 0%, rgba(${spotlightAccentRgb}, 0.03) 220px, transparent 480px)`
+      }}
+    >
+      {/* Spotify-Style Home Top Filter Strip: All | Music | Podcasts + Compact Utilities */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2 flex-wrap" data-testid="spotify-home-filter-pills">
+          <button
+            type="button"
+            data-testid="home-pill-all"
+            onClick={() => setHomeFilter('all')}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+              homeFilter === 'all'
+                ? 'bg-[var(--ink-solid)] text-[var(--ink-solid-fg)]'
+                : 'bg-[var(--bg-surface)]/80 hover:bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            data-testid="home-pill-music"
+            onClick={() => setHomeFilter('music')}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+              homeFilter === 'music'
+                ? 'bg-[var(--ink-solid)] text-[var(--ink-solid-fg)]'
+                : 'bg-[var(--bg-surface)]/80 hover:bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+            }`}
+          >
+            {t.navMusic}
+          </button>
+          <button
+            type="button"
+            data-testid="home-pill-podcasts"
+            onClick={() => setHomeFilter('podcasts')}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+              homeFilter === 'podcasts'
+                ? 'bg-[var(--ink-solid)] text-[var(--ink-solid-fg)]'
+                : 'bg-[var(--bg-surface)]/80 hover:bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+            }`}
+          >
+            {t.navPodcasts}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {homeFilter === 'music' && onNavigateTab && (
             <button
               type="button"
-              onClick={() => setLibraryTab('browse')}
-              className="px-4 py-1.5 rounded-full text-xs font-bold bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] transition-colors cursor-pointer"
+              onClick={() => onNavigateTab('music')}
+              className="px-3 py-1.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)] text-xs font-semibold hover:brightness-110 transition-all cursor-pointer"
             >
-              All
+              Open /music Hub
             </button>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onUploadTrack(file);
+            }}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-surface)]/80 hover:bg-[var(--bg-elevated)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+          >
+            <Upload size={12} className="text-[var(--accent-text)]" />
+            <span>{t.uploadLocal}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* PODCASTS FILTER VIEW (/home Podcasts Pill) */}
+      {homeFilter === 'podcasts' && (
+        <section data-testid="home-podcasts-shelf" className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg sm:text-xl font-extrabold text-[var(--text-primary)] tracking-tight">
+              {t.navPodcasts} &amp; Shows
+            </h2>
             {onNavigateTab && (
-              <>
-                <button
-                  type="button"
-                  data-testid="home-pill-music"
-                  onClick={() => onNavigateTab('music')}
-                  className="px-4 py-1.5 rounded-full text-xs font-semibold bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-primary)] transition-colors cursor-pointer"
-                >
-                  {t.navMusic}
-                </button>
-                <button
-                  type="button"
-                  data-testid="home-pill-podcasts"
-                  onClick={() => onNavigateTab('podcasts')}
-                  className="px-4 py-1.5 rounded-full text-xs font-semibold bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-primary)] transition-colors cursor-pointer"
-                >
-                  {t.navPodcasts}
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={() => onNavigateTab('podcasts')}
+                className="text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline cursor-pointer"
+              >
+                Show all
+              </button>
             )}
           </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) onUploadTrack(file);
-              }}
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-xs font-semibold text-[var(--text-primary)] transition-colors cursor-pointer"
-            >
-              <Upload size={13} className="text-[var(--accent-text)]" />
-              <span>{t.uploadLocal}</span>
-            </button>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2.5">
+            {PODCAST_CATALOG.slice(0, 6).map((ep) => (
+              <button
+                key={ep.id}
+                type="button"
+                onClick={() => onNavigateTab?.('podcasts')}
+                className="group rounded-xl p-2.5 hover:bg-[var(--bg-surface)]/85 transition-colors text-left flex flex-col gap-2 cursor-pointer min-w-0"
+              >
+                <div className="relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-elevated)] shadow-md">
+                  <img
+                    src={ep.coverUrl}
+                    alt={ep.title}
+                    loading="lazy"
+                    onError={(e) => applyCoverFallback(e, ep.title, ep.host)}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <span className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] shadow-xl flex items-center justify-center opacity-0 translate-y-1.5 group-hover:opacity-100 group-hover:translate-y-0 transition-all">
+                    <Play size={15} className="fill-current ml-0.5" />
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                    {ep.title}
+                  </div>
+                  <div className="text-xs text-[var(--text-secondary)] truncate">
+                    {ep.podcastName || ep.host}
+                  </div>
+                </div>
+              </button>
+            ))}
           </div>
-        </div>
+        </section>
+      )}
 
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[var(--text-primary)] tracking-tight">
-              {t.navLanding}
-            </h2>
-            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-              Personal mixes, popular studio albums, daily playlists, and instant continuation
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Sub-navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={libraryTab === 'browse'}
-          onClick={() => setLibraryTab('browse')}
-          data-testid="library-tab-browse"
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${libraryTab === 'browse'
-            ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-            : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-        >
-          <Disc3 size={14} />
-          <span>{t.browseCatalog}</span>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={libraryTab === 'liked'}
-          onClick={() => setLibraryTab('liked')}
-          data-testid="library-tab-liked"
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${libraryTab === 'liked'
-            ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-            : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-        >
-          <Heart size={14} />
-          <span>
-            {t.likedSongs} ({likedTracks.length})
-          </span>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={libraryTab === 'recent'}
-          onClick={() => setLibraryTab('recent')}
-          data-testid="library-tab-recent"
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${libraryTab === 'recent'
-            ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-            : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-        >
-          <Clock size={14} />
-          <span>
-            {t.recentlyPlayed} ({recentTracks.length})
-          </span>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={libraryTab === 'playlists'}
-          onClick={() => setLibraryTab('playlists')}
-          data-testid="library-tab-playlists"
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${libraryTab === 'playlists'
-            ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-            : 'bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-        >
-          <ListMusic size={14} />
-          <span>
-            {t.playlists} ({playlists.length})
-          </span>
-        </button>
-      </div>
-
-      {/* TAB 1: BROWSE CATALOG */}
-      {libraryTab === 'browse' && (
+      {/* SPOTIFY-STYLE HOME FEED */}
+      {homeFilter !== 'podcasts' && (
         <div className="space-y-8">
           {/* Spotify-Style 2x4 Quick Access Shortcut Grid */}
-          <section data-testid="spotify-home-shortcuts" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <section data-testid="spotify-home-shortcuts" className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             {(() => {
               type HomeShortcut = {
                 id: string;
@@ -593,13 +591,13 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   type="button"
                   data-testid={`home-shortcut-${sc.id}`}
                   onClick={sc.onTrigger}
-                  className="group relative flex items-center gap-3 pr-3 rounded-lg overflow-hidden bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)]/70 hover:border-[var(--border-medium)] transition-colors text-left cursor-pointer min-w-0 h-14"
+                  className="group relative flex items-center gap-3 pr-2.5 rounded-md overflow-hidden bg-[var(--bg-surface)]/80 hover:bg-[var(--bg-elevated)] transition-colors text-left cursor-pointer min-w-0 h-13 sm:h-14 shadow-sm"
                 >
                   <img
                     src={sc.coverUrl}
                     alt={sc.title}
                     onError={(e) => applyCoverFallback(e, sc.title, sc.fallbackArtist)}
-                    className="w-14 h-14 object-cover shrink-0 bg-[var(--bg-elevated)]"
+                    className="w-13 h-13 sm:w-14 sm:h-14 object-cover shrink-0 bg-[var(--bg-elevated)]"
                   />
                   <span className="text-xs font-bold text-[var(--text-primary)] truncate flex-1">
                     {sc.title}
@@ -612,91 +610,12 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             })()}
           </section>
 
-          {/* Active Spotlight Card with Adaptive Cover Color */}
-          <div
-            className="relative overflow-hidden rounded-2xl bg-[var(--bg-tint)] p-5 sm:p-6 border border-[var(--border-subtle)]"
-            style={{
-              backgroundImage: `radial-gradient(circle at 18% 20%, rgba(${spotlightAccentRgb}, 0.20), transparent 62%)`
-            }}
-          >
-            {!lowCpuMode && (
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 opacity-15 blur-3xl scale-110"
-                style={{
-                  backgroundImage: `url("${featuredTrack.coverUrl || DEFAULT_COVER_DATA_URI}")`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center'
-                }}
-              />
-            )}
-
-            <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-4 min-w-0">
-                <img
-                  src={featuredTrack.coverUrl || DEFAULT_COVER_DATA_URI}
-                  alt={featuredTrack.title}
-                  onError={(e) =>
-                    applyCoverFallback(e, featuredTrack.title, featuredTrack.artist)
-                  }
-                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover shadow-lg shrink-0"
-                />
-                <div className="min-w-0">
-                  <div className="text-[11px] font-mono uppercase tracking-wider text-[var(--accent-text)] font-semibold">
-                    {t.nowPlaying}
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-extrabold text-[var(--text-primary)] truncate">
-                    {featuredTrack.title}
-                  </h3>
-                  <p className="text-xs text-[var(--text-secondary)] truncate">
-                    {onOpenArtist ? (
-                      <button
-                        type="button"
-                        onClick={() => onOpenArtist(featuredTrack.artist)}
-                        className="hover:text-[var(--accent-text)] hover:underline cursor-pointer"
-                      >
-                        {featuredTrack.artist}
-                      </button>
-                    ) : (
-                      featuredTrack.artist
-                    )}{' '}
-                    &middot; {featuredTrack.album}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={onTogglePlay}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-xs font-bold shadow-md cursor-pointer transition-colors"
-                >
-                  {isPlaying ? (
-                    <Pause size={15} className="fill-current" />
-                  ) : (
-                    <Play size={15} className="fill-current" />
-                  )}
-                  <span>{isPlaying ? 'Pause' : t.heroPrimaryCta}</span>
-                </button>
-                {onStartRadio && (
-                  <button
-                    type="button"
-                    onClick={() => onStartRadio(featuredTrack)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full bg-[var(--bg-surface)]/80 hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer"
-                  >
-                    <span>{t.startRadio}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Picks 2-Row Compact Instant Tiles (Spotify / YT Music Parity) */}
+          {/* Shelf 1: Trending songs · Quick Picks (Above the fold, Spotify 6-card visual row) */}
           {quickPicks.length > 0 && (
-            <section data-testid="discover-quick-picks" className="space-y-2.5">
+            <section data-testid="discover-quick-picks" className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <h3 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
-                  {t.quickPicks}
+                <h3 className="text-base sm:text-xl font-extrabold text-[var(--text-primary)] tracking-tight">
+                  Trending songs &middot; {t.quickPicks}
                 </h3>
                 {onPlayTrackList && (
                   <button
@@ -711,75 +630,154 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                         ordered: true
                       })
                     }
-                    className="h-7 px-3 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border-medium)] text-[11px] font-bold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer transition-colors"
+                    className="text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline inline-flex items-center gap-1 cursor-pointer transition-colors"
                   >
-                    <Play size={10} className="fill-current" />
                     <span>Play All</span>
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2">
                 {quickPicks.map((item) => {
                   const isActive = item.id === currentTrack.id;
                   return (
                     <div
                       key={`qp-${item.id}`}
-                      className={`group flex items-center gap-3 p-2 rounded-xl border transition-all ${
+                      className={`group rounded-xl p-2 sm:p-2.5 transition-colors flex flex-col gap-2 min-w-0 ${
                         isActive
-                          ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'
-                          : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] border-[var(--border-subtle)]'
+                          ? 'bg-[var(--accent-soft)]'
+                          : 'hover:bg-[var(--bg-surface)]/85'
                       }`}
                     >
-                      <button
-                        type="button"
-                        onClick={() => handlePlayTrackWithLyrics(item)}
-                        className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
-                      >
-                        <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-[var(--bg-elevated)] shrink-0">
+                      <div className="relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-elevated)] shadow-md">
+                        <button
+                          type="button"
+                          onClick={() => handlePlayTrackWithLyrics(item)}
+                          className="w-full h-full block text-left cursor-pointer"
+                          aria-label={`${item.title} - ${item.artist}`}
+                        >
                           <img
                             src={item.coverUrl || DEFAULT_COVER_DATA_URI}
                             alt={item.title}
                             loading="lazy"
                             onError={(e) => applyCoverFallback(e, item.title, item.artist)}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           />
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                            <Play size={14} className="text-white fill-white" />
-                          </div>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div
-                            className={`flex items-center gap-1.5 text-xs font-bold truncate ${
-                              isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
-                            }`}
+                        </button>
+                        {onPlayNext && (
+                          <button
+                            type="button"
+                            onClick={() => onPlayNext(item)}
+                            aria-label={t.playNext}
+                            title={t.playNext}
+                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/55 text-white hover:bg-black/80 flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
                           >
-                            {isActive && (
-                              <PlayingBars isPlaying={isPlaying} lowCpuMode={lowCpuMode} />
-                            )}
-                            <span className="truncate">{item.title}</span>
-                          </div>
-                          <div className="text-[11px] text-[var(--text-dim)] truncate">
-                            {item.artist}
-                          </div>
-                        </div>
-                      </button>
-                      {onPlayNext && (
+                            <Plus size={13} />
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => onPlayNext(item)}
-                          aria-label={t.playNext}
-                          title={t.playNext}
-                          className="p-1.5 rounded-lg text-[var(--text-dim)] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--accent-text)] hover:bg-[var(--bg-surface)] transition-all cursor-pointer shrink-0"
+                          onClick={() => handlePlayTrackWithLyrics(item)}
+                          aria-label={`Play ${item.title}`}
+                          className={`absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] shadow-xl flex items-center justify-center transition-all cursor-pointer ${
+                            isActive
+                              ? 'opacity-100 translate-y-0'
+                              : 'opacity-0 translate-y-1.5 group-hover:opacity-100 group-hover:translate-y-0 focus:opacity-100'
+                          }`}
                         >
-                          <Plus size={14} />
+                          {isActive && isPlaying ? (
+                            <PlayingBars isPlaying={isPlaying} lowCpuMode={lowCpuMode} />
+                          ) : (
+                            <Play size={15} className="fill-current ml-0.5" />
+                          )}
                         </button>
-                      )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handlePlayTrackWithLyrics(item)}
+                        className="text-left min-w-0 cursor-pointer"
+                      >
+                        <div
+                          className={`text-sm font-semibold truncate ${
+                            isActive ? 'text-[var(--accent-text)]' : 'text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {item.title}
+                        </div>
+                        <div className="text-xs text-[var(--text-secondary)] truncate">
+                          {item.artist}
+                        </div>
+                      </button>
                     </div>
                   );
                 })}
               </div>
             </section>
           )}
+
+          {/* Shelf 2: Popular artists (Circular Spotify Artist Portraits) */}
+          <section data-testid="home-popular-artists" className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-base sm:text-xl font-extrabold text-[var(--text-primary)] tracking-tight">
+                {t.popularArtists}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAllArtists((prev) => !prev)}
+                className="text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline cursor-pointer"
+              >
+                {showAllArtists ? 'Show less' : 'Show all'}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2.5">
+              {(showAllArtists ? popularArtistCards : popularArtistCards.slice(0, 6)).map((art) => (
+                <div
+                  key={art.name}
+                  className="group rounded-xl p-2.5 hover:bg-[var(--bg-surface)]/85 transition-colors flex flex-col gap-2 min-w-0"
+                >
+                  <div className="relative aspect-square rounded-full overflow-hidden bg-[var(--bg-elevated)] shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenArtist ? onOpenArtist(art.name) : handlePlayTrackWithLyrics(art.seedTrack)
+                      }
+                      className="w-full h-full block cursor-pointer"
+                      aria-label={art.name}
+                    >
+                      <img
+                        src={art.coverUrl}
+                        alt={art.name}
+                        loading="lazy"
+                        onError={(e) => applyCoverFallback(e, art.name, art.name)}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onStartRadio ? onStartRadio(art.seedTrack) : handlePlayTrackWithLyrics(art.seedTrack)
+                      }
+                      aria-label={`Play ${art.name}`}
+                      className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] shadow-xl flex items-center justify-center opacity-0 translate-y-1.5 group-hover:opacity-100 group-hover:translate-y-0 focus:opacity-100 transition-all cursor-pointer"
+                    >
+                      <Play size={15} className="fill-current ml-0.5" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onOpenArtist ? onOpenArtist(art.name) : handlePlayTrackWithLyrics(art.seedTrack)
+                    }
+                    className="text-left min-w-0 cursor-pointer"
+                  >
+                    <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                      {art.name}
+                    </div>
+                    <div className="text-xs text-[var(--text-secondary)]">Artist</div>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
 
           {onSelectMood && (
             <div data-testid="discover-mood-strip" className="space-y-1.5">
@@ -984,16 +982,16 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Sparkles size={16} className="text-[var(--accent-text)]" />
-                  <h3 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
+                  <h3 className="text-base sm:text-xl font-extrabold text-[var(--text-primary)] tracking-tight">
                     {t.madeForYou}
                   </h3>
                 </div>
-                <span className="text-[11px] text-[var(--text-dim)]">
+                <span className="text-xs font-medium text-[var(--text-dim)]">
                   Curated Mixes
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {recommendedMixes.map((mix) => {
                   const isExpanded = expandedMixId === mix.id;
                   const coverTrack = mix.tracks[0];
@@ -1001,112 +999,100 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     <div
                       key={mix.id}
                       data-testid={`mix-card-${mix.id}`}
-                      className="rounded-2xl bg-[var(--bg-tint)] border border-[var(--border-subtle)] hover:border-[var(--border-medium)] p-4 flex flex-col justify-between gap-3 transition-colors"
+                      className="group rounded-xl p-2.5 hover:bg-[var(--bg-surface)]/85 transition-colors flex flex-col gap-2.5 min-w-0"
                     >
-                      <div className="flex items-start gap-3">
-                        <img
-                          src={coverTrack?.coverUrl || DEFAULT_COVER_DATA_URI}
-                          alt={mix.title}
-                          onError={(e) =>
-                            applyCoverFallback(e, mix.title, coverTrack?.artist || 'Sonacast')
-                          }
-                          className="w-14 h-14 rounded-xl object-cover shrink-0 bg-[var(--bg-surface)]"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <span className="inline-block px-2 py-0.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)] text-[10px] font-bold uppercase tracking-wider">
-                            {mix.badge}
-                          </span>
-                          <h4 className="text-sm font-extrabold text-[var(--text-primary)] truncate mt-1">
-                            {mix.title}
-                          </h4>
-                          <p className="text-[11px] text-[var(--text-dim)] truncate">
-                            {mix.subtitle}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="text-[11px] text-[var(--text-secondary)] space-y-1">
-                        {(isExpanded ? mix.tracks : mix.tracks.slice(0, 3)).map((tr, idx) => (
-                          <button
-                            key={`${mix.id}-${tr.id}`}
-                            type="button"
-                            onClick={() =>
-                              onPlayTrackList?.(
-                                mix.tracks,
-                                false,
-                                {
-                                  id: mix.id,
-                                  type: 'recommendation',
-                                  title: mix.title,
-                                  subtitle: mix.subtitle,
-                                  coverUrl: coverTrack?.coverUrl,
-                                  ordered: true
-                                },
-                                idx
-                              )
-                            }
-                            className="w-full flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[var(--bg-surface)] text-left transition-colors cursor-pointer"
-                          >
-                            <span className="font-mono text-[10px] text-[var(--text-dim)] w-4 shrink-0">
-                              {idx + 1}.
-                            </span>
-                            <span className="truncate font-semibold text-[var(--text-primary)] flex-1">
-                              {tr.title}
-                            </span>
-                            <span className="text-[10px] text-[var(--text-dim)] truncate max-w-[90px]">
-                              {tr.artist}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--border-subtle)]">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            data-testid={`play-mix-${mix.id}`}
-                            onClick={() =>
-                              onPlayTrackList?.(mix.tracks, false, {
-                                id: mix.id,
-                                type: 'recommendation',
-                                title: mix.title,
-                                subtitle: mix.subtitle,
-                                coverUrl: coverTrack?.coverUrl,
-                                ordered: true
-                              })
-                            }
-                            className="h-8 px-3 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Play size={11} className="fill-current" />
-                            <span>{t.playOrdered}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onPlayTrackList?.(mix.tracks, true, {
-                                id: mix.id,
-                                type: 'recommendation',
-                                title: mix.title,
-                                subtitle: mix.subtitle,
-                                coverUrl: coverTrack?.coverUrl,
-                                ordered: false
-                              })
-                            }
-                            aria-label={`Shuffle ${mix.title}`}
-                            className="w-8 h-8 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center cursor-pointer"
-                          >
-                            <Shuffle size={12} />
-                          </button>
-                        </div>
-
+                      <div className="relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-surface)] shadow-md border-b-4 border-[var(--accent-emerald)]">
                         <button
                           type="button"
                           onClick={() => setExpandedMixId(isExpanded ? null : mix.id)}
-                          className="text-[11px] font-semibold text-[var(--accent-text)] hover:underline cursor-pointer"
+                          className="w-full h-full block cursor-pointer"
+                          aria-label={mix.title}
                         >
-                          {isExpanded ? t.closeLabel : `${mix.tracks.length} tracks`}
+                          <img
+                            src={coverTrack?.coverUrl || DEFAULT_COVER_DATA_URI}
+                            alt={mix.title}
+                            onError={(e) =>
+                              applyCoverFallback(e, mix.title, coverTrack?.artist || 'Sonacast')
+                            }
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        </button>
+                        <div className="pointer-events-none absolute inset-x-0 top-0 p-2.5 bg-gradient-to-b from-black/65 via-black/20 to-transparent">
+                          <span className="inline-block px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-sm text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
+                            {mix.badge}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          data-testid={`play-mix-${mix.id}`}
+                          onClick={() =>
+                            onPlayTrackList?.(mix.tracks, false, {
+                              id: mix.id,
+                              type: 'recommendation',
+                              title: mix.title,
+                              subtitle: mix.subtitle,
+                              coverUrl: coverTrack?.coverUrl,
+                              ordered: true
+                            })
+                          }
+                          aria-label={`Play ${mix.title}`}
+                          className="absolute bottom-2.5 right-2.5 w-10 h-10 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] shadow-xl flex items-center justify-center opacity-95 sm:opacity-0 sm:translate-y-1.5 sm:group-hover:opacity-100 sm:group-hover:translate-y-0 focus:opacity-100 transition-all cursor-pointer"
+                        >
+                          <Play size={15} className="fill-current ml-0.5" />
                         </button>
                       </div>
+
+                      <div className="min-w-0 space-y-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedMixId(isExpanded ? null : mix.id)}
+                          className="text-left w-full cursor-pointer"
+                        >
+                          <h4 className="text-sm font-bold text-[var(--text-primary)] truncate">
+                            {mix.title}
+                          </h4>
+                          <p className="text-xs text-[var(--text-secondary)] line-clamp-2">
+                            {mix.subtitle}
+                          </p>
+                        </button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="text-[11px] text-[var(--text-secondary)] space-y-1 pt-1 border-t border-[var(--border-subtle)]">
+                          {mix.tracks.slice(0, 6).map((tr, idx) => (
+                            <button
+                              key={`${mix.id}-${tr.id}`}
+                              type="button"
+                              onClick={() =>
+                                onPlayTrackList?.(
+                                  mix.tracks,
+                                  false,
+                                  {
+                                    id: mix.id,
+                                    type: 'recommendation',
+                                    title: mix.title,
+                                    subtitle: mix.subtitle,
+                                    coverUrl: coverTrack?.coverUrl,
+                                    ordered: true
+                                  },
+                                  idx
+                                )
+                              }
+                              className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-[var(--bg-elevated)] text-left transition-colors cursor-pointer"
+                            >
+                              <span className="font-mono text-[10px] text-[var(--text-dim)] w-4 shrink-0">
+                                {idx + 1}.
+                              </span>
+                              <span className="truncate font-semibold text-[var(--text-primary)] flex-1">
+                                {tr.title}
+                              </span>
+                              <span className="text-[10px] text-[var(--text-dim)] truncate max-w-[80px]">
+                                {tr.artist}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1114,15 +1100,15 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </section>
           )}
 
-          {/* Popular Studio Albums (Ordered Tracklist Playback + Library Save) */}
+          {/* Popular Studio Albums (Spotify-style Clean Shelf + Tracklist Drawer) */}
           <section data-testid="featured-albums-section" className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Disc3 size={16} className="text-[var(--accent-text)]" />
-                <h3 className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
+                <h3 className="text-base sm:text-xl font-extrabold text-[var(--text-primary)] tracking-tight">
                   {t.topDailyAlbums}
                 </h3>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-dim)]">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--bg-surface)] text-[var(--text-dim)]">
                   {filteredPopularAlbums.length}
                 </span>
               </div>
@@ -1176,7 +1162,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2.5">
               {displayedPopularAlbums.map((alb) => {
                 const isActiveAlb = selectedAlbum?.id === alb.id;
                 const isLoadingAlb = loadingAlbumId === alb.id;
@@ -1186,81 +1172,78 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   <div
                     key={alb.id}
                     data-testid={`featured-album-${alb.id}`}
-                    className={`group rounded-2xl p-2.5 border transition-all flex flex-col justify-between gap-2 min-w-0 ${
+                    className={`group rounded-xl p-2.5 transition-colors flex flex-col gap-2 min-w-0 ${
                       isActiveAlb
-                        ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'
-                        : 'bg-[var(--bg-tint)] border-[var(--border-subtle)] hover:border-[var(--border-medium)]'
+                        ? 'bg-[var(--accent-soft)]'
+                        : 'hover:bg-[var(--bg-surface)]/85'
                     }`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => handleOpenAlbum(alb)}
-                      className="text-left space-y-2 cursor-pointer min-w-0"
-                    >
-                      <div className="relative aspect-square rounded-xl overflow-hidden bg-[var(--bg-surface)]">
+                    <div className="relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-surface)] shadow-md">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAlbum(alb)}
+                        className="w-full h-full block cursor-pointer"
+                        aria-label={`${alb.title} - ${alb.artist}`}
+                      >
                         <img
                           src={alb.coverUrl}
                           alt={alb.title}
                           loading="lazy"
                           onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
-                        {isLoadingAlb && (
-                          <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
-                            <Loader2 size={18} className="animate-spin text-white" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-[var(--text-primary)] truncate">
-                          {alb.title}
+                      </button>
+                      {isLoadingAlb && (
+                        <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
+                          <Loader2 size={18} className="animate-spin text-white" />
                         </div>
-                        <div className="text-[11px] text-[var(--text-dim)] truncate">
-                          {alb.artist}
-                        </div>
-                      </div>
-                    </button>
-
-                    <div className="flex items-center justify-between gap-1.5 pt-1 min-w-0">
-                      <span className="text-[10px] font-mono text-[var(--text-dim)] shrink-0">
-                        {alb.nbTracks ? `${alb.nbTracks}t` : 'LP'}
-                      </span>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {onSaveCatalogAlbum && (
-                          <button
-                            type="button"
-                            data-testid={`save-album-${alb.id}`}
-                            disabled={isSaving}
-                            onClick={() => void handleBookmarkCatalogAlbum(alb)}
-                            title={isSaved ? 'Saved in Library' : 'Save Album to Library'}
-                            aria-label={isSaved ? 'Saved in Library' : 'Save Album to Library'}
-                            className={`w-7 h-7 rounded-full border flex items-center justify-center cursor-pointer transition-colors disabled:opacity-60 ${
-                              isSaved
-                                ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
-                                : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                            }`}
-                          >
-                            {isSaving ? (
-                              <Loader2 size={11} className="animate-spin" />
-                            ) : isSaved ? (
-                              <BookmarkCheck size={12} />
-                            ) : (
-                              <Bookmark size={12} />
-                            )}
-                          </button>
-                        )}
+                      )}
+                      {onSaveCatalogAlbum && (
                         <button
                           type="button"
-                          data-testid={`play-album-${alb.id}`}
-                          disabled={isLoadingAlb}
-                          onClick={() => handlePlayReleaseAlbum(alb, false, 0)}
-                          className="h-7 px-2.5 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-60 whitespace-nowrap"
+                          data-testid={`save-album-${alb.id}`}
+                          disabled={isSaving}
+                          onClick={() => void handleBookmarkCatalogAlbum(alb)}
+                          title={isSaved ? 'Saved in Library' : 'Save Album to Library'}
+                          aria-label={isSaved ? 'Saved in Library' : 'Save Album to Library'}
+                          className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer backdrop-blur-sm transition-all disabled:opacity-60 ${
+                            isSaved
+                              ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)] opacity-100'
+                              : 'bg-black/55 text-white opacity-80 group-hover:opacity-100 hover:bg-black/80'
+                          }`}
                         >
-                          <Play size={10} className="fill-current shrink-0" />
-                          <span>{t.playAlbum}</span>
+                          {isSaving ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : isSaved ? (
+                            <BookmarkCheck size={12} />
+                          ) : (
+                            <Bookmark size={12} />
+                          )}
                         </button>
-                      </div>
+                      )}
+                      <button
+                        type="button"
+                        data-testid={`play-album-${alb.id}`}
+                        disabled={isLoadingAlb}
+                        onClick={() => handlePlayReleaseAlbum(alb, false, 0)}
+                        aria-label={`Play ${alb.title}`}
+                        className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] shadow-xl flex items-center justify-center opacity-0 translate-y-1.5 group-hover:opacity-100 group-hover:translate-y-0 focus:opacity-100 transition-all cursor-pointer disabled:opacity-60"
+                      >
+                        <Play size={15} className="fill-current ml-0.5" />
+                      </button>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAlbum(alb)}
+                      className="text-left min-w-0 cursor-pointer"
+                    >
+                      <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                        {alb.title}
+                      </div>
+                      <div className="text-xs text-[var(--text-secondary)] truncate">
+                        {alb.artist}
+                      </div>
+                    </button>
                   </div>
                 );
               })}
@@ -1405,7 +1388,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2.5">
                 {popularCharts.playlists.slice(0, 12).map((pl) => {
                   const isActivePl = selectedDailyPlaylist?.id === pl.id;
                   const isLoadingPl = loadingPlaylistId === pl.id;
@@ -1413,54 +1396,52 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     <div
                       key={pl.id}
                       data-testid={`daily-playlist-${pl.id}`}
-                      className={`group rounded-2xl p-2.5 border transition-all flex flex-col justify-between gap-2 min-w-0 ${
+                      className={`group rounded-xl p-2.5 transition-colors flex flex-col gap-2 min-w-0 ${
                         isActivePl
-                          ? 'bg-[var(--accent-soft)] border-[var(--accent-border)]'
-                          : 'bg-[var(--bg-tint)] border-[var(--border-subtle)] hover:border-[var(--border-medium)]'
+                          ? 'bg-[var(--accent-soft)]'
+                          : 'hover:bg-[var(--bg-surface)]/85'
                       }`}
                     >
-                      <button
-                        type="button"
-                        onClick={() => handleOpenDailyPlaylist(pl)}
-                        className="text-left space-y-2 cursor-pointer min-w-0"
-                      >
-                        <div className="relative aspect-square rounded-xl overflow-hidden bg-[var(--bg-elevated)]">
+                      <div className="relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-elevated)] shadow-md">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDailyPlaylist(pl)}
+                          className="w-full h-full block cursor-pointer"
+                          aria-label={pl.title}
+                        >
                           <img
                             src={pl.coverUrl || DEFAULT_COVER_DATA_URI}
                             alt={pl.title}
                             onError={(e) => applyCoverFallback(e, pl.title, pl.creator)}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           />
-                          {isLoadingPl && (
-                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                              <Loader2 size={18} className="animate-spin text-white" />
-                            </div>
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-extrabold text-[var(--text-primary)] truncate">
-                            {pl.title}
+                        </button>
+                        {isLoadingPl && (
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            <Loader2 size={18} className="animate-spin text-white" />
                           </div>
-                          <div className="text-[10px] text-[var(--text-dim)] truncate">
-                            {pl.description || pl.creator}
-                          </div>
-                        </div>
-                      </button>
-
-                      <div className="flex items-center justify-between gap-1 pt-1 border-t border-[var(--border-subtle)]">
-                        <span className="text-[10px] font-mono text-[var(--text-dim)] truncate">
-                          {pl.nbTracks ? `${pl.nbTracks}t` : 'Mix'}
-                        </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => handlePlayDailyPlaylist(pl, false, 0)}
                           aria-label={`Play ${pl.title}`}
-                          className="h-7 px-2.5 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-[10px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
+                          className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] shadow-xl flex items-center justify-center opacity-0 translate-y-1.5 group-hover:opacity-100 group-hover:translate-y-0 focus:opacity-100 transition-all cursor-pointer"
                         >
-                          <Play size={10} className="fill-current" />
-                          <span>Play</span>
+                          <Play size={15} className="fill-current ml-0.5" />
                         </button>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDailyPlaylist(pl)}
+                        className="text-left min-w-0 cursor-pointer"
+                      >
+                        <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                          {pl.title}
+                        </div>
+                        <div className="text-xs text-[var(--text-secondary)] truncate">
+                          {pl.description || pl.creator}
+                        </div>
+                      </button>
                     </div>
                   );
                 })}
@@ -1645,273 +1626,6 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             )}
           </section>
         </div>
-      )}
-
-      {/* TAB 2: LIKED SONGS */}
-      {libraryTab === 'liked' && (
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
-              {t.likedSongs} ({likedTracks.length})
-            </h3>
-            {likedTracks.length > 0 && onPlayTrackList && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onPlayTrackList(likedTracks, false)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold cursor-pointer"
-                >
-                  <Play size={13} className="fill-current" />
-                  <span>Play All</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onPlayTrackList(likedTracks, true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[var(--bg-tint)] text-[var(--text-primary)] text-xs font-semibold cursor-pointer"
-                >
-                  <Shuffle size={13} />
-                  <span>{t.shuffleLabel}</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {likedTracks.length === 0 ? (
-            <div className="rounded-2xl bg-[var(--bg-tint)] p-10 text-center space-y-2">
-              <Heart size={28} className="mx-auto text-[var(--text-dim)]" />
-              <div className="text-sm font-bold text-[var(--text-primary)]">No liked songs yet</div>
-              <p className="text-xs text-[var(--text-dim)] max-w-md mx-auto">
-                Click the heart icon on any track card or inside the player bar to save songs to your personal collection.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
-              {likedTracks.map((track) => (
-                <TrackCard
-                  key={`liked-${track.id}`}
-                  track={track}
-                  isSelected={track.id === currentTrack.id}
-                  isResolving={resolvingTrackId === track.id}
-                  onSelect={handlePlayTrackWithLyrics}
-                  isLiked
-                  onToggleLike={onToggleLike}
-                  onAddToAlbum={onAddToAlbum}
-                  onPlayNext={onPlayNext}
-                  onAddToQueue={onAddToQueue}
-                  onStartRadio={onStartRadio}
-                  onOpenArtist={onOpenArtist}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* TAB 3: RECENTLY PLAYED */}
-      {libraryTab === 'recent' && (
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
-              {t.recentlyPlayed} ({recentTracks.length})
-            </h3>
-            {recentTracks.length > 0 && onPlayTrackList && (
-              <button
-                type="button"
-                onClick={() => onPlayTrackList(recentTracks, false)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold cursor-pointer"
-              >
-                <Play size={13} className="fill-current" />
-                <span>Play History</span>
-              </button>
-            )}
-          </div>
-
-          {recentTracks.length === 0 ? (
-            <div className="rounded-2xl bg-[var(--bg-tint)] p-10 text-center space-y-2">
-              <Clock size={28} className="mx-auto text-[var(--text-dim)]" />
-              <div className="text-sm font-bold text-[var(--text-primary)]">No recent playback yet</div>
-              <p className="text-xs text-[var(--text-dim)] max-w-md mx-auto">
-                Tracks you play are recorded locally to power smart recommendations and quick resume.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
-              {recentTracks.map((track) => (
-                <TrackCard
-                  key={`history-${track.id}`}
-                  track={track}
-                  isSelected={track.id === currentTrack.id}
-                  isResolving={resolvingTrackId === track.id}
-                  onSelect={handlePlayTrackWithLyrics}
-                  isLiked={likedTrackIds?.has(track.id)}
-                  onToggleLike={onToggleLike}
-                  onAddToAlbum={onAddToAlbum}
-                  onPlayNext={onPlayNext}
-                  onAddToQueue={onAddToQueue}
-                  onStartRadio={onStartRadio}
-                  onOpenArtist={onOpenArtist}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* TAB 4: PLAYLISTS */}
-      {libraryTab === 'playlists' && (
-        <section className="space-y-5">
-          <form onSubmit={handleCreatePlaylistSubmit} className="flex flex-col sm:flex-row gap-2 max-w-lg">
-            <input
-              type="text"
-              value={newPlaylistName}
-              onChange={(e) => setNewPlaylistName(e.target.value)}
-              placeholder="Playlist name (e.g. Late Night Drive)..."
-              data-testid="create-playlist-input"
-              className="flex-1 h-10 px-4 rounded-xl bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-emerald)]"
-            />
-            <button
-              type="submit"
-              data-testid="create-playlist-btn"
-              className="h-10 px-4 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-[var(--accent-fg)] text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-            >
-              <Plus size={14} />
-              <span>{t.createPlaylist}</span>
-            </button>
-          </form>
-
-          {playlists.length === 0 ? (
-            <div className="rounded-2xl bg-[var(--bg-tint)] p-10 text-center space-y-2">
-              <ListMusic size={28} className="mx-auto text-[var(--text-dim)]" />
-              <div className="text-sm font-bold text-[var(--text-primary)]">No playlists yet</div>
-              <p className="text-xs text-[var(--text-dim)] max-w-md mx-auto">
-                Create your first playlist above, then add any playing song or studio track.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-              <div className="lg:col-span-4 space-y-2">
-                {playlists.map((pl) => {
-                  const isActive = selectedPlaylist?.id === pl.id;
-                  return (
-                    <div
-                      key={pl.id}
-                      className={`flex items-center justify-between gap-2 p-3 rounded-xl transition-colors ${isActive ? 'bg-[var(--accent-soft)]' : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)]'
-                        }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setActivePlaylistId(pl.id)}
-                        className="flex-1 text-left min-w-0 cursor-pointer"
-                      >
-                        <div className="text-sm font-bold text-[var(--text-primary)] truncate">
-                          {pl.name}
-                        </div>
-                        <div className="text-[11px] text-[var(--text-dim)]">
-                          {pl.tracks.length} tracks
-                        </div>
-                      </button>
-                      {onDeletePlaylist && (
-                        <button
-                          type="button"
-                          onClick={() => onDeletePlaylist(pl.id)}
-                          aria-label={`Delete ${pl.name}`}
-                          className="p-1.5 rounded text-[var(--text-dim)] hover:text-rose-400 cursor-pointer"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {selectedPlaylist && (
-                <div className="lg:col-span-8 rounded-2xl bg-[var(--bg-tint)] p-5 space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h4 className="text-base font-extrabold text-[var(--text-primary)]">
-                        {selectedPlaylist.name}
-                      </h4>
-                      <div className="text-xs text-[var(--text-dim)]">
-                        {selectedPlaylist.tracks.length} tracks
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {onAddTrackToPlaylist && (
-                        <button
-                          type="button"
-                          onClick={() => onAddTrackToPlaylist(selectedPlaylist.id, currentTrack)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--accent-emerald)] cursor-pointer"
-                        >
-                          <Plus size={12} />
-                          <span>Add "{currentTrack.title.slice(0, 18)}"</span>
-                        </button>
-                      )}
-                      {selectedPlaylist.tracks.length > 0 && onPlayTrackList && (
-                        <button
-                          type="button"
-                          onClick={() => onPlayTrackList(selectedPlaylist.tracks, false)}
-                          className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold cursor-pointer"
-                        >
-                          <Play size={12} className="fill-current" />
-                          <span>Play</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {selectedPlaylist.tracks.length === 0 ? (
-                    <div className="py-6 text-center text-xs text-[var(--text-dim)]">
-                      Empty playlist. Click "Add {currentTrack.title.slice(0, 18)}" or use the Full Player menu.
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {selectedPlaylist.tracks.map((tr) => (
-                        <div
-                          key={`${selectedPlaylist.id}-${tr.id}`}
-                          className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[var(--bg-surface)]/70 hover:bg-[var(--bg-surface)] transition-colors"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handlePlayTrackWithLyrics(tr)}
-                            className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
-                          >
-                            <img
-                              src={tr.coverUrl}
-                              alt={tr.title}
-                              onError={(e) => applyCoverFallback(e, tr.title, tr.artist)}
-                              className="w-9 h-9 rounded-lg object-cover shrink-0"
-                            />
-                            <div className="min-w-0">
-                              <div className="text-xs font-bold text-[var(--text-primary)] truncate">
-                                {tr.title}
-                              </div>
-                              <div className="text-[11px] text-[var(--text-dim)] truncate">
-                                {tr.artist}
-                              </div>
-                            </div>
-                          </button>
-
-                          {onRemoveTrackFromPlaylist && (
-                            <button
-                              type="button"
-                              onClick={() => onRemoveTrackFromPlaylist(selectedPlaylist.id, tr.id)}
-                              aria-label="Remove track"
-                              className="p-1.5 text-[var(--text-dim)] hover:text-rose-400 cursor-pointer"
-                            >
-                              <X size={13} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </section>
       )}
     </div>
   );

@@ -3406,7 +3406,7 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => handleTabChange('landing')}
+                onClick={() => handleTabChange('discover')}
                 className="md:hidden flex items-center gap-2 shrink-0 cursor-pointer"
               >
                 <div className="w-8 h-8 rounded-lg border border-[var(--border-medium)] bg-[var(--bg-surface)] flex items-center justify-center">

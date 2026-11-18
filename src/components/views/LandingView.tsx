@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -8,7 +8,6 @@ import {
   Loader2,
   Pause,
   Play,
-  Search,
   SkipForward,
   User
 } from 'lucide-react';
@@ -44,17 +43,6 @@ interface LandingViewProps {
   lyricsOffset?: number;
 }
 
-const FEATURED_ARTIST_LINKS: string[] = [
-  'The Weeknd',
-  'Taylor Swift',
-  'Tulus',
-  'Queen',
-  'YOASOBI',
-  'NewJeans',
-  'NOAH',
-  'Coldplay'
-];
-
 function formatDurationClock(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
   const total = Math.floor(seconds);
@@ -84,7 +72,6 @@ export const LandingView: React.FC<LandingViewProps> = ({
   lyricsOffset = 0
 }) => {
   const { t } = useAppPreferences();
-  const [heroQuery, setHeroQuery] = useState('');
 
   const curatedPool = useMemo(() => {
     const seen = new Set<string>();
@@ -140,12 +127,6 @@ export const LandingView: React.FC<LandingViewProps> = ({
   const isLiked = likedTrackIds?.has(currentTrack.id) ?? false;
   const safeDuration = Math.max(currentTrack.duration || 0, 1);
   const progressPct = Math.min(100, Math.max(0, (currentTime / safeDuration) * 100));
-
-  const handleHeroSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleaned = heroQuery.trim();
-    onEnterApp('search', cleaned || undefined);
-  };
 
   const editorialIndexRows: {
     num: string;
@@ -300,46 +281,6 @@ export const LandingView: React.FC<LandingViewProps> = ({
                   )}
                   <span>{t.previewTrackLabel}</span>
                 </button>
-              </div>
-
-              {/* Clean Underlined Instant Search */}
-              <div className="pt-2 space-y-2.5 max-w-lg">
-                <form
-                  onSubmit={handleHeroSearchSubmit}
-                  className="flex items-center gap-2 border-b border-[var(--border-medium)] focus-within:border-[var(--text-primary)] pb-2 transition-colors"
-                >
-                  <Search size={16} className="text-[var(--text-dim)] shrink-0" />
-                  <input
-                    type="text"
-                    value={heroQuery}
-                    onChange={(e) => setHeroQuery(e.target.value)}
-                    placeholder={t.searchPlaceholder}
-                    aria-label={t.searchPlaceholder}
-                    className="flex-1 min-w-0 bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    className="min-h-[34px] px-3 text-xs font-semibold text-[var(--text-primary)] hover:text-[var(--accent-text)] transition-colors cursor-pointer shrink-0"
-                  >
-                    {t.searchAction}
-                  </button>
-                </form>
-
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-dim)]">
-                  <span className="font-mono text-[10px] uppercase tracking-wider">
-                    {t.popularArtists}:
-                  </span>
-                  {FEATURED_ARTIST_LINKS.map((artist) => (
-                    <button
-                      key={artist}
-                      type="button"
-                      onClick={() => onEnterApp('search', artist)}
-                      className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline underline-offset-4 decoration-[var(--border-medium)] hover:decoration-[var(--text-primary)] transition-colors cursor-pointer"
-                    >
-                      {artist}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
 
