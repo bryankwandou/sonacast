@@ -181,9 +181,6 @@ export class AudioEngine {
           }
           return;
         }
-        if (this.activeBackend === 'youtube' && this.isPlaying) {
-          this.stopTransitionKeepalive();
-        }
         this.scheduleWakeRecovery();
       });
 
@@ -1012,7 +1009,7 @@ export class AudioEngine {
     this.clearYouTubeWatchdog();
     this.clearYouTubeResumeCheck();
     this.clearYouTubeFade();
-    this.startTransitionKeepalive(8000);
+    this.startTransitionKeepalive(0);
     this.isPlaying = false;
     this.currentTime = this.duration;
     this.notifyTime();
@@ -1315,7 +1312,7 @@ export class AudioEngine {
           const clamped = Math.max(0, Math.min(this.duration > 0 ? this.duration - 0.15 : targetSeconds, targetSeconds));
           const stillPlayingIntent = shouldResume && this.lastPauseCalledAt < startedAt;
           if (this.audioElement.src !== blobUrl) {
-            this.suppressPauseUntilMs = stillPlayingIntent ? performance.now() + 250 : 0;
+            this.suppressPauseUntilMs = stillPlayingIntent ? performance.now() + 900 : 0;
             this.audioElement.src = blobUrl;
             this.audioElement.load();
           }
@@ -1441,7 +1438,8 @@ export class AudioEngine {
             this.completeCurrentTrack(pollGen);
             return;
           }
-          if (stalledMs >= 1400 && !this.blobRecoverInFlight) {
+          const stallLimitMs = this.html5PlayPending ? 3600 : this.isDocumentHidden ? 2400 : 1400;
+          if (stalledMs >= stallLimitMs && !this.blobRecoverInFlight) {
             void this.recoverStalledHtml5Seek(pollGen, activeEl.currentTime);
           }
         }
@@ -1949,7 +1947,7 @@ export class AudioEngine {
       const cachedBlobUrl = sameOriginAudio ? this.audioBlobCache.get(sameOriginAudio) : undefined;
       const effectiveAudioSrc = cachedBlobUrl || audioUrl;
       const resolvedEffectiveSrc = new URL(effectiveAudioSrc, window.location.href).href;
-      this.suppressPauseUntilMs = performance.now() + 700;
+      this.suppressPauseUntilMs = performance.now() + 1500;
       if (this.audioElement.src !== resolvedEffectiveSrc) {
         this.audioElement.src = effectiveAudioSrc;
         this.audioElement.load();
@@ -1960,7 +1958,7 @@ export class AudioEngine {
       this.html5PlayPending = true;
       this.isPlaying = true;
       this.wasPlayingBeforeSleep = true;
-      this.startTransitionKeepalive(4000);
+      this.startTransitionKeepalive(0);
       this.notifyState();
       this.startHtml5Poll();
       if (!this.isLiveStream) {
@@ -2065,7 +2063,6 @@ export class AudioEngine {
         // Ignore
       }
     }
-    this.stopTransitionKeepalive();
     this.notifyState();
   }
 
