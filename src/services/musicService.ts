@@ -226,6 +226,7 @@ export async function fetchLyricsWithMeta(
   albumName?: string,
   forceRefresh = false
 ): Promise<LyricsLookupResult> {
+  void albumName;
   const cacheKey = makeLyricsCacheKey(trackName, artistName, duration);
   if (!forceRefresh) {
     const cached = readCachedLyrics(cacheKey);
@@ -235,34 +236,7 @@ export async function fetchLyricsWithMeta(
   const cleanTrack = cleanLyricsTitle(trackName);
   const cleanArtist = cleanLyricsArtist(artistName);
 
-  // 1. Query multi-provider server endpoint (LRCLIB + NetEase + lyrics.ovh)
-  try {
-    const params = new URLSearchParams({
-      title: cleanTrack,
-      artist: cleanArtist,
-      duration: String(Math.round(duration || 210)),
-      v: '2'
-    });
-    if (albumName) params.set('album', albumName);
-    const apiRes = await fetch(`${getApiEndpoint('/api/lyrics')}?${params.toString()}`, {
-      signal: AbortSignal.timeout(6500)
-    });
-    if (apiRes.ok) {
-      const payload = (await apiRes.json()) as LyricsLookupResult;
-      if (payload?.found && Array.isArray(payload.lyrics) && payload.lyrics.length > 0) {
-        const cleanedPayload: LyricsLookupResult = {
-          ...payload,
-          lyrics: sanitizeLyricsTranslations(payload.lyrics)
-        };
-        writeCachedLyrics(cacheKey, cleanedPayload);
-        return cleanedPayload;
-      }
-    }
-  } catch {
-    // Fall back to direct browser multi-provider lookup
-  }
-
-  // 2. Direct browser fallback: LRCLIB (/get + /search synced & plain) + lyrics.ovh
+  // Direct external CORS multi-provider lookup: LRCLIB (/get + /search synced & plain) + lyrics.ovh (0 Vercel compute)
   try {
     const [lrGet, lrPair, lrQ, ovh] = await Promise.all([
       fetch(
@@ -311,7 +285,7 @@ export async function fetchLyricsWithMeta(
         found: true,
         synced: true,
         source: 'lrclib',
-        lyrics: bestSynced.parsed,
+        lyrics: sanitizeLyricsTranslations(bestSynced.parsed),
         matchedDuration: Number(bestSynced.item.duration) || undefined
       };
       writeCachedLyrics(cacheKey, hit);
@@ -320,7 +294,9 @@ export async function fetchLyricsWithMeta(
 
     const withPlain = pool.find((s: { plainLyrics?: string }) => Boolean(s?.plainLyrics && s.plainLyrics.trim().length > 30));
     if (withPlain?.plainLyrics) {
-      const lines = pacePlainLyricsLines(withPlain.plainLyrics, Number(withPlain.duration) || duration);
+      const lines = sanitizeLyricsTranslations(
+        pacePlainLyricsLines(withPlain.plainLyrics, Number(withPlain.duration) || duration)
+      );
       if (lines.length > 0) {
         const hit: LyricsLookupResult = { found: true, synced: false, source: 'lrclib-plain', lyrics: lines };
         writeCachedLyrics(cacheKey, hit);
@@ -329,7 +305,7 @@ export async function fetchLyricsWithMeta(
     }
 
     if (typeof ovh?.lyrics === 'string' && ovh.lyrics.trim().length > 30) {
-      const lines = pacePlainLyricsLines(ovh.lyrics, duration);
+      const lines = sanitizeLyricsTranslations(pacePlainLyricsLines(ovh.lyrics, duration));
       if (lines.length > 0) {
         const hit: LyricsLookupResult = { found: true, synced: false, source: 'lyrics.ovh', lyrics: lines };
         writeCachedLyrics(cacheKey, hit);
@@ -472,11 +448,50 @@ export interface StreamCandidate {
   thumbnail: string;
 }
 
-function getApiEndpoint(route: string): string {
-  if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
-    return `https://sonacast-ten.vercel.app${route}`;
+let dzJsonpSeq = 0;
+
+async function fetchDeezerJsonp<T>(path: string, timeoutMs = 4200): Promise<T | null> {
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    try {
+      const res = await fetch(`https://api.deezer.com${normalized}`, {
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      return res.ok ? ((await res.json()) as T) : null;
+    } catch {
+      return null;
+    }
   }
-  return route;
+  return new Promise<T | null>((resolve) => {
+    dzJsonpSeq = (dzJsonpSeq + 1) % 100000;
+    const cbName = `__scDzCb_${Date.now()}_${dzJsonpSeq}`;
+    const sep = normalized.includes('?') ? '&' : '?';
+    const src = `https://api.deezer.com${normalized}${sep}output=jsonp&callback=${encodeURIComponent(cbName)}`;
+    const script = document.createElement('script');
+    let settled = false;
+    const win = window as unknown as Record<string, unknown>;
+    const finalize = (val: T | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      try {
+        delete win[cbName];
+      } catch {
+        win[cbName] = undefined;
+      }
+      script.remove();
+      resolve(val);
+    };
+    const timer = window.setTimeout(() => finalize(null), timeoutMs);
+    win[cbName] = (payload: unknown) => {
+      const p = payload as { error?: unknown } | null;
+      finalize(p && typeof p === 'object' && 'error' in p && p.error ? null : (payload as T));
+    };
+    script.async = true;
+    script.src = src;
+    script.onerror = () => finalize(null);
+    document.head.appendChild(script);
+  });
 }
 
 function safeYtThumbnail(rawThumb: string | undefined, videoId: string): string {
@@ -835,9 +850,9 @@ export async function resolveMusicVideoStream(
   const cleanArtist = cleanLyricsArtist(artist);
   const mvQuery = `${cleanTitle} ${cleanArtist}`.trim();
 
-  const [ytRes, pipedApiRes] = await Promise.allSettled([
-    searchVercelYtApi(`${mvQuery} official music video`, 'yt', parentSignal, 'video'),
-    searchVercelYtApi(mvQuery, undefined, parentSignal, 'video')
+  const [mvVideoRes, mvAltRes] = await Promise.allSettled([
+    searchPipedMusic(`${mvQuery} official music video`, parentSignal, 'videos'),
+    searchPipedMusic(mvQuery, parentSignal, 'videos')
   ]);
 
   const rawPool: StreamCandidate[] = [];
@@ -850,13 +865,8 @@ export async function resolveMusicVideoStream(
     }
   };
 
-  if (ytRes.status === 'fulfilled') pushBatch(ytRes.value);
-  if (pipedApiRes.status === 'fulfilled') pushBatch(pipedApiRes.value);
-
-  if (rawPool.length < 3 && !parentSignal?.aborted) {
-    const directPiped = await searchPipedMusic(`${mvQuery} official music video`, parentSignal, 'videos');
-    pushBatch(directPiped);
-  }
+  if (mvVideoRes.status === 'fulfilled') pushBatch(mvVideoRes.value);
+  if (mvAltRes.status === 'fulfilled') pushBatch(mvAltRes.value);
 
   if (rawPool.length === 0) return null;
 
@@ -887,48 +897,14 @@ export async function resolveMusicVideoStream(
   return result;
 }
 
-async function searchVercelYtApi(
-  query: string,
-  mode?: 'yt',
-  parentSignal?: AbortSignal,
-  intent?: 'audio' | 'video'
-): Promise<StreamCandidate[]> {
-  if (parentSignal?.aborted) return [];
-  const { signal, cleanup } = createLinkedAbortSignal(5500, parentSignal);
-  try {
-    const endpoint = getApiEndpoint('/api/yt-search');
-    const modeParam = mode ? `&mode=${mode}` : '';
-    const intentParam = intent ? `&intent=${intent}` : '';
-    const res = await fetch(`${endpoint}?q=${encodeURIComponent(query)}${modeParam}${intentParam}`, {
-      signal
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const items = Array.isArray(data?.items) ? data.items : [];
-    return items
-      .filter(
-        (x: StreamCandidate) =>
-          Boolean(x.videoId) && (x.duration === 0 || x.duration >= 60) && !isNonOriginalTitle(x.title, query)
-      )
-      .map((x: StreamCandidate) => ({
-        ...x,
-        thumbnail: safeYtThumbnail(x.thumbnail, x.videoId)
-      }));
-  } catch {
-    return [];
-  } finally {
-    cleanup();
-  }
-}
-
 export async function searchFullStreams(query: string): Promise<StreamCandidate[]> {
-  const [piped, ytApi] = await Promise.all([
-    searchPipedMusic(query),
-    searchVercelYtApi(`${query} official audio`, 'yt')
+  const [songs, videos] = await Promise.all([
+    searchPipedMusic(query, undefined, 'music_songs'),
+    searchPipedMusic(`${query} official audio`, undefined, 'videos')
   ]);
   const seen = new Set<string>();
   const merged: StreamCandidate[] = [];
-  for (const item of [...piped, ...ytApi]) {
+  for (const item of [...songs, ...videos]) {
     if (!seen.has(item.videoId)) {
       seen.add(item.videoId);
       merged.push(item);
@@ -1103,10 +1079,10 @@ export async function resolveFullTrackStream(
       linkedSignal.addEventListener('abort', () => resolve([[], []]), { once: true });
     });
 
-    const [piped, ytFallback] = await Promise.race([
+    const [pipedSongs, pipedVideos] = await Promise.race([
       Promise.all([
-        searchPipedMusic(query, linkedSignal),
-        searchVercelYtApi(`${query} official audio`, 'yt', linkedSignal)
+        searchPipedMusic(query, linkedSignal, 'music_songs'),
+        searchPipedMusic(`${query} official audio`, linkedSignal, 'videos')
       ]),
       abortFallback
     ]);
@@ -1115,7 +1091,7 @@ export async function resolveFullTrackStream(
 
     const seenIds = new Set<string>();
     const combined: StreamCandidate[] = [];
-    for (const item of [...piped, ...ytFallback]) {
+    for (const item of [...pipedSongs, ...pipedVideos]) {
       if (!seenIds.has(item.videoId)) {
         seenIds.add(item.videoId);
         combined.push(item);
@@ -1272,6 +1248,36 @@ function extractIndexedArtistAndSong(normQuery: string): ParsedArtistSongQuery {
   return { indexedArtistName: '', indexedArtistNorm: '', songNorm: '' };
 }
 
+interface DeezerTrackRaw {
+  id?: number | string;
+  title?: string;
+  title_short?: string;
+  duration?: number;
+  rank?: number;
+  artist?: { id?: number | string; name?: string; nb_fan?: number };
+  album?: { id?: number | string; title?: string; cover_big?: string; cover_xl?: string; cover_medium?: string };
+  md5_image?: string;
+}
+
+function mapDeezerTrackRaw(t: DeezerTrackRaw, fromArtistTop = false, genreHint = 'Pop'): CatalogApiItem {
+  const coverUrl =
+    t.album?.cover_big ||
+    t.album?.cover_xl ||
+    t.album?.cover_medium ||
+    (t.md5_image ? `https://cdn-images.dzcdn.net/images/cover/${t.md5_image}/500x500-000000-80-0-0.jpg` : '');
+  return {
+    id: `dz-${t.id ?? ''}`,
+    title: String(t.title || t.title_short || ''),
+    artist: String(t.artist?.name || ''),
+    album: String(t.album?.title || 'Single'),
+    genre: genreHint,
+    duration: Number(t.duration) || 210,
+    coverUrl: String(coverUrl || ''),
+    deezerRank: Number(t.rank) || 0,
+    fromArtistTop
+  };
+}
+
 const catalogApiSearchCache = new Map<string, { data: CatalogSearchResponse; cachedAt: number }>();
 
 async function fetchCatalogApiSearch(query: string): Promise<CatalogSearchResponse> {
@@ -1282,13 +1288,65 @@ async function fetchCatalogApiSearch(query: string): Promise<CatalogSearchRespon
     return cached.data;
   }
   try {
-    const endpoint = getApiEndpoint('/api/catalog-search');
-    const res = await fetch(`${endpoint}?q=${encodeURIComponent(query)}`, {
-      signal: AbortSignal.timeout(3200)
-    });
-    if (!res.ok) return { items: [] };
-    const data = (await res.json()) as CatalogSearchResponse;
-    if (key && Array.isArray(data?.items) && data.items.length > 0) {
+    const [artistRes, trackRes] = await Promise.all([
+      fetchDeezerJsonp<{ data?: Array<{ id?: number | string; name?: string; nb_fan?: number }> }>(
+        `/search/artist?q=${encodeURIComponent(query)}&limit=8`,
+        3200
+      ),
+      fetchDeezerJsonp<{ data?: DeezerTrackRaw[] }>(
+        `/search?q=${encodeURIComponent(query)}&order=RANKING&limit=36`,
+        3400
+      )
+    ]);
+
+    const normQ = normalizeText(query);
+    const artistList = Array.isArray(artistRes?.data) ? artistRes.data : [];
+    let bestArtist: { id?: number | string; name?: string; nb_fan?: number } | null = null;
+    for (const art of artistList) {
+      const an = normalizeText(art.name || '');
+      if (an === normQ || (an && normQ && (normQ.startsWith(`${an} `) || an.startsWith(normQ)))) {
+        bestArtist = art;
+        break;
+      }
+    }
+    if (!bestArtist && artistList[0]) {
+      const firstNorm = normalizeText(artistList[0].name || '');
+      if (firstNorm && normQ.includes(firstNorm)) bestArtist = artistList[0];
+    }
+
+    let artistTopItems: CatalogApiItem[] = [];
+    if (bestArtist?.id) {
+      const [topRes, exactSearchRes] = await Promise.all([
+        fetchDeezerJsonp<{ data?: DeezerTrackRaw[] }>(`/artist/${bestArtist.id}/top?limit=35`, 3200),
+        fetchDeezerJsonp<{ data?: DeezerTrackRaw[] }>(
+          `/search?q=${encodeURIComponent(`artist:"${bestArtist.name || query}"`)}&order=RANKING&limit=25`,
+          3200
+        )
+      ]);
+      const combinedTop = [...(topRes?.data || []), ...(exactSearchRes?.data || [])];
+      artistTopItems = combinedTop
+        .filter((t) => Boolean(t?.title && t?.artist?.name) && !isNonOriginalTitle(t.title || '', query))
+        .map((t) => mapDeezerTrackRaw(t, true));
+    }
+
+    const searchItems = (trackRes?.data || [])
+      .filter((t) => Boolean(t?.title && t?.artist?.name) && !isNonOriginalTitle(t.title || '', query))
+      .map((t) => mapDeezerTrackRaw(t, false));
+
+    const seen = new Set<string>();
+    const items: CatalogApiItem[] = [];
+    for (const item of [...artistTopItems, ...searchItems]) {
+      if (!item.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      items.push(item);
+    }
+
+    const data: CatalogSearchResponse = {
+      matchedArtist: bestArtist?.name || '',
+      artistFans: Number(bestArtist?.nb_fan) || 0,
+      items
+    };
+    if (key && items.length > 0) {
       if (catalogApiSearchCache.size >= 80) {
         const oldestKey = catalogApiSearchCache.keys().next().value;
         if (oldestKey) catalogApiSearchCache.delete(oldestKey);
@@ -1967,8 +2025,7 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
         parsed?.cachedAt &&
         Date.now() - parsed.cachedAt < DAILY_CHARTS_TTL_MS &&
         parsed.payload &&
-        ((parsed.payload.global?.length || 0) > 0 || (parsed.payload.indonesia?.length || 0) > 0) &&
-        (parsed.payload.featuredPlaylists?.length || 0) > 0
+        ((parsed.payload.global?.length || 0) > 0 || (parsed.payload.indonesia?.length || 0) > 0)
       ) {
         return mapChartsPayload(parsed.payload);
       }
@@ -1977,65 +2034,163 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
     // Ignore storage read failure
   }
 
-  // 2. Read daily 24h CI/CD catalog feed directly via free CDN (0 Vercel serverless calls / bandwidth)
+  // 2. Read daily 24h CI/CD catalog feed directly via free CDN + enrich live external charts/albums (0 Vercel compute)
+  const fetchDirectAlbumsByRss = async (country: 'us' | 'id'): Promise<CatalogAlbum[]> => {
+    try {
+      const res = await fetch(`https://itunes.apple.com/${country}/rss/topalbums/limit=24/json`, {
+        signal: AbortSignal.timeout(3800)
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      const entries = Array.isArray(json?.feed?.entry) ? json.feed.entry : [];
+      const ids: string[] = [];
+      for (const e of entries) {
+        const rawId = String(e?.id?.attributes?.['im:id'] || '');
+        if (/^\d+$/.test(rawId)) ids.push(rawId);
+      }
+      if (ids.length === 0) return [];
+      const lookRes = await fetch(
+        `https://itunes.apple.com/lookup?id=${ids.slice(0, 20).join(',')}&country=${country}`,
+        { signal: AbortSignal.timeout(4000) }
+      );
+      if (!lookRes.ok) return [];
+      const lookData = await lookRes.json();
+      const rows = Array.isArray(lookData?.results) ? lookData.results : [];
+      return rows
+        .filter(
+          (a: {
+            wrapperType?: string;
+            collectionType?: string;
+            collectionName?: string;
+            artistName?: string;
+            collectionExplicitness?: string;
+            trackCount?: number;
+            primaryGenreName?: string;
+          }) =>
+            a.wrapperType === 'collection' &&
+            a.collectionType === 'Album' &&
+            Boolean(a.collectionName && a.artistName) &&
+            a.collectionExplicitness !== 'explicit' &&
+            Number(a.trackCount || 0) >= 6 &&
+            !NON_MUSIC_EXTRA_RE.test(`${a.collectionName || ''} ${a.artistName || ''}`) &&
+            !CHART_COUNTRY_CROSSOVER_RE.test(`${a.collectionName || ''} ${a.artistName || ''} ${a.primaryGenreName || ''}`)
+        )
+        .map(
+          (a: {
+            collectionId?: number;
+            collectionName?: string;
+            artistName?: string;
+            artworkUrl100?: string;
+            trackCount?: number;
+            releaseDate?: string;
+            primaryGenreName?: string;
+          }): CatalogAlbum => ({
+            id: `it-${a.collectionId || ''}`,
+            title: String(a.collectionName || ''),
+            artist: String(a.artistName || ''),
+            coverUrl:
+              typeof a.artworkUrl100 === 'string'
+                ? a.artworkUrl100.replace('100x100bb', '600x600bb')
+                : DEFAULT_FALLBACK_COVER,
+            nbTracks: Number(a.trackCount) || 6,
+            releaseDate: typeof a.releaseDate === 'string' ? a.releaseDate.slice(0, 10) : undefined,
+            genre: String(a.primaryGenreName || 'Pop'),
+            recordType: 'album'
+          })
+        );
+    } catch {
+      return [];
+    }
+  };
+
   for (const feedUrl of DAILY_CHARTS_FEED_URLS) {
     try {
       const feedRes = await fetch(feedUrl, { signal: AbortSignal.timeout(3500) });
       if (feedRes.ok) {
         const data: ChartsApiPayload = await feedRes.json();
-        const hasFullDailyMeta =
-          ((data.global?.length || 0) > 0 || (data.indonesia?.length || 0) > 0) &&
-          (data.featuredAlbums?.length || 0) > 0 &&
-          (data.featuredPlaylists?.length || 0) > 0;
-        if (hasFullDailyMeta) {
+        if ((data.global?.length || 0) > 0 || (data.indonesia?.length || 0) > 0) {
+          let payload = data;
+          if ((data.featuredAlbums?.length || 0) < 6) {
+            const [usAlb, idAlb] = await Promise.all([
+              fetchDirectAlbumsByRss('us'),
+              fetchDirectAlbumsByRss('id')
+            ]);
+            payload = { ...data, featuredAlbums: [...(data.featuredAlbums || []), ...idAlb, ...usAlb] };
+          }
           try {
             localStorage.setItem(
               DAILY_CHARTS_CACHE_KEY,
-              JSON.stringify({ cachedAt: Date.now(), payload: data })
+              JSON.stringify({ cachedAt: Date.now(), payload })
             );
           } catch {
             // Ignore quota errors
           }
-          return mapChartsPayload(data);
+          return mapChartsPayload(payload);
         }
       }
     } catch {
-      // Try next CDN mirror or fallback
+      // Try next CDN mirror or direct browser sources
     }
   }
 
-  // 3. Edge-cached Vercel serverless fallback (24h s-maxage)
-  try {
-    const res = await fetch(`${getApiEndpoint('/api/catalog-search')}?mode=charts`, {
-      signal: AbortSignal.timeout(4800)
-    });
-    if (res.ok) {
-      const data: ChartsApiPayload = await res.json();
-      try {
-        localStorage.setItem(
-          DAILY_CHARTS_CACHE_KEY,
-          JSON.stringify({ cachedAt: Date.now(), payload: data })
-        );
-      } catch {
-        // Ignore quota errors
-      }
-      return mapChartsPayload(data);
-    }
-  } catch {
-    // Fall back to direct CORS Apple RSS feeds
-  }
-
-  const [usItems, idItems] = await Promise.all([
-    fetchDirectAppleRssFallback('us', 24),
-    fetchDirectAppleRssFallback('id', 24)
+  // 3. Direct external CORS + JSONP browser aggregation (Apple RSS + Deezer JSONP, 0 Vercel compute)
+  const [usItems, idItems, usAlbums, idAlbums, dzChartTracks, dzChartAlbums] = await Promise.all([
+    fetchDirectAppleRssFallback('us', 30),
+    fetchDirectAppleRssFallback('id', 28),
+    fetchDirectAlbumsByRss('us'),
+    fetchDirectAlbumsByRss('id'),
+    fetchDeezerJsonp<{ data?: DeezerTrackRaw[] }>('/chart/0/tracks?limit=35', 4200),
+    fetchDeezerJsonp<{
+      data?: Array<{
+        id?: number;
+        title?: string;
+        artist?: { name?: string };
+        cover_xl?: string;
+        cover_big?: string;
+        nb_tracks?: number;
+        record_type?: string;
+      }>;
+    }>('/chart/0/albums?limit=16', 4200)
   ]);
 
-  return {
-    global: toTrackList(usItems),
-    indonesia: toTrackList(idItems),
-    albums: mergeDailyAlbums([]),
-    playlists: mergeDailyPlaylists([])
+  const dzTracks = (dzChartTracks?.data || [])
+    .filter((t) => Boolean(t?.title && t?.artist?.name) && !isNonOriginalTitle(t.title || '', ''))
+    .map((t) => mapDeezerTrackRaw(t, false, 'Pop'));
+  const dzAlbums: CatalogAlbum[] = (dzChartAlbums?.data || [])
+    .filter(
+      (a) =>
+        Boolean(a?.id && a?.title) &&
+        (a.nb_tracks === undefined || Number(a.nb_tracks) === 0 || Number(a.nb_tracks) >= 6)
+    )
+    .map((a) => ({
+      id: `dz-alb-${a.id}`,
+      title: String(a.title || ''),
+      artist: String(a.artist?.name || 'Various Artists'),
+      coverUrl: String(a.cover_xl || a.cover_big || DEFAULT_FALLBACK_COVER),
+      nbTracks: Number(a.nb_tracks) || undefined,
+      genre: 'Pop',
+      recordType: 'album'
+    }));
+
+  const directPayload: ChartsApiPayload = {
+    global: [...dzTracks, ...usItems],
+    us: usItems,
+    indonesia: idItems,
+    featuredAlbums: [...idAlbums, ...usAlbums, ...dzAlbums],
+    featuredPlaylists: FEATURED_DAILY_PLAYLISTS
   };
+  try {
+    if ((directPayload.global?.length || 0) > 0 || (directPayload.indonesia?.length || 0) > 0) {
+      localStorage.setItem(
+        DAILY_CHARTS_CACHE_KEY,
+        JSON.stringify({ cachedAt: Date.now(), payload: directPayload })
+      );
+    }
+  } catch {
+    // Ignore storage quota errors
+  }
+
+  return mapChartsPayload(directPayload);
 }
 
 export const FEATURED_RELEASE_ALBUMS: CatalogAlbum[] = [
@@ -2283,62 +2438,81 @@ export const FEATURED_RELEASE_ALBUMS: CatalogAlbum[] = [
 
 const albumTracksCache = new Map<string, { album: CatalogAlbum; tracks: Track[] }>();
 
-/** Searches release albums via server proxy with direct iTunes CORS fallback. */
+/** Searches release albums directly via external CORS iTunes & Deezer JSONP (0 Vercel compute). */
 export async function searchAlbumsOnline(query: string): Promise<CatalogAlbum[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
 
-  try {
-    const res = await fetch(
-      `${getApiEndpoint('/api/catalog-search')}?mode=albums&q=${encodeURIComponent(trimmed)}`,
-      { signal: AbortSignal.timeout(5200) }
-    );
-    if (res.ok) {
-      const data: { albums?: CatalogAlbum[] } = await res.json();
-      if (Array.isArray(data?.albums) && data.albums.length > 0) {
-        return data.albums;
-      }
-    }
-  } catch {
-    // Fall back to direct CORS iTunes album search
+  const [itRes, dzRes] = await Promise.all([
+    fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&entity=album&limit=14`, {
+      signal: AbortSignal.timeout(4000)
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null),
+    fetchDeezerJsonp<{
+      data?: Array<{
+        id?: number;
+        title?: string;
+        artist?: { name?: string };
+        cover_xl?: string;
+        cover_big?: string;
+        nb_tracks?: number;
+        record_type?: string;
+      }>;
+    }>(`/search/album?q=${encodeURIComponent(trimmed)}&limit=14`, 4000)
+  ]);
+
+  const seen = new Set<string>();
+  const merged: CatalogAlbum[] = [];
+  const pushAlbum = (alb: CatalogAlbum) => {
+    const key = `${normalizeBaseAlbumTitle(alb.title)}::${normalizeText(alb.artist)}`;
+    if (!alb.title || !alb.artist || seen.has(key)) return;
+    seen.add(key);
+    merged.push(alb);
+  };
+
+  const dzRows = Array.isArray(dzRes?.data) ? dzRes.data : [];
+  for (const a of dzRows) {
+    if (!a?.id || !a?.title) continue;
+    const count = Number(a.nb_tracks) || 0;
+    pushAlbum({
+      id: `dz-alb-${a.id}`,
+      title: String(a.title),
+      artist: String(a.artist?.name || 'Various Artists'),
+      coverUrl: String(a.cover_xl || a.cover_big || DEFAULT_FALLBACK_COVER),
+      nbTracks: count || undefined,
+      genre: 'Album',
+      recordType: count > 0 && count <= 5 ? 'single' : 'album'
+    });
   }
 
-  try {
-    const res = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&entity=album&limit=14`,
-      { signal: AbortSignal.timeout(4000) }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    const rows = Array.isArray(data?.results) ? data.results : [];
-    return rows
-      .filter((a: { collectionName?: string; artistName?: string }) => Boolean(a.collectionName && a.artistName))
-      .map(
-        (a: {
-          collectionId?: number;
-          collectionName?: string;
-          artistName?: string;
-          artworkUrl100?: string;
-          trackCount?: number;
-          releaseDate?: string;
-          primaryGenreName?: string;
-        }): CatalogAlbum => ({
-          id: `it-${a.collectionId || ''}`,
-          title: String(a.collectionName || ''),
-          artist: String(a.artistName || ''),
-          coverUrl:
-            typeof a.artworkUrl100 === 'string'
-              ? a.artworkUrl100.replace('100x100bb', '600x600bb')
-              : DEFAULT_FALLBACK_COVER,
-          nbTracks: Number(a.trackCount) || 0,
-          releaseDate: typeof a.releaseDate === 'string' ? a.releaseDate.slice(0, 10) : undefined,
-          genre: String(a.primaryGenreName || 'Album'),
-          recordType: (Number(a.trackCount) || 0) <= 5 ? 'single' : 'album'
-        })
-      );
-  } catch {
-    return [];
+  const itRows = Array.isArray(itRes?.results) ? itRes.results : [];
+  for (const a of itRows as Array<{
+    collectionId?: number;
+    collectionName?: string;
+    artistName?: string;
+    artworkUrl100?: string;
+    trackCount?: number;
+    releaseDate?: string;
+    primaryGenreName?: string;
+  }>) {
+    if (!a?.collectionName || !a?.artistName) continue;
+    pushAlbum({
+      id: `it-${a.collectionId || ''}`,
+      title: String(a.collectionName),
+      artist: String(a.artistName),
+      coverUrl:
+        typeof a.artworkUrl100 === 'string'
+          ? a.artworkUrl100.replace('100x100bb', '600x600bb')
+          : DEFAULT_FALLBACK_COVER,
+      nbTracks: Number(a.trackCount) || 0,
+      releaseDate: typeof a.releaseDate === 'string' ? a.releaseDate.slice(0, 10) : undefined,
+      genre: String(a.primaryGenreName || 'Album'),
+      recordType: (Number(a.trackCount) || 0) <= 5 ? 'single' : 'album'
+    });
   }
+
+  return merged.slice(0, 18);
 }
 
 interface AlbumTrackApiItem extends CatalogApiItem {
@@ -2379,26 +2553,57 @@ export async function fetchAlbumTracksOnline(
       };
     });
 
-  try {
-    const res = await fetch(
-      `${getApiEndpoint('/api/catalog-search')}?mode=album_tracks&albumId=${encodeURIComponent(album.id)}`,
-      { signal: AbortSignal.timeout(5500) }
-    );
-    if (res.ok) {
-      const data: { album?: CatalogAlbum | null; items?: AlbumTrackApiItem[] } = await res.json();
-      const resolvedMeta: CatalogAlbum = data?.album?.title
-        ? { ...album, ...data.album, coverUrl: data.album.coverUrl || album.coverUrl }
-        : album;
-      const items = Array.isArray(data?.items) ? data.items : [];
-      if (items.length > 0) {
-        const tracks = mapItems(items, resolvedMeta);
+  if (!album.id.startsWith('it-')) {
+    const dzAlbumId = album.id.replace(/^dz-alb-/, '').replace(/[^0-9]/g, '');
+    if (dzAlbumId) {
+      const [dzMeta, dzTracksData] = await Promise.all([
+        fetchDeezerJsonp<{
+          id?: number;
+          title?: string;
+          artist?: { name?: string };
+          cover_xl?: string;
+          cover_big?: string;
+          nb_tracks?: number;
+          release_date?: string;
+          genres?: { data?: Array<{ name?: string }> };
+        }>(`/album/${dzAlbumId}`, 4000),
+        fetchDeezerJsonp<{
+          data?: Array<
+            DeezerTrackRaw & {
+              track_position?: number;
+              disk_number?: number;
+            }
+          >;
+        }>(`/album/${dzAlbumId}/tracks?limit=100`, 4200)
+      ]);
+      const rawItems = Array.isArray(dzTracksData?.data) ? dzTracksData.data : [];
+      if (rawItems.length > 0) {
+        const resolvedMeta: CatalogAlbum = {
+          ...album,
+          title: dzMeta?.title || album.title,
+          artist: dzMeta?.artist?.name || album.artist,
+          coverUrl: dzMeta?.cover_xl || dzMeta?.cover_big || album.coverUrl || DEFAULT_FALLBACK_COVER,
+          nbTracks: Number(dzMeta?.nb_tracks) || rawItems.length,
+          releaseDate: dzMeta?.release_date || album.releaseDate,
+          genre: dzMeta?.genres?.data?.[0]?.name || album.genre
+        };
+        const mapped: AlbumTrackApiItem[] = rawItems.map((t, idx) => ({
+          id: `dz-trk-${t.id || idx}`,
+          title: String(t.title || t.title_short || ''),
+          artist: String(t.artist?.name || resolvedMeta.artist),
+          album: resolvedMeta.title,
+          genre: resolvedMeta.genre || 'Album',
+          duration: Number(t.duration) || 210,
+          coverUrl: resolvedMeta.coverUrl,
+          trackNumber: Number(t.track_position) || idx + 1,
+          discNumber: Number(t.disk_number) || 1
+        }));
+        const tracks = mapItems(mapped, resolvedMeta);
         const result = { album: resolvedMeta, tracks };
         albumTracksCache.set(album.id, result);
         return result;
       }
     }
-  } catch {
-    // Fall back to direct iTunes lookup if album ID uses it- prefix or API proxy unavailable
   }
 
   if (album.id.startsWith('it-')) {
@@ -2471,7 +2676,7 @@ export async function fetchAlbumTracksOnline(
 const playlistSearchCache = new Map<string, CatalogPlaylist[]>();
 const playlistTracksCache = new Map<string, { playlist: CatalogPlaylist; tracks: Track[] }>();
 
-/** Searches public curated playlists online with in-memory deduplicated caching. */
+/** Searches public playlists directly via Deezer JSONP + curated mixes (0 Vercel compute). */
 export async function searchPlaylistsOnline(query: string): Promise<CatalogPlaylist[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
@@ -2481,24 +2686,31 @@ export async function searchPlaylistsOnline(query: string): Promise<CatalogPlayl
     return playlistSearchCache.get(cacheKey)!;
   }
 
+  const dzPlaylists: CatalogPlaylist[] = [];
   try {
-    const res = await fetch(
-      `${getApiEndpoint('/api/catalog-search')}?mode=playlists&q=${encodeURIComponent(trimmed)}`,
-      { signal: AbortSignal.timeout(4800) }
-    );
-    if (res.ok) {
-      const data: { playlists?: CatalogPlaylist[] } = await res.json();
-      if (Array.isArray(data?.playlists) && data.playlists.length > 0) {
-        const cleaned = data.playlists.map((p) => ({
-          ...p,
-          coverUrl: p.coverUrl || DEFAULT_FALLBACK_COVER
-        }));
-        playlistSearchCache.set(cacheKey, cleaned);
-        return cleaned;
-      }
+    const data = await fetchDeezerJsonp<{
+      data?: Array<{
+        id?: number;
+        title?: string;
+        picture_xl?: string;
+        picture_big?: string;
+        picture_medium?: string;
+        nb_tracks?: number;
+        user?: { name?: string };
+      }>;
+    }>(`/search/playlist?q=${encodeURIComponent(trimmed)}&limit=14`, 4200);
+    for (const p of data?.data || []) {
+      if (!p?.id || !p?.title || RETRO_PL_RE.test(p.title)) continue;
+      dzPlaylists.push({
+        id: `dz-pl-${p.id}`,
+        title: String(p.title),
+        creator: String(p.user?.name || 'Sonacast Community'),
+        coverUrl: String(p.picture_xl || p.picture_big || p.picture_medium || DEFAULT_FALLBACK_COVER),
+        nbTracks: Number(p.nb_tracks) || 15
+      });
     }
   } catch {
-    // Graceful fallback handled below
+    // Fall back to curated catalog playlists below
   }
 
   const tokens = cacheKey.split(/\s+/).filter(Boolean);
@@ -2506,9 +2718,13 @@ export async function searchPlaylistsOnline(query: string): Promise<CatalogPlayl
     const hay = normalizeText(`${p.title} ${p.description || ''} ${p.creator}`);
     return tokens.some((tok) => hay.includes(tok));
   });
-  const fallback =
-    curatedMatches.length > 0 ? curatedMatches : FEATURED_DAILY_PLAYLISTS.slice(0, 8);
-  const mappedFallback = fallback.map((p) => ({
+  const combined =
+    dzPlaylists.length > 0
+      ? [...curatedMatches, ...dzPlaylists]
+      : curatedMatches.length > 0
+        ? curatedMatches
+        : FEATURED_DAILY_PLAYLISTS.slice(0, 8);
+  const mappedFallback = combined.map((p) => ({
     ...p,
     coverUrl: p.coverUrl || DEFAULT_FALLBACK_COVER
   }));
@@ -2608,28 +2824,25 @@ export async function fetchPlaylistTracksOnline(
     return finalResult;
   }
 
-  try {
-    const res = await fetch(
-      `${getApiEndpoint('/api/catalog-search')}?mode=playlist_tracks&playlistId=${encodeURIComponent(playlist.id)}`,
-      { signal: AbortSignal.timeout(5200) }
-    );
-    if (res.ok) {
-      const data: { playlist?: CatalogPlaylist | null; tracks?: CatalogApiItem[] } = await res.json();
-      const rawItems = Array.isArray(data?.tracks) ? data.tracks : [];
+  const dzPlId = playlist.id.replace(/^dz-pl-/, '').replace(/[^0-9]/g, '');
+  if (dzPlId) {
+    try {
+      const data = await fetchDeezerJsonp<{ data?: DeezerTrackRaw[] }>(
+        `/playlist/${dzPlId}/tracks?limit=60`,
+        4500
+      );
+      const rawItems = (data?.data || [])
+        .filter((t) => Boolean(t?.title && t?.artist?.name) && !isNonOriginalTitle(t.title || '', ''))
+        .map((t) => mapDeezerTrackRaw(t, false, 'Pop'));
       if (rawItems.length > 0) {
-        const resolvedMeta: CatalogPlaylist = {
-          ...playlist,
-          ...(data.playlist || {}),
-          coverUrl: data.playlist?.coverUrl || playlist.coverUrl || DEFAULT_FALLBACK_COVER
-        };
         const tracks = spacePlaylistArtistsCohesively(catalogItemsToTracks(rawItems));
-        const result = { playlist: resolvedMeta, tracks };
+        const result = { playlist, tracks };
         playlistTracksCache.set(playlist.id, result);
         return result;
       }
+    } catch {
+      // Fall through to keyword search below
     }
-  } catch {
-    // Fall back to keyword search if upstream playlist fetch fails
   }
 
   const searchFallback = await searchTracksOnline(playlist.title);
@@ -2638,10 +2851,38 @@ export async function fetchPlaylistTracksOnline(
 }
 
 const RADIO_BROWSER_MIRRORS = [
-  'https://de1.api.radio-browser.info',
   'https://de2.api.radio-browser.info',
+  'https://de1.api.radio-browser.info',
   'https://all.api.radio-browser.info'
 ];
+
+let dynamicMirrorsPromise: Promise<string[]> | null = null;
+async function getHealthyRadioMirrors(): Promise<string[]> {
+  if (!dynamicMirrorsPromise) {
+    dynamicMirrorsPromise = (async () => {
+      try {
+        const res = await fetch('https://de2.api.radio-browser.info/json/servers', {
+          signal: AbortSignal.timeout(3000)
+        });
+        if (!res.ok) return RADIO_BROWSER_MIRRORS;
+        const rows = (await res.json()) as Array<{ name?: string }>;
+        const discovered = Array.isArray(rows)
+          ? rows
+              .map((r) => String(r?.name || '').trim())
+              .filter((n) => /^[a-z0-9.-]+\.api\.radio-browser\.info$/i.test(n))
+              .map((n) => `https://${n}`)
+          : [];
+        return Array.from(new Set([...RADIO_BROWSER_MIRRORS, ...discovered])).slice(0, 6);
+      } catch {
+        return RADIO_BROWSER_MIRRORS;
+      }
+    })();
+  }
+  return dynamicMirrorsPromise;
+}
+
+const RADIO_META_CACHE_KEY = 'sonacast_radio_meta_v2';
+const RADIO_META_TTL_MS = 6 * 60 * 60 * 1000;
 
 export interface RadioDirectoryStats {
   stations: number;
@@ -2664,48 +2905,67 @@ export interface RadioDirectoryMeta {
 
 export async function fetchRadioDirectoryMeta(): Promise<RadioDirectoryMeta> {
   try {
-    const res = await fetch(`${getApiEndpoint('/api/catalog-search')}?mode=radio_meta`, {
-      signal: AbortSignal.timeout(5500)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.stats) {
-        return {
-          stats: {
-            stations: Number(data.stats.stations) || 0,
-            countries: Number(data.stats.countries) || 0,
-            languages: Number(data.stats.languages) || 0,
-            tags: Number(data.stats.tags) || 0
-          },
-          languages: Array.isArray(data.languages) ? data.languages : [],
-          countries: Array.isArray(data.countries) ? data.countries : []
-        };
+    if (typeof window !== 'undefined') {
+      const cachedRaw = window.localStorage.getItem(RADIO_META_CACHE_KEY);
+      if (cachedRaw) {
+        const parsed = JSON.parse(cachedRaw) as { cachedAt?: number; data?: RadioDirectoryMeta };
+        if (
+          parsed?.cachedAt &&
+          Date.now() - parsed.cachedAt < RADIO_META_TTL_MS &&
+          parsed.data?.languages?.length &&
+          parsed.data.languages.length > 200
+        ) {
+          return parsed.data;
+        }
       }
     }
   } catch {
-    // Fallback to direct mirror stats below
+    // Ignore storage read failure
   }
-  for (const host of RADIO_BROWSER_MIRRORS) {
+
+  const mirrors = await getHealthyRadioMirrors();
+  for (const host of mirrors) {
     try {
       const [sRes, lRes, cRes] = await Promise.all([
-        fetch(`${host}/json/stats`, { signal: AbortSignal.timeout(4000) }),
-        fetch(`${host}/json/languages?order=stationcount&reverse=true&limit=120`, { signal: AbortSignal.timeout(4000) }),
-        fetch(`${host}/json/countries?order=stationcount&reverse=true&limit=150`, { signal: AbortSignal.timeout(4000) })
+        fetch(`${host}/json/stats`, { signal: AbortSignal.timeout(4500) }),
+        fetch(`${host}/json/languages?order=stationcount&reverse=true&hidebroken=true&limit=1000`, {
+          signal: AbortSignal.timeout(4500)
+        }),
+        fetch(`${host}/json/countries?order=stationcount&reverse=true&hidebroken=true&limit=300`, {
+          signal: AbortSignal.timeout(4500)
+        })
       ]);
       if (sRes.ok) {
         const stats = await sRes.json();
-        const languages = lRes.ok ? await lRes.json() : [];
-        const countries = cRes.ok ? await cRes.json() : [];
-        return {
+        const languagesRaw = lRes.ok ? await lRes.json() : [];
+        const countriesRaw = cRes.ok ? await cRes.json() : [];
+        const meta: RadioDirectoryMeta = {
           stats: {
             stations: Number(stats?.stations) || 0,
             countries: Number(stats?.countries) || 0,
             languages: Number(stats?.languages) || 0,
             tags: Number(stats?.tags) || 0
           },
-          languages: Array.isArray(languages) ? languages : [],
-          countries: Array.isArray(countries) ? countries : []
+          languages: Array.isArray(languagesRaw)
+            ? languagesRaw.filter((l: RadioFacetOption) => Boolean(l?.name && Number(l.stationcount) > 0))
+            : [],
+          countries: Array.isArray(countriesRaw)
+            ? countriesRaw.filter(
+                (c: RadioFacetOption) => Boolean(c?.name && c?.iso_3166_1 && Number(c.stationcount) > 0)
+              )
+            : []
         };
+        try {
+          if (typeof window !== 'undefined' && meta.languages.length > 0) {
+            window.localStorage.setItem(
+              RADIO_META_CACHE_KEY,
+              JSON.stringify({ cachedAt: Date.now(), data: meta })
+            );
+          }
+        } catch {
+          // Ignore storage quota error
+        }
+        return meta;
       }
     } catch {
       // Try next mirror
@@ -2766,62 +3026,244 @@ function isPlayableLiveHttpsStream(rawUrl: unknown, hlsFlag?: unknown): string |
   return trimmed;
 }
 
+const MINORITY_RADIO_EXPANSIONS: Array<{
+  pattern: RegExp;
+  states?: string[];
+  names?: string[];
+  langs?: string[];
+  tags?: string[];
+  preferCountryCode?: string;
+}> = [
+  {
+    pattern: /\b(sunda|sundanese|jabar|jawa\s*barat|bandung|tasik|priangan|pasundan)\b/i,
+    states: ['Jawa Barat', 'West Java'],
+    names: ['Bandung', 'Tasikmalaya', 'Bogor', 'Cirebon', 'Sunda'],
+    langs: ['sundanese'],
+    preferCountryCode: 'ID'
+  },
+  {
+    pattern: /\b(minang|minangkabau|padang|sumbar|sumatera\s*barat|bukittinggi)\b/i,
+    states: ['Sumatera Barat', 'West Sumatra'],
+    names: ['Padang', 'Bukittinggi', 'Minang', 'Sumbar'],
+    preferCountryCode: 'ID'
+  },
+  {
+    pattern: /\b(batak|toba|karo|mandailing|medan|sumut|sumatera\s*utara)\b/i,
+    states: ['Sumatera Utara', 'North Sumatra'],
+    names: ['Medan', 'Toba', 'Siantar', 'Batak'],
+    preferCountryCode: 'ID'
+  },
+  {
+    pattern: /\b(dayak|kalimantan|borneo|pontianak|palangkaraya|samarinda|banjar|banjarmasin)\b/i,
+    states: ['Kalimantan Barat', 'Kalimantan Selatan', 'Kalimantan Timur', 'Kalimantan Tengah'],
+    names: ['Pontianak', 'Palangkaraya', 'Samarinda', 'Banjarmasin', 'Banjarbaru', 'Kalimantan'],
+    preferCountryCode: 'ID'
+  },
+  {
+    pattern: /\b(bugis|makassar|toraja|manado|minahasa|gorontalo|sulawesi)\b/i,
+    states: ['Sulawesi Selatan', 'Sulawesi Utara', 'Makassar'],
+    names: ['Makassar', 'Manado', 'Kendari', 'Palu', 'Gorontalo'],
+    preferCountryCode: 'ID'
+  },
+  {
+    pattern: /\b(papua|jayapura|sorong|biak|merauke|maluku|ambon|ternate)\b/i,
+    states: ['Papua', 'Maluku'],
+    names: ['Jayapura', 'Papua', 'Ambon', 'Maluku', 'Sorong', 'RRI'],
+    preferCountryCode: 'ID'
+  },
+  {
+    pattern: /\b(bali|balinese|denpasar|ubud|lombok|sasak)\b/i,
+    states: ['Bali'],
+    names: ['Bali', 'Denpasar', 'Lombok'],
+    langs: ['balinese'],
+    preferCountryCode: 'ID'
+  },
+  {
+    pattern: /\b(aceh|gayo|banda\s*aceh)\b/i,
+    states: ['Aceh'],
+    names: ['Aceh', 'Banda Aceh'],
+    preferCountryCode: 'ID'
+  },
+  {
+    pattern: /\b(jawa|javanese|jogja|yogyakarta|solo|surakarta|semarang|surabaya|jateng|jatim)\b/i,
+    states: ['Jawa Tengah', 'Jawa Timur', 'Yogyakarta'],
+    names: ['Jogja', 'Solo', 'Semarang', 'Surabaya', 'Malang'],
+    langs: ['javanese'],
+    preferCountryCode: 'ID'
+  },
+  {
+    pattern: /\b(indigenous|native|first\s*nations|aboriginal)\b/i,
+    tags: ['indigenous', 'native american', 'first nations', 'aboriginal', 'native'],
+    langs: ['navajo', 'cree', 'maori', 'quechua', 'hawaiian']
+  },
+  {
+    pattern: /\b(maori|māori|pacific|polynesian)\b/i,
+    langs: ['maori', 'samoan', 'tongan', 'hawaiian'],
+    tags: ['maori', 'pacific']
+  }
+];
+
+function buildSomaFmRadioStations(queryLower: string): Promise<RadioStation[]> {
+  return (async () => {
+    try {
+      const res = await fetch('https://somafm.com/channels.json', { signal: AbortSignal.timeout(3500) });
+      if (!res.ok) return [];
+      const data = (await res.json()) as {
+        channels?: Array<{
+          id?: string;
+          title?: string;
+          description?: string;
+          genre?: string;
+          listeners?: string | number;
+          largeimage?: string;
+          image?: string;
+        }>;
+      };
+      const channels = Array.isArray(data?.channels) ? data.channels : [];
+      const matched = channels.filter((ch) => {
+        if (!ch?.id || !ch?.title) return false;
+        if (!queryLower || queryLower === 'global' || queryLower === 'somafm') return true;
+        const hay = `${ch.title} ${ch.description || ''} ${ch.genre || ''}`.toLowerCase();
+        return hay.includes(queryLower);
+      });
+      return matched.slice(0, 12).map((ch, idx) => {
+        const streamUrl = `https://ice1.somafm.com/${encodeURIComponent(String(ch.id))}-128-mp3`;
+        const palette = RADIO_PALETTE[idx % RADIO_PALETTE.length];
+        const cover = String(ch.largeimage || ch.image || '').replace(/^http:\/\//i, 'https://');
+        const genreLabel = String(ch.genre || 'Independent Web Radio').split('|')[0].trim() || 'Independent Radio';
+        const stId = `somafm-${String(ch.id)}`;
+        return {
+          id: stId,
+          name: `SomaFM: ${ch.title}`,
+          tagline: String(ch.description || `${genreLabel} · Listener-supported commercial-free station`).slice(0, 120),
+          genre: genreLabel.slice(0, 26),
+          city: 'San Francisco, US',
+          country: 'United States',
+          category: inferRadioCategory(`${ch.genre || ''} ${ch.description || ''}`, 'US'),
+          bitRate: 'LIVE 128 kbps MP3',
+          listenersCount: Number(ch.listeners) || 250,
+          color: palette.color,
+          accentColor: palette.accent,
+          streamUrl,
+          isLiveBroadcast: true,
+          faviconUrl: /^https:\/\//i.test(cover) ? cover : undefined,
+          homepage: `https://somafm.com/${ch.id}/`,
+          currentTrack: {
+            id: `live-track-${stId}`,
+            title: `SomaFM: ${ch.title}`,
+            artist: 'SomaFM San Francisco',
+            album: genreLabel,
+            duration: 0,
+            coverUrl: /^https:\/\//i.test(cover) ? cover : '',
+            audioUrl: streamUrl,
+            streamSource: 'official-stream',
+            sourceTag: 'live-radio',
+            genre: 'Live Radio',
+            lyrics: [{ time: 0, text: `SomaFM: ${ch.title} — Commercial-Free Live Stream` }],
+            artistSolanaAddress: '',
+            bpm: 118
+          }
+        };
+      });
+    } catch {
+      return [];
+    }
+  })();
+}
+
 export async function searchLiveRadioStations(
   query: string,
   countryCode?: string,
   options?: { language?: string; tag?: string; offset?: number; limit?: number }
 ): Promise<RadioStation[]> {
   const trimmedQuery = query.trim();
+  const lowerQuery = trimmedQuery.toLowerCase();
   const normalizedCountry = countryCode?.trim().toUpperCase();
   const languageOpt = options?.language?.trim() || '';
   const tagOpt = options?.tag?.trim() || '';
   const offset = Math.max(0, options?.offset || 0);
-  const limit = Math.max(12, Math.min(80, options?.limit || 48));
+  const limit = Math.max(12, Math.min(96, options?.limit || 60));
 
-  let rawItems: Array<Record<string, unknown>> = [];
+  const expansion = trimmedQuery
+    ? MINORITY_RADIO_EXPANSIONS.find((rule) => rule.pattern.test(trimmedQuery))
+    : undefined;
 
-  try {
-    const apiParams = new URLSearchParams({ mode: 'radio_search', limit: String(limit), offset: String(offset) });
-    if (trimmedQuery) apiParams.set('q', trimmedQuery);
-    if (normalizedCountry) apiParams.set('country', normalizedCountry);
-    if (languageOpt) apiParams.set('language', languageOpt);
-    if (tagOpt) apiParams.set('tag', tagOpt);
-    const apiRes = await fetch(`${getApiEndpoint('/api/catalog-search')}?${apiParams.toString()}`, {
-      signal: AbortSignal.timeout(6500)
-    });
-    if (apiRes.ok) {
-      const apiJson = await apiRes.json();
-      if (Array.isArray(apiJson?.items) && apiJson.items.length > 0) {
-        rawItems = apiJson.items;
+  const buildSearchPaths = (httpsOnly: boolean): string[] => {
+    const httpsParam = httpsOnly ? '&is_https=true' : '';
+    const out: string[] = [];
+    if (languageOpt) {
+      out.push(
+        `/json/stations/search?language=${encodeURIComponent(languageOpt)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
+      );
+    }
+    if (tagOpt) {
+      out.push(
+        `/json/stations/search?tag=${encodeURIComponent(tagOpt)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
+      );
+    }
+    if (expansion) {
+      for (const st of expansion.states || []) {
+        out.push(
+          `/json/stations/search?state=${encodeURIComponent(st)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=32`
+        );
+      }
+      for (const nm of expansion.names || []) {
+        out.push(
+          `/json/stations/search?name=${encodeURIComponent(nm)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=28`
+        );
+      }
+      for (const lg of expansion.langs || []) {
+        out.push(
+          `/json/stations/search?language=${encodeURIComponent(lg)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=32`
+        );
+      }
+      for (const tg of expansion.tags || []) {
+        out.push(
+          `/json/stations/search?tag=${encodeURIComponent(tg)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=32`
+        );
       }
     }
-  } catch {
-    // Fall back to direct mirror sweep below
-  }
+    if (trimmedQuery && !expansion) {
+      out.push(
+        `/json/stations/search?name=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=45`,
+        `/json/stations/search?language=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=35`,
+        `/json/stations/search?tag=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=35`,
+        `/json/stations/search?state=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=30`,
+        `/json/stations/search?country=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=25`
+      );
+    } else if (trimmedQuery && expansion) {
+      out.push(
+        `/json/stations/search?name=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=24`,
+        `/json/stations/search?tag=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=24`
+      );
+    }
+    if (normalizedCountry === 'GLOBAL' && out.length === 0) {
+      out.push(
+        `/json/stations/search?hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
+      );
+    } else if (normalizedCountry && normalizedCountry !== 'GLOBAL') {
+      out.push(
+        `/json/stations/search?countrycode=${encodeURIComponent(normalizedCountry)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
+      );
+    }
+    if (out.length === 0) {
+      out.push(
+        `/json/stations/search?hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
+      );
+    }
+    return Array.from(new Set(out)).slice(0, 10);
+  };
 
-  if (rawItems.length === 0) {
-    for (const host of RADIO_BROWSER_MIRRORS) {
+  let rawItems: Array<Record<string, unknown>> = [];
+  const mirrors = await getHealthyRadioMirrors();
+
+  const runMirrorBatch = async (paths: string[]): Promise<Array<Record<string, unknown>>> => {
+    for (const host of mirrors) {
       try {
-        const directPaths: string[] = [];
-        if (languageOpt) {
-          directPaths.push(`/json/stations/search?language=${encodeURIComponent(languageOpt)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`);
-        } else if (tagOpt) {
-          directPaths.push(`/json/stations/search?tag=${encodeURIComponent(tagOpt)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`);
-        } else if (trimmedQuery) {
-          directPaths.push(
-            `/json/stations/search?name=${encodeURIComponent(trimmedQuery)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=32`,
-            `/json/stations/search?language=${encodeURIComponent(trimmedQuery)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=28`,
-            `/json/stations/search?tag=${encodeURIComponent(trimmedQuery)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=28`,
-            `/json/stations/search?state=${encodeURIComponent(trimmedQuery)}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=24`
-          );
-        } else if (normalizedCountry === 'GLOBAL') {
-          directPaths.push(`/json/stations/topclick/${limit}`);
-        } else {
-          directPaths.push(`/json/stations/search?countrycode=${encodeURIComponent(normalizedCountry || 'ID')}&hidebroken=true&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`);
-        }
-
         const responses = await Promise.allSettled(
-          directPaths.map((p) => fetch(`${host}${p}`, { signal: AbortSignal.timeout(4500) }).then((r) => (r.ok ? r.json() : [])))
+          paths.map((p) =>
+            fetch(`${host}${p}`, { signal: AbortSignal.timeout(4800) }).then((r) => (r.ok ? r.json() : []))
+          )
         );
         const collected: Array<Record<string, unknown>> = [];
         for (const res of responses) {
@@ -2829,15 +3271,27 @@ export async function searchLiveRadioStations(
             collected.push(...res.value);
           }
         }
-        if (collected.length > 0) {
-          rawItems = collected;
-          break;
-        }
+        if (collected.length > 0) return collected;
       } catch {
-        // Failover cleanly to next verified mirror
+        // Failover cleanly to next mirror
       }
     }
+    return [];
+  };
+
+  const somaPromise =
+    offset === 0 && !normalizedCountry?.match(/^[A-Z]{2}$/) && !expansion?.preferCountryCode && !languageOpt
+      ? buildSomaFmRadioStations(tagOpt || lowerQuery || (normalizedCountry === 'GLOBAL' ? 'global' : ''))
+      : Promise.resolve([]);
+
+  rawItems = await runMirrorBatch(buildSearchPaths(true));
+  if (rawItems.length < 8) {
+    const extraNonStrict = await runMirrorBatch(buildSearchPaths(false));
+    if (extraNonStrict.length > 0) {
+      rawItems = [...rawItems, ...extraNonStrict];
+    }
   }
+  const somaStations = await somaPromise;
 
   const dedup = new Set<string>();
   const stations: RadioStation[] = [];
@@ -2907,11 +3361,37 @@ export async function searchLiveRadioStations(
       homepage,
       currentTrack: liveStubTrack
     });
-
-    if (stations.length >= limit) break;
   }
 
-  return stations;
+  for (const s of somaStations) {
+    if (s.streamUrl && !dedup.has(s.streamUrl)) {
+      dedup.add(s.streamUrl);
+      stations.push(s);
+    }
+  }
+
+  if (trimmedQuery || expansion) {
+    const qEscaped = trimmedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wholeWordRe = qEscaped ? new RegExp(`\\b${qEscaped}\\b`, 'i') : null;
+    const scoreStation = (st: RadioStation): number => {
+      let s = Math.min(40, Math.log10(Math.max(10, st.listenersCount)) * 10);
+      const hay = `${st.name} ${st.city || ''} ${st.tagline} ${st.genre} ${st.country || ''}`;
+      if (wholeWordRe && wholeWordRe.test(hay)) s += 80;
+      else if (trimmedQuery && !expansion && !hay.toLowerCase().includes(lowerQuery)) s -= 40;
+      if (expansion?.preferCountryCode) {
+        const isPref =
+          st.category === 'Indonesia' ||
+          /\bID\b|indonesia/i.test(`${st.city || ''} ${st.country || ''} ${st.tagline}`);
+        if (isPref) s += 160;
+        else s -= 90;
+      }
+      if (st.name.toLowerCase().startsWith(lowerQuery)) s += 25;
+      return s;
+    };
+    stations.sort((a, b) => scoreStation(b) - scoreStation(a));
+  }
+
+  return stations.slice(0, limit);
 }
 
 export async function searchPodcastsOnline(query: string): Promise<PodcastEpisode[]> {
@@ -2971,18 +3451,11 @@ export async function searchPodcastsOnline(query: string): Promise<PodcastEpisod
 
   const ytVideoPromise = (async (): Promise<PodcastEpisode[]> => {
     try {
-      const endpoint = getApiEndpoint('/api/yt-search');
-      const res = await fetch(
-        `${endpoint}?q=${encodeURIComponent(`${q} full podcast`)}&mode=yt&intent=video`,
-        { signal: AbortSignal.timeout(5500) }
-      );
-      if (!res.ok) return [];
-      const json = await res.json();
-      const items = Array.isArray(json?.items) ? json.items : [];
+      const items = await searchPipedMusic(`${q} full podcast`, undefined, 'videos');
       const mapped: PodcastEpisode[] = [];
 
       for (let i = 0; i < items.length; i++) {
-        const v = items[i] as StreamCandidate;
+        const v = items[i];
         if (!v?.videoId || !v?.title) continue;
         if (v.duration > 0 && v.duration < 180) continue;
         const cover = safeYtThumbnail(v.thumbnail, v.videoId);

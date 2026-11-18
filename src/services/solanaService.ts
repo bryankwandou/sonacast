@@ -363,6 +363,23 @@ class SolanaService {
     method: string,
     params: unknown[] = []
   ): Promise<T> {
+    if (targetCluster === 'devnet') {
+      try {
+        const directRes = await fetch(DEVNET_PUBLIC_RPC, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+          signal: AbortSignal.timeout(5000)
+        });
+        const json = await directRes.json();
+        if (json && json.result !== undefined && !json.error) {
+          return json.result as T;
+        }
+      } catch {
+        // Fallback below if direct public Devnet RPC is unreachable
+      }
+    }
+
     const proxyRes = await fetch('/api/tips?action=rpc_proxy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -376,21 +393,8 @@ class SolanaService {
       }
     }
 
-    if (targetCluster === 'devnet') {
-      const directRes = await fetch(DEVNET_PUBLIC_RPC, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
-      });
-      const json = await directRes.json();
-      if (json.error) {
-        throw new Error(json.error.message || 'Solana Devnet RPC error');
-      }
-      return json.result as T;
-    }
-
     const errPayload = proxyRes ? await proxyRes.json().catch(() => null) : null;
-    throw new Error(errPayload?.error || `Solana RPC proxy unavailable for ${targetCluster}`);
+    throw new Error(errPayload?.error || `Solana RPC unavailable for ${targetCluster}`);
   }
 
   public async fetchBalanceLamports(): Promise<number> {

@@ -8,7 +8,31 @@ export interface AuthSessionResponse {
   error?: string;
 }
 
-const DEFAULT_UNAUTHENTICATED: AuthSessionResponse = {
+const CLOUD_SESSION_HINT_KEY = 'sonacast_cloud_session_hint_v1';
+
+export function hasCloudSessionHint(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(CLOUD_SESSION_HINT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setCloudSessionHint(active: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (active) {
+      window.localStorage.setItem(CLOUD_SESSION_HINT_KEY, '1');
+    } else {
+      window.localStorage.removeItem(CLOUD_SESSION_HINT_KEY);
+    }
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export const DEFAULT_UNAUTHENTICATED_SESSION: AuthSessionResponse = {
   connected: false,
   authenticated: false,
   user: null,
@@ -27,6 +51,8 @@ const DEFAULT_UNAUTHENTICATED: AuthSessionResponse = {
   }
 };
 
+const DEFAULT_UNAUTHENTICATED = DEFAULT_UNAUTHENTICATED_SESSION;
+
 async function postAuthAction(
   payload: Record<string, unknown>,
   fallbackError: string
@@ -39,8 +65,10 @@ async function postAuthAction(
       body: JSON.stringify(payload)
     });
     const data = (await res.json()) as { ok?: boolean; user?: AuthUser | null; error?: string };
+    const ok = Boolean(res.ok && data.ok && data.user);
+    if (ok) setCloudSessionHint(true);
     return {
-      ok: Boolean(res.ok && data.ok && data.user),
+      ok,
       user: data.user || null,
       error: data.error
     };
@@ -56,9 +84,11 @@ export async function fetchAuthSession(): Promise<AuthSessionResponse> {
       credentials: 'include'
     });
     const data = (await res.json()) as Partial<AuthSessionResponse>;
+    const authenticated = Boolean(data.authenticated && data.user);
+    setCloudSessionHint(authenticated);
     return {
       connected: Boolean(data.connected),
-      authenticated: Boolean(data.authenticated && data.user),
+      authenticated,
       user: data.user || null,
       providers: data.providers || DEFAULT_UNAUTHENTICATED.providers,
       error: data.error
@@ -117,6 +147,7 @@ export async function syncPrivySessionToNeon(params: {
 }
 
 export async function logoutFromNeon(): Promise<boolean> {
+  setCloudSessionHint(false);
   try {
     const res = await fetch('/api/auth', {
       method: 'POST',

@@ -2371,23 +2371,6 @@ export class AudioEngine {
           } else {
             this.pendingHtml5SeekSeconds = clamped;
           }
-          let isBuffered = false;
-          try {
-            for (let i = 0; i < this.audioElement.buffered.length; i++) {
-              if (
-                clamped >= this.audioElement.buffered.start(i) &&
-                clamped <= this.audioElement.buffered.end(i) - 0.5
-              ) {
-                isBuffered = true;
-                break;
-              }
-            }
-          } catch {
-            // Ignore buffered check error
-          }
-          if (!cachedBlobUrl && !isBuffered && this.audioElement.readyState >= 1) {
-            void this.recoverStalledHtml5Seek(this.playGeneration, clamped);
-          }
           this.notifyTime();
           return;
         }

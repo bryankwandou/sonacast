@@ -6,7 +6,7 @@ import {
   searchLiveRadioStations,
   type RadioDirectoryMeta
 } from '../../services/musicService';
-import { MapPin, Radio, Users, Play, Activity, Search, Globe2, Loader2, X, ListMusic } from 'lucide-react';
+import { MapPin, Radio, Users, Play, Activity, Search, Globe2, Loader2, X, ListMusic, Plus, Link2 } from 'lucide-react';
 
 interface RadioViewProps {
   stations: RadioStation[];
@@ -29,13 +29,41 @@ const REGIONAL_MINORITY_PRESETS: {
   tag?: string;
 }[] = [
   { id: 'indigenous', label: 'Indigenous & Native', query: 'indigenous', tag: 'indigenous' },
-  { id: 'javanese', label: 'Jawa & Regional ID', query: 'javanese', language: 'javanese' },
+  { id: 'javanese', label: 'Jawa / Javanese', query: 'javanese', language: 'javanese' },
+  { id: 'sunda', label: 'Sunda & Jabar', query: 'sunda' },
+  { id: 'minang', label: 'Minang / Padang', query: 'minang' },
+  { id: 'batak', label: 'Batak & Sumut', query: 'batak' },
+  { id: 'dayak', label: 'Dayak / Kalimantan', query: 'dayak' },
+  { id: 'bugis', label: 'Bugis / Makassar', query: 'makassar' },
+  { id: 'bali', label: 'Bali / Denpasar', query: 'bali' },
+  { id: 'papua', label: 'Papua & Maluku', query: 'papua' },
+  { id: 'aceh', label: 'Aceh', query: 'aceh' },
   { id: 'maori', label: 'Māori & Pacific', query: 'maori', language: 'maori' },
   { id: 'welsh', label: 'Welsh / Cymraeg', query: 'welsh', language: 'welsh' },
   { id: 'basque', label: 'Basque / Euskara', query: 'basque', language: 'basque' },
   { id: 'catalan', label: 'Catalan / Català', query: 'catalan', language: 'catalan' },
+  { id: 'kurdish', label: 'Kurdish', query: 'kurdish', language: 'kurdish' },
+  { id: 'hawaiian', label: 'Hawaiian', query: 'hawaiian', language: 'hawaiian' },
+  { id: 'gaelic', label: 'Scottish Gaelic', query: 'scottish gaelic', language: 'scottish gaelic' },
+  { id: 'breton', label: 'Breton / Brezhoneg', query: 'breton', language: 'breton' },
   { id: 'community', label: 'Community & Folk', query: 'community', tag: 'community' }
 ];
+
+const CUSTOM_RADIO_STORAGE_KEY = 'sonacast_custom_radio_stations_v1';
+
+function readCustomRadioStations(): RadioStation[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_RADIO_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((s) => s?.id && s?.name && typeof s?.streamUrl === 'string' && /^https:\/\//i.test(s.streamUrl))
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 export const RadioView: React.FC<RadioViewProps> = ({
   stations,
@@ -59,6 +87,12 @@ export const RadioView: React.FC<RadioViewProps> = ({
   } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [customStations, setCustomStations] = useState<RadioStation[]>(() => readCustomRadioStations());
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customRegion, setCustomRegion] = useState('');
+  const [customStreamUrl, setCustomStreamUrl] = useState('');
+  const [customFormError, setCustomFormError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,11 +180,80 @@ export const RadioView: React.FC<RadioViewProps> = ({
     setSearchError(null);
   };
 
+  const handleAddCustomStation = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = customName.trim().slice(0, 80);
+    const cleanRegion = customRegion.trim().slice(0, 60) || 'Community FM';
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(customStreamUrl.trim());
+    } catch {
+      setCustomFormError(
+        language === 'id'
+          ? 'Masukkan URL stream HTTPS yang valid (mis. https://.../stream).'
+          : 'Enter a valid HTTPS audio stream URL (e.g. https://.../stream).'
+      );
+      return;
+    }
+    if (parsedUrl.protocol !== 'https:') {
+      setCustomFormError(
+        language === 'id'
+          ? 'Gunakan protokol https:// agar stream dapat diputar langsung di browser.'
+          : 'Stream URL must use https:// for direct browser playback.'
+      );
+      return;
+    }
+    const streamUrl = parsedUrl.toString();
+    const id = `custom-radio-${Date.now()}`;
+    const nextStation: RadioStation = {
+      id,
+      name: cleanName || parsedUrl.hostname,
+      tagline: `${cleanRegion} · Direct HTTPS Stream`,
+      genre: cleanRegion.slice(0, 26),
+      city: cleanRegion,
+      category: 'Global',
+      bitRate: 'LIVE HTTPS',
+      listenersCount: 1,
+      color: '#10B981',
+      accentColor: '#059669',
+      streamUrl,
+      isLiveBroadcast: true,
+      currentTrack: {
+        id: `live-track-${id}`,
+        title: cleanName || parsedUrl.hostname,
+        artist: cleanRegion,
+        album: 'Custom Live Broadcast',
+        duration: 0,
+        coverUrl: '',
+        audioUrl: streamUrl,
+        streamSource: 'official-stream',
+        sourceTag: 'live-radio',
+        genre: 'Live Radio',
+        lyrics: [{ time: 0, text: `${cleanName || parsedUrl.hostname} — Live Stream` }],
+        artistSolanaAddress: '',
+        bpm: 118
+      }
+    };
+    const updated = [nextStation, ...customStations.filter((c) => c.streamUrl !== streamUrl)];
+    setCustomStations(updated);
+    try {
+      window.localStorage.setItem(CUSTOM_RADIO_STORAGE_KEY, JSON.stringify(updated.slice(0, 30)));
+    } catch {
+      // Ignore storage quota errors
+    }
+    setCustomName('');
+    setCustomRegion('');
+    setCustomStreamUrl('');
+    setCustomFormError(null);
+    setShowCustomForm(false);
+    onSelectStation(nextStation, 'live');
+  };
+
   const displayedStations = useMemo(() => {
-    const sourceList = directoryStations !== null ? directoryStations : stations;
+    const sourceList = directoryStations !== null ? directoryStations : [...customStations, ...stations];
     if (selectedCategory === 'All') return sourceList;
     return sourceList.filter((st) => st.category === selectedCategory);
-  }, [directoryStations, stations, selectedCategory]);
+  }, [directoryStations, customStations, stations, selectedCategory]);
 
   return (
     <div className="space-y-6 select-none">
@@ -349,7 +452,63 @@ export const RadioView: React.FC<RadioViewProps> = ({
                 {preset.label}
               </button>
             ))}
+
+            <button
+              type="button"
+              data-testid="radio-custom-url-toggle"
+              onClick={() => setShowCustomForm((prev) => !prev)}
+              className="h-9 px-3 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[11px] font-bold text-[var(--accent-text)] inline-flex items-center gap-1.5 cursor-pointer hover:brightness-110 transition-all"
+            >
+              <Plus size={12} />
+              <span>{language === 'id' ? 'Tambah Stream FM/URL' : 'Add Custom Stream URL'}</span>
+            </button>
           </div>
+
+          {showCustomForm && (
+            <form
+              onSubmit={handleAddCustomStation}
+              data-testid="radio-custom-url-form"
+              className="mt-1 p-3 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2"
+            >
+              <input
+                type="text"
+                required
+                data-testid="radio-custom-name-input"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder={language === 'id' ? 'Nama Radio Daerah / Komunitas' : 'Station Name'}
+                className="h-9 px-3 rounded-xl bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] flex-1 min-w-[140px]"
+              />
+              <input
+                type="text"
+                data-testid="radio-custom-region-input"
+                value={customRegion}
+                onChange={(e) => setCustomRegion(e.target.value)}
+                placeholder={language === 'id' ? 'Bahasa / Kota (mis. Sunda, Papua)' : 'Language / Region'}
+                className="h-9 px-3 rounded-xl bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] sm:w-44"
+              />
+              <input
+                type="url"
+                required
+                data-testid="radio-custom-url-input"
+                value={customStreamUrl}
+                onChange={(e) => setCustomStreamUrl(e.target.value)}
+                placeholder="https://stream.example.com/live.mp3"
+                className="h-9 px-3 rounded-xl bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] flex-[2] min-w-[200px]"
+              />
+              <button
+                type="submit"
+                data-testid="radio-custom-submit"
+                className="h-9 px-4 rounded-xl bg-[var(--accent-emerald)] text-[var(--accent-fg)] text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Link2 size={12} />
+                <span>{language === 'id' ? 'Putar Langsung' : 'Tune Stream'}</span>
+              </button>
+              {customFormError && (
+                <p className="w-full text-[11px] text-rose-400 font-medium">{customFormError}</p>
+              )}
+            </form>
+          )}
         </div>
       </div>
 

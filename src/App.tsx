@@ -70,7 +70,12 @@ import {
   saveListenerDisplayName,
   setAuthenticatedListenerIdentity
 } from './services/neonSyncService';
-import { fetchAuthSession, logoutFromNeon } from './services/authService';
+import {
+  DEFAULT_UNAUTHENTICATED_SESSION,
+  fetchAuthSession,
+  hasCloudSessionHint,
+  logoutFromNeon
+} from './services/authService';
 import { useAppPreferences } from './contexts/AppPreferencesContext';
 import { usePopularCharts } from './hooks/usePopularCharts';
 import { MoodStrip } from './components/common/MoodStrip';
@@ -223,7 +228,10 @@ export default function App() {
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [authProviders, setAuthProviders] = useState<AuthProvidersMeta | undefined>(undefined);
+  const authUserRef = useRef<AuthUser | null>(null);
+  const [authProviders, setAuthProviders] = useState<AuthProvidersMeta | undefined>(
+    DEFAULT_UNAUTHENTICATED_SESSION.providers
+  );
   const [walletBalanceSol, setWalletBalanceSol] = useState(0);
   const [walletCluster, setWalletCluster] = useState<'devnet' | 'mainnet-beta'>(() =>
     solanaService.getCluster()
@@ -564,6 +572,9 @@ export default function App() {
 
   const runCloudMutation = useCallback(
     async (action: string, payload: Record<string, unknown>) => {
+      if (!authUserRef.current && !hasCloudSessionHint()) {
+        return null;
+      }
       pendingCloudMutationsRef.current += 1;
       try {
         const snap = await mutateNeonLibrary(action, payload);
@@ -621,6 +632,7 @@ export default function App() {
     async (user: AuthUser) => {
       const sameListener = user.listenerId === getOrCreateListenerIdentity().listenerId;
       setAuthenticatedListenerIdentity(user.listenerId, user.displayName);
+      authUserRef.current = user;
       setAuthUser(user);
       setListenerProfile((prev) => ({
         ...prev,
@@ -635,6 +647,7 @@ export default function App() {
   const handleLogout = useCallback(async () => {
     await logoutFromNeon();
     const guest = rotateGuestListenerIdentity();
+    authUserRef.current = null;
     setAuthUser(null);
     setFavoritesMeta([]);
     setFollowedArtists([]);
@@ -668,28 +681,34 @@ export default function App() {
     const albumParam = params?.get('album')?.trim().toUpperCase() || '';
 
     const hydrateCloud = async () => {
-      const authSession = await fetchAuthSession();
-      if (cancelled) return;
-      setAuthProviders(authSession.providers);
+      if (hasCloudSessionHint() || blendParam || albumParam) {
+        const authSession = await fetchAuthSession();
+        if (cancelled) return;
+        setAuthProviders(authSession.providers);
 
-      let activeListenerId = initialIdentity.listenerId;
-      if (authSession.authenticated && authSession.user) {
-        activeListenerId = authSession.user.listenerId;
-        setAuthenticatedListenerIdentity(
-          authSession.user.listenerId,
-          authSession.user.displayName
-        );
-        setAuthUser(authSession.user);
-      }
+        let activeListenerId = initialIdentity.listenerId;
+        if (authSession.authenticated && authSession.user) {
+          activeListenerId = authSession.user.listenerId;
+          setAuthenticatedListenerIdentity(
+            authSession.user.listenerId,
+            authSession.user.displayName
+          );
+          authUserRef.current = authSession.user;
+          setAuthUser(authSession.user);
+        }
 
-      const snapshot = await hydrateListenerData(activeListenerId, true);
-      if (cancelled) return;
+        const snapshot =
+          authSession.authenticated || albumParam
+            ? await hydrateListenerData(activeListenerId, true)
+            : null;
+        if (cancelled) return;
 
-      if (snapshot && snapshot.connected && albumParam) {
-        const cloned = await cloneSharedAlbumToNeon(albumParam);
-        if (!cancelled && cloned) {
-          applyCloudSnapshot(cloned);
-          setCurrentTab('favorites');
+        if (snapshot && snapshot.connected && albumParam) {
+          const cloned = await cloneSharedAlbumToNeon(albumParam);
+          if (!cancelled && cloned) {
+            applyCloudSnapshot(cloned);
+            setCurrentTab('favorites');
+          }
         }
       }
 
@@ -1379,12 +1398,14 @@ export default function App() {
         setActiveRadioStationId(null);
       }
 
-      mutateNeonLibrary('record_play', { track }).then((snap) => {
-        if (snap && snap.connected) {
-          setCloudConnected(true);
-          setCloudStats(snap.stats);
-        }
-      });
+      if (authUserRef.current || hasCloudSessionHint()) {
+        mutateNeonLibrary('record_play', { track }).then((snap) => {
+          if (snap && snap.connected) {
+            setCloudConnected(true);
+            setCloudStats(snap.stats);
+          }
+        });
+      }
 
       const isSingleStandalonePlay =
         !options?.fromContextList &&
@@ -2777,11 +2798,14 @@ export default function App() {
       const cleanName = name.trim();
       if (!cleanName || tracksList.length === 0) return;
 
-      const createdSnap = await mutateNeonLibrary('create_album', {
-        name: cleanName,
-        description: 'Curated Music Blend Mix',
-        initialTrack: tracksList[0]
-      });
+      const createdSnap =
+        authUserRef.current || hasCloudSessionHint()
+          ? await mutateNeonLibrary('create_album', {
+              name: cleanName,
+              description: 'Curated Music Blend Mix',
+              initialTrack: tracksList[0]
+            })
+          : null;
 
       if (createdSnap && createdSnap.connected) {
         const newestAlbum = createdSnap.albums[0];
