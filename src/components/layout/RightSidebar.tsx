@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { PlaybackContextInfo, RadioStation, Track } from '../../types';
+import type { PlaybackContextInfo, RadioStation, Track, TrackCreditsInfo } from '../../types';
 import {
   ChevronUp,
   Disc3,
   Film,
   Heart,
+  Info,
   ListMusic,
   ListPlus,
   Maximize2,
@@ -20,6 +21,7 @@ import {
   X
 } from 'lucide-react';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { fetchTrackCreditsOnline } from '../../services/musicService';
 import {
   SONIC_CLASS_PROFILES,
   classifyTrackTier,
@@ -100,7 +102,38 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 }) => {
   const { t } = useAppPreferences();
   const [activePanelTab, setActivePanelTab] = useState<'queue' | 'lyrics' | 'related'>('queue');
+  const [creditsEntry, setCreditsEntry] = useState<{ key: string; data: TrackCreditsInfo } | null>(null);
   const activeSidebarLyricRef = useRef<HTMLButtonElement | null>(null);
+  const currentCreditsKey = `${currentTrack.id}::${currentTrack.title}`;
+
+  useEffect(() => {
+    if (activePanelTab !== 'related' || currentTrack.sourceTag === 'live-radio') return;
+    if (creditsEntry?.key === currentCreditsKey) return;
+    let cancelled = false;
+    void fetchTrackCreditsOnline(
+      currentTrack.title,
+      currentTrack.artist,
+      currentTrack.album,
+      currentTrack.genre
+    ).then((info) => {
+      if (!cancelled) {
+        setCreditsEntry({ key: currentCreditsKey, data: info });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activePanelTab,
+    currentTrack.id,
+    currentTrack.title,
+    currentTrack.artist,
+    currentTrack.album,
+    currentTrack.genre,
+    currentTrack.sourceTag,
+    creditsEntry?.key,
+    currentCreditsKey
+  ]);
 
   const currentClassProfile = useMemo(() => {
     const tier = classifyTrackTier(currentTrack);
@@ -639,6 +672,43 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 Matched by tempo, genre cluster, and listener neighborhood
               </div>
             </div>
+
+            {currentTrack.sourceTag !== 'live-radio' && (
+              <div
+                data-testid="sidebar-credits-card"
+                className="p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] space-y-1.5 text-[11px]"
+              >
+                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
+                  <Info size={11} />
+                  <span>{t.songCreditsLabel}</span>
+                </div>
+                {(() => {
+                  const info =
+                    creditsEntry?.key === currentCreditsKey ? creditsEntry.data : null;
+                  return (
+                    <div className="space-y-1">
+                      <div className="text-[var(--text-primary)] font-semibold truncate">
+                        {info?.album || currentTrack.album || 'Single'} &middot; {info?.genre || currentTrack.genre}
+                        {info?.releaseDate ? ` (${info.releaseDate.slice(0, 4)})` : ''}
+                      </div>
+                      <div className="text-[var(--text-secondary)] truncate">
+                        Artist: {info?.performers?.join(', ') || currentTrack.artist}
+                      </div>
+                      {info && info.writers.length > 0 && (
+                        <div className="text-[var(--text-dim)] truncate">
+                          Writers: {info.writers.join(', ')}
+                        </div>
+                      )}
+                      {info && info.producers.length > 0 && (
+                        <div className="text-[var(--text-dim)] truncate">
+                          Producers: {info.producers.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             {relatedArtists.length > 0 && (
               <div className="space-y-2">

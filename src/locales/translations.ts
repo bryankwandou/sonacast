@@ -132,6 +132,8 @@ export interface TranslationKeys {
   searchSongsTab: string;
   searchAlbumsTab: string;
   searchPlaylistsTab: string;
+  searchLyricsTab: string;
+  songCreditsLabel: string;
   topDailyAlbums: string;
   watchMusicVideo: string;
   musicVideoBadge: string;
@@ -390,6 +392,8 @@ const EN_BASE: TranslationKeys = {
   searchSongsTab: 'Songs',
   searchAlbumsTab: 'Albums',
   searchPlaylistsTab: 'Playlists',
+  searchLyricsTab: 'By Lyrics',
+  songCreditsLabel: 'Song Credits',
   topDailyAlbums: 'Top Daily Albums',
   watchMusicVideo: 'Watch Video',
   musicVideoBadge: 'Music Video',
@@ -620,6 +624,8 @@ export const TRANSLATIONS: Record<Language, TranslationKeys> = {
     searchSongsTab: 'Lagu',
     searchAlbumsTab: 'Album',
     searchPlaylistsTab: 'Playlist',
+    searchLyricsTab: 'Cari Lirik',
+    songCreditsLabel: 'Kredit Lagu',
     topDailyAlbums: 'Album Top Harian',
     watchMusicVideo: 'Tonton Video',
     musicVideoBadge: 'Video Musik',

@@ -32,7 +32,7 @@ export function saveLocalSearchHistory(items: SearchHistoryEntry[]): void {
 
 function makeHistoryKey(
   query: string,
-  mode: 'songs' | 'albums' | 'playlists',
+  mode: 'songs' | 'albums' | 'playlists' | 'lyrics',
   track?: Track
 ): string {
   const normQ = query.trim().toLowerCase();
@@ -43,7 +43,7 @@ function makeHistoryKey(
 export function upsertSearchHistory(
   existing: SearchHistoryEntry[],
   query: string,
-  mode: 'songs' | 'albums' | 'playlists',
+  mode: 'songs' | 'albums' | 'playlists' | 'lyrics',
   matchedTrack?: Track
 ): SearchHistoryEntry[] {
   const cleanQuery = query.trim().slice(0, 120);
@@ -58,22 +58,22 @@ export function upsertSearchHistory(
     mode,
     matchedTrack: matchedTrack
       ? {
-          id: matchedTrack.id,
-          title: matchedTrack.title,
-          artist: matchedTrack.artist,
-          album: matchedTrack.album,
-          duration: matchedTrack.duration,
-          coverUrl: matchedTrack.coverUrl,
-          audioUrl: matchedTrack.audioUrl,
-          youtubeId: matchedTrack.youtubeId,
-          candidateVideoIds: matchedTrack.candidateVideoIds,
-          streamSource: matchedTrack.streamSource,
-          sourceTag: matchedTrack.sourceTag,
-          genre: matchedTrack.genre,
-          lyrics: matchedTrack.lyrics || [],
-          artistSolanaAddress: matchedTrack.artistSolanaAddress || '',
-          bpm: matchedTrack.bpm || 120
-        }
+        id: matchedTrack.id,
+        title: matchedTrack.title,
+        artist: matchedTrack.artist,
+        album: matchedTrack.album,
+        duration: matchedTrack.duration,
+        coverUrl: matchedTrack.coverUrl,
+        audioUrl: matchedTrack.audioUrl,
+        youtubeId: matchedTrack.youtubeId,
+        candidateVideoIds: matchedTrack.candidateVideoIds,
+        streamSource: matchedTrack.streamSource,
+        sourceTag: matchedTrack.sourceTag,
+        genre: matchedTrack.genre,
+        lyrics: matchedTrack.lyrics || [],
+        artistSolanaAddress: matchedTrack.artistSolanaAddress || '',
+        bpm: matchedTrack.bpm || 120
+      }
       : undefined,
     searchedAt: Date.now()
   };

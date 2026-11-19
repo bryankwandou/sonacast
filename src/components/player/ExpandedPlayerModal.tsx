@@ -5,6 +5,7 @@ import {
   Film,
   Gauge,
   Heart,
+  Info,
   ListPlus,
   Loader2,
   Mic2,
@@ -24,8 +25,9 @@ import {
   Check,
   Share2
 } from 'lucide-react';
-import type { EqPreset, LyricLine, RepeatMode, Track, UserPlaylist } from '../../types';
+import type { EqPreset, LyricLine, RepeatMode, Track, TrackCreditsInfo, UserPlaylist } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
+import { fetchTrackCreditsOnline } from '../../services/musicService';
 import { applyCoverFallback } from '../../utils/coverFallback';
 import { exportLyricQuotePng } from '../../services/recommendationEngine';
 import { useCoverAccentRgb } from '../../utils/coverColor';
@@ -136,6 +138,8 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
 }) => {
   const { t } = useAppPreferences();
   const [showDsp, setShowDsp] = useState(false);
+  const [showCredits, setShowCredits] = useState(false);
+  const [creditsEntry, setCreditsEntry] = useState<{ key: string; data: TrackCreditsInfo } | null>(null);
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -144,6 +148,21 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   const lyricsPaneRef = useRef<HTMLDivElement | null>(null);
   const activeLyricRef = useRef<HTMLDivElement | null>(null);
   const accentRgb = useCoverAccentRgb(track.coverUrl, track.title, track.artist, lowCpuMode);
+  const currentCreditsKey = `${track.id}::${track.title}`;
+
+  useEffect(() => {
+    if (!isOpen || !showCredits || track.sourceTag === 'live-radio') return;
+    if (creditsEntry?.key === currentCreditsKey) return;
+    let cancelled = false;
+    void fetchTrackCreditsOnline(track.title, track.artist, track.album, track.genre).then((info) => {
+      if (!cancelled) {
+        setCreditsEntry({ key: currentCreditsKey, data: info });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, showCredits, track.id, track.title, track.artist, track.album, track.genre, track.sourceTag, creditsEntry?.key, currentCreditsKey]);
 
   const lyrics: LyricLine[] = track.lyrics || [];
   const effectiveTime = Math.max(0, currentTime + lyricsOffset);
@@ -398,6 +417,26 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                   </button>
                 )}
 
+                {track.sourceTag !== 'live-radio' && (
+                  <button
+                    type="button"
+                    data-testid="expanded-credits-btn"
+                    onClick={() => {
+                      setShowCredits((v) => !v);
+                      setShowPlaylistMenu(false);
+                    }}
+                    title={t.songCreditsLabel}
+                    aria-label={t.songCreditsLabel}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                      showCredits
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent-text)]'
+                        : 'bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    <Info size={18} />
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setShowPlaylistMenu((v) => !v)}
@@ -442,6 +481,69 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
             {savedNotice && (
               <div className="text-xs font-semibold text-[var(--accent-text)]">
                 Added to playlist
+              </div>
+            )}
+
+            {showCredits && (
+              <div
+                data-testid="expanded-credits-panel"
+                className="p-3.5 rounded-2xl bg-[var(--bg-tint)] border border-[var(--border-subtle)] space-y-2 text-xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
+                    {t.songCreditsLabel}
+                  </span>
+                  {creditsEntry?.key !== currentCreditsKey && (
+                    <Loader2 size={12} className="animate-spin text-[var(--accent-text)]" />
+                  )}
+                </div>
+                {(() => {
+                  const info =
+                    creditsEntry?.key === currentCreditsKey
+                      ? creditsEntry.data
+                      : {
+                          title: track.title,
+                          artist: track.artist,
+                          album: track.album || 'Single',
+                          genre: track.genre,
+                          writers: [] as string[],
+                          producers: [] as string[],
+                          performers: [track.artist]
+                        };
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+                      <div>
+                        <span className="text-[var(--text-dim)] block">Performed by</span>
+                        <span className="font-semibold text-[var(--text-primary)]">
+                          {info.performers.join(', ') || track.artist}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[var(--text-dim)] block">Album &middot; Genre</span>
+                        <span className="font-semibold text-[var(--text-primary)]">
+                          {info.album} &middot; {info.genre}
+                          {info.releaseDate ? ` (${info.releaseDate.slice(0, 4)})` : ''}
+                        </span>
+                      </div>
+                      {info.writers.length > 0 && (
+                        <div>
+                          <span className="text-[var(--text-dim)] block">Written by</span>
+                          <span className="font-semibold text-[var(--text-primary)]">
+                            {info.writers.join(', ')}
+                          </span>
+                        </div>
+                      )}
+                      {info.producers.length > 0 && (
+                        <div>
+                          <span className="text-[var(--text-dim)] block">Produced by</span>
+                          <span className="font-semibold text-[var(--text-primary)]">
+                            {info.producers.join(', ')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

@@ -4,6 +4,7 @@ import type {
   CatalogPlaylist,
   Track,
   LyricLine,
+  LyricsSearchMatch,
   MoodPreset,
   PlaybackContextInfo,
   SearchHistoryEntry
@@ -13,8 +14,10 @@ import {
   fetchAlbumTracksOnline,
   fetchLyricsWithMeta,
   fetchPlaylistTracksOnline,
+  sanitizeCanonicalTrackTitle,
   searchAlbumsOnline,
   searchPlaylistsOnline,
+  searchTracksByLyricsOnline,
   searchTracksOnline
 } from '../../services/musicService';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
@@ -24,7 +27,7 @@ import { MoodStrip } from '../common/MoodStrip';
 import { OrderedTracklistPanel } from '../common/OrderedTracklistPanel';
 import { TrackCard } from '../common/TrackCard';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from '../../utils/coverFallback';
-import { Clock, Disc3, Globe, ListMusic, Loader2, Play, Search, Trash2, Users, X } from 'lucide-react';
+import { Clock, Disc3, Globe, ListMusic, Loader2, Mic2, Play, Search, Trash2, Users, X } from 'lucide-react';
 
 interface SearchViewProps {
   curatedTracks: Track[];
@@ -32,12 +35,12 @@ interface SearchViewProps {
   isPlaying: boolean;
   resolvingTrackId?: string | null;
   externalQuery?: string;
-  externalMode?: 'songs' | 'albums' | 'playlists';
+  externalMode?: 'songs' | 'albums' | 'playlists' | 'lyrics';
   externalSelectedAlbum?: CatalogAlbum | null;
   externalSelectedPlaylist?: CatalogPlaylist | null;
   externalTrigger?: number;
   searchHistory?: SearchHistoryEntry[];
-  onRecordSearch?: (query: string, mode: 'songs' | 'albums' | 'playlists', matchedTrack?: Track) => void;
+  onRecordSearch?: (query: string, mode: 'songs' | 'albums' | 'playlists' | 'lyrics', matchedTrack?: Track) => void;
   onDeleteSearchHistory?: (id: string) => void;
   onClearSearchHistory?: () => void;
   activeMood?: MoodPreset;
@@ -94,10 +97,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [searchQuery, setSearchQuery] = useState(
     externalTrigger > 0 && externalQuery?.trim() ? externalQuery.trim() : 'Queen'
   );
-  const [searchMode, setSearchMode] = useState<'songs' | 'albums' | 'playlists'>(
+  const [searchMode, setSearchMode] = useState<'songs' | 'albums' | 'playlists' | 'lyrics'>(
     externalMode || 'songs'
   );
   const [results, setResults] = useState<Track[]>([]);
+  const [lyricSnippetMap, setLyricSnippetMap] = useState<Record<string, LyricsSearchMatch>>({});
   const [albumResults, setAlbumResults] = useState<CatalogAlbum[]>([]);
   const [playlistResults, setPlaylistResults] = useState<CatalogPlaylist[]>([]);
   const [selectedAlbum, setSelectedAlbum] = useState<CatalogAlbum | null>(null);
@@ -120,7 +124,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
     ? filteredArtists
     : filteredArtists.slice(0, INITIAL_ARTIST_CHIP_LIMIT);
 
-  const executeSearch = async (term: string, modeOverride?: 'songs' | 'albums' | 'playlists') => {
+  const executeSearch = async (term: string, modeOverride?: 'songs' | 'albums' | 'playlists' | 'lyrics') => {
     const requestId = ++searchRequestIdRef.current;
     const trimmed = term.trim();
     if (!trimmed) return;
@@ -129,9 +133,20 @@ export const SearchView: React.FC<SearchViewProps> = ({
     setSelectedAlbumTracks([]);
     setSelectedPlaylist(null);
     setSelectedPlaylistTracks([]);
+    setLyricSnippetMap({});
     setIsLoading(true);
     try {
-      if (activeMode === 'playlists') {
+      if (activeMode === 'lyrics') {
+        setResults([]);
+        const lyricHits = await searchTracksByLyricsOnline(trimmed);
+        if (requestId !== searchRequestIdRef.current) return;
+        const nextMap: Record<string, LyricsSearchMatch> = {};
+        for (const h of lyricHits) {
+          nextMap[h.track.id] = h;
+        }
+        setLyricSnippetMap(nextMap);
+        setResults(lyricHits.map((h) => h.track));
+      } else if (activeMode === 'playlists') {
         setPlaylistResults([]);
         const playlists = await searchPlaylistsOnline(trimmed);
         if (requestId !== searchRequestIdRef.current) return;
@@ -146,6 +161,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
         const online = await searchTracksOnline(trimmed);
         if (requestId !== searchRequestIdRef.current) return;
         const lower = trimmed.toLowerCase();
+        const words = lower.split(/\s+/).filter((w) => w.length >= 2);
         const matchingCurated = curatedTracks.filter(
           (t) =>
             t.title.toLowerCase().includes(lower) ||
@@ -160,7 +176,39 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 c.artist.toLowerCase().split(' ')[0] === o.artist.toLowerCase().split(' ')[0]
             )
         );
-        setResults([...matchingCurated, ...dedupedOnline]);
+        let merged = [...matchingCurated, ...dedupedOnline];
+
+        // If user typed a multi-word lyric phrase in Songs mode, also surface verified lyric matches
+        const topHasTitleMatch = merged.slice(0, 3).some((t) => {
+          const hay = `${t.title} ${t.artist}`.toLowerCase();
+          return words.length > 0 && words.filter((w) => hay.includes(w)).length >= Math.ceil(words.length * 0.6);
+        });
+        if (words.length >= 3 && !topHasTitleMatch) {
+          const lyricHits = await searchTracksByLyricsOnline(trimmed).catch(() => [] as LyricsSearchMatch[]);
+          if (requestId !== searchRequestIdRef.current) return;
+          const verifiedHits = lyricHits.filter((h) => h.verifiedLyrics);
+          if (verifiedHits.length > 0) {
+            const nextMap: Record<string, LyricsSearchMatch> = {};
+            const extraTracks: Track[] = [];
+            for (const h of verifiedHits) {
+              nextMap[h.track.id] = h;
+              const cleanNormTitle = sanitizeCanonicalTrackTitle(h.track.title, h.track.artist).toLowerCase();
+              if (!merged.some((m) => m.title.toLowerCase() === cleanNormTitle && m.artist.toLowerCase() === h.track.artist.toLowerCase())) {
+                extraTracks.push(h.track);
+              } else {
+                const matchedExisting = merged.find(
+                  (m) => m.title.toLowerCase() === cleanNormTitle && m.artist.toLowerCase() === h.track.artist.toLowerCase()
+                );
+                if (matchedExisting) {
+                  nextMap[matchedExisting.id] = h;
+                }
+              }
+            }
+            setLyricSnippetMap(nextMap);
+            merged = [...extraTracks, ...merged];
+          }
+        }
+        setResults(merged);
       }
     } catch {
       if (requestId === searchRequestIdRef.current) {
@@ -336,6 +384,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
               <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" />
               <input
                 type="text"
+                data-testid="search-view-input"
                 placeholder={t.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -345,7 +394,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
             <button
               type="submit"
-              disabled={isLoading || !searchQuery.trim()}
+              disabled={!searchQuery.trim()}
               className="min-h-[44px] px-6 py-2.5 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] disabled:opacity-50 text-[var(--accent-fg)] font-bold text-xs transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
             >
               {isLoading ? (
@@ -356,13 +405,13 @@ export const SearchView: React.FC<SearchViewProps> = ({
               ) : (
                 <>
                   <Search size={15} />
-                  <span>{t.heroCatalogCta}</span>
+                  <span>{t.searchAction}</span>
                 </>
               )}
             </button>
           </form>
 
-          {/* Search Mode Selector: Songs | Albums */}
+          {/* Search Mode Selector: Songs | By Lyrics | Albums | Playlists */}
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -379,6 +428,23 @@ export const SearchView: React.FC<SearchViewProps> = ({
             >
               <Disc3 size={12} />
               <span>{t.searchSongsTab}</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="search-mode-lyrics"
+              onClick={() => {
+                setSearchMode('lyrics');
+                if (searchQuery.trim()) executeSearch(searchQuery, 'lyrics');
+              }}
+              className={`h-8 px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                searchMode === 'lyrics'
+                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
+              }`}
+            >
+              <Mic2 size={12} />
+              <span>{t.searchLyricsTab}</span>
             </button>
 
             <button
@@ -477,7 +543,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
                         ? 'playlists'
                         : item.mode === 'albums'
                           ? 'albums'
-                          : 'songs';
+                          : item.mode === 'lyrics'
+                            ? 'lyrics'
+                            : 'songs';
                     setSearchMode(nextMode);
                     setSearchQuery(item.query);
                     setActiveArtistFilter('');
@@ -540,7 +608,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             </span>
           </h3>
           <div className="flex flex-wrap items-center gap-2">
-            {searchMode === 'songs' && results.length > 0 && onPlayTrackList && (
+            {(searchMode === 'songs' || searchMode === 'lyrics') && results.length > 0 && onPlayTrackList && (
               <button
                 type="button"
                 data-testid="search-play-ordered"
@@ -817,28 +885,44 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-            {results.map((track) => (
-              <TrackCard
-                key={track.id}
-                track={track}
-                isSelected={track.id === currentTrack.id}
-                isResolving={resolvingTrackId === track.id}
-                onSelect={(chosen) => {
-                  if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id) {
-                    onTogglePlay();
-                  } else {
-                    handlePlayTrackWithLyrics(chosen);
-                  }
-                }}
-                isLiked={likedTrackIds?.has(track.id)}
-                onToggleLike={onToggleLike}
-                onAddToAlbum={onAddToAlbum}
-                onPlayNext={onPlayNext}
-                onAddToQueue={onAddToQueue}
-                onStartRadio={onStartRadio}
-                onOpenArtist={onOpenArtist}
-              />
-            ))}
+            {results.map((track) => {
+              const snippetMatch = lyricSnippetMap[track.id];
+              return (
+                <div key={track.id} className="flex flex-col gap-1.5 min-w-0">
+                  <TrackCard
+                    track={track}
+                    isSelected={track.id === currentTrack.id}
+                    isResolving={resolvingTrackId === track.id}
+                    onSelect={(chosen) => {
+                      if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id) {
+                        onTogglePlay();
+                      } else {
+                        handlePlayTrackWithLyrics(chosen);
+                      }
+                    }}
+                    isLiked={likedTrackIds?.has(track.id)}
+                    onToggleLike={onToggleLike}
+                    onAddToAlbum={onAddToAlbum}
+                    onPlayNext={onPlayNext}
+                    onAddToQueue={onAddToQueue}
+                    onStartRadio={onStartRadio}
+                    onOpenArtist={onOpenArtist}
+                  />
+                  {snippetMatch?.matchedLine && (
+                    <button
+                      type="button"
+                      data-testid="lyrics-match-snippet"
+                      onClick={() => handlePlayTrackWithLyrics(track)}
+                      className="px-2.5 py-1.5 rounded-lg bg-[var(--accent-soft)] border border-[var(--accent-border)] text-left text-[11px] leading-snug text-[var(--text-primary)] line-clamp-2 hover:border-[var(--accent-emerald)] transition-colors cursor-pointer"
+                      title={snippetMatch.matchedLine}
+                    >
+                      <span className="font-bold text-[var(--accent-text)] mr-1">Lyric:</span>
+                      <span>&ldquo;{snippetMatch.matchedLine}&rdquo;</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

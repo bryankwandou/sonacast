@@ -375,7 +375,7 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
   },
   {
     id: 'dz-2988275971',
-    title: 'Einaudi: Nuvole Bianche',
+    title: 'Nuvole Bianche',
     artist: 'Ludovico Einaudi',
     album: 'Experience',
     duration: 357,
@@ -388,7 +388,7 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
   },
   {
     id: 'dz-497150662',
-    title: 'Richter: On the Nature of Daylight',
+    title: 'On the Nature of Daylight',
     artist: 'Max Richter',
     album: 'The Blue Notebooks (15 Years)',
     duration: 371,

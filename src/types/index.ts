@@ -122,9 +122,29 @@ export interface BlendRoom {
 export interface SearchHistoryEntry {
   id: string;
   query: string;
-  mode: 'songs' | 'albums' | 'playlists';
+  mode: 'songs' | 'albums' | 'playlists' | 'lyrics';
   matchedTrack?: Track;
   searchedAt: number;
+}
+
+export interface LyricsSearchMatch {
+  track: Track;
+  matchedLine: string;
+  verifiedLyrics: boolean;
+}
+
+export interface TrackCreditsInfo {
+  title: string;
+  artist: string;
+  album: string;
+  genre: string;
+  releaseDate?: string;
+  label?: string;
+  country?: string;
+  writers: string[];
+  producers: string[];
+  performers: string[];
+  mbid?: string;
 }
 
 export interface CloudLibrarySnapshot {

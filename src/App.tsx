@@ -244,7 +244,7 @@ export default function App() {
     loadLocalSearchHistory()
   );
   const [externalSearchQuery, setExternalSearchQuery] = useState('');
-  const [externalSearchMode, setExternalSearchMode] = useState<'songs' | 'albums' | 'playlists'>('songs');
+  const [externalSearchMode, setExternalSearchMode] = useState<'songs' | 'albums' | 'playlists' | 'lyrics'>('songs');
   const [externalSelectedAlbum, setExternalSelectedAlbum] = useState<CatalogAlbum | null>(null);
   const [externalSelectedPlaylist, setExternalSelectedPlaylist] = useState<CatalogPlaylist | null>(null);
   const [externalSearchTrigger, setExternalSearchTrigger] = useState(0);
@@ -3133,7 +3133,7 @@ export default function App() {
   }, [lowCpuMode, handlePrev]);
 
   const handleRecordSearch = useCallback(
-    (query: string, mode: 'songs' | 'albums' | 'playlists' = 'songs', matchedTrack?: Track) => {
+    (query: string, mode: 'songs' | 'albums' | 'playlists' | 'lyrics' = 'songs', matchedTrack?: Track) => {
       const cleaned = query.trim();
       if (!cleaned) return;
       const nextList = upsertSearchHistory(searchHistoryRef.current, cleaned, mode, matchedTrack);
@@ -3171,11 +3171,21 @@ export default function App() {
 
   // Global keyboard shortcuts (/, Ctrl+K search focus, Space play/pause, Arrows seek/skip, M mute, L like, A album, F favorites, B blend, S shuffle, R repeat, ? help)
   useEffect(() => {
+    const focusActiveSearchInput = () => {
+      window.requestAnimationFrame(() => {
+        const targetInput =
+          topSearchInputRef.current ||
+          document.querySelector<HTMLInputElement>(
+            '[data-testid="search-view-input"], [data-testid="radio-search-input"], [data-testid="podcast-search-input"]'
+          );
+        targetInput?.focus();
+      });
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setCurrentTab((prev) => (prev === 'landing' ? 'discover' : prev));
-        window.requestAnimationFrame(() => topSearchInputRef.current?.focus());
+        focusActiveSearchInput();
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -3192,7 +3202,7 @@ export default function App() {
       if (e.key === '/') {
         e.preventDefault();
         setCurrentTab((prev) => (prev === 'landing' ? 'discover' : prev));
-        window.requestAnimationFrame(() => topSearchInputRef.current?.focus());
+        focusActiveSearchInput();
       } else if (e.code === 'Space') {
         e.preventDefault();
         if (sharedAudioEngine.getIsPlaying()) sharedAudioEngine.pause();
@@ -3273,7 +3283,7 @@ export default function App() {
 
   const navigateToSearch = (
     query?: string,
-    mode: 'songs' | 'albums' | 'playlists' = 'songs',
+    mode: 'songs' | 'albums' | 'playlists' | 'lyrics' = 'songs',
     selection?: { album?: CatalogAlbum; playlist?: CatalogPlaylist }
   ) => {
     const trimmed = (query || '').trim();
@@ -3749,6 +3759,14 @@ export default function App() {
                             >
                               <Search size={11} />
                               <span>{t.searchSongsTab}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => navigateToSearch(topSearchInput.trim() || 'is this the real life', 'lyrics')}
+                              className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Mic2 size={11} />
+                              <span>{t.searchLyricsTab}</span>
                             </button>
                             <button
                               type="button"
