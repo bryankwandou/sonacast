@@ -1517,6 +1517,7 @@ async function fetchCatalogApiSearch(query: string): Promise<CatalogSearchRespon
 
 const itunesArtistPopCache = new Map<string, { data: { matchedArtistName: string; items: ITunesItem[] }; cachedAt: number }>();
 const itunesSongSearchCache = new Map<string, { data: ITunesItem[]; cachedAt: number }>();
+let itunesRateLimitUntil = 0;
 
 async function fetchItunesPopularByArtist(
   artistQuery: string,
@@ -1534,9 +1535,16 @@ async function fetchItunesPopularByArtist(
     if (cached && Date.now() - cached.cachedAt < 15 * 60 * 1000) {
       return cached.data;
     }
+    if (Date.now() < itunesRateLimitUntil) {
+      return { matchedArtistName: '', items: [] };
+    }
 
     const artUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(artistQuery)}&entity=musicArtist&attribute=artistTerm&country=${country}&limit=6`;
     const artRes = await fetch(artUrl, { signal: AbortSignal.timeout(1700) });
+    if (artRes.status === 403 || artRes.status === 429) {
+      itunesRateLimitUntil = Date.now() + 20_000;
+      return { matchedArtistName: '', items: [] };
+    }
     if (!artRes.ok) return { matchedArtistName: '', items: [] };
     const artData = await artRes.json();
     const artists: Array<{ artistId?: number; artistName?: string }> = Array.isArray(artData?.results)
@@ -1589,8 +1597,15 @@ async function fetchItunesSongSearch(query: string, country: 'US' | 'ID' | 'JP' 
     if (cached && Date.now() - cached.cachedAt < 15 * 60 * 1000) {
       return cached.data;
     }
+    if (Date.now() < itunesRateLimitUntil) {
+      return [];
+    }
     const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&country=${country}&limit=40`;
     const res = await fetch(url, { signal: AbortSignal.timeout(2800) });
+    if (res.status === 403 || res.status === 429) {
+      itunesRateLimitUntil = Date.now() + 20_000;
+      return [];
+    }
     if (!res.ok) return [];
     const data = await res.json();
     if (!Array.isArray(data?.results)) return [];
@@ -1843,7 +1858,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
 
     const secondaryCountry: 'US' | 'ID' = country === 'ID' ? 'US' : 'ID';
     const shouldLookupArtistOnItunes =
-      Boolean(parsedIndexed.indexedArtistName) ||
+      (Boolean(parsedIndexed.indexedArtistName) && !parsedIndexed.songNorm) ||
       (queryTokens.length === 1 && normQuery.length >= 3);
 
     const [catalogResp, itunesPopResp, itunesSearchItems, rawStreamCandidates, audiusTracks] =
@@ -4842,12 +4857,15 @@ export async function searchTracksByLyricsOnline(lyricQuery: string): Promise<Ly
     }
   }
 
-  // 2. Parallel external CORS lyric discovery (iTunes ID+US + lyrics.ovh suggest + Piped lyrics/lirik videos)
+  // 2. Parallel external CORS lyric discovery (1 iTunes call + LRCLIB search + lyrics.ovh suggest + Piped)
   const primaryCountry = detectSearchCountry(normSnippet, trimmed);
-  const secCountry: 'US' | 'ID' = primaryCountry === 'ID' ? 'US' : 'ID';
-  const [itPrimary, itSecondary, ovhSuggest, pipMusic, pipLyricsVid] = await Promise.allSettled([
+  const [itPrimary, lrcDirect, ovhSuggest, pipMusic, pipLyricsVid] = await Promise.allSettled([
     fetchItunesSongSearch(trimmed, primaryCountry),
-    fetchItunesSongSearch(trimmed, secCountry),
+    fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(trimmed)}`, {
+      signal: AbortSignal.timeout(3000)
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .catch(() => []),
     fetch(`https://api.lyrics.ovh/suggest/${encodeURIComponent(trimmed)}`, {
       signal: AbortSignal.timeout(3400)
     })
@@ -4872,7 +4890,40 @@ export async function searchTracksByLyricsOnline(lyricQuery: string): Promise<Ly
     });
   };
   if (itPrimary.status === 'fulfilled') ingestItunes(itPrimary.value, 95);
-  if (itSecondary.status === 'fulfilled') ingestItunes(itSecondary.value, 75);
+
+  if (lrcDirect.status === 'fulfilled' && Array.isArray(lrcDirect.value)) {
+    const lrcRows = lrcDirect.value as Array<{
+      trackName?: string;
+      artistName?: string;
+      albumName?: string;
+      duration?: number;
+      syncedLyrics?: string;
+      plainLyrics?: string;
+    }>;
+    lrcRows.slice(0, 6).forEach((row, idx) => {
+      if (!row?.trackName || !row?.artistName) return;
+      const parsedLines: LyricLine[] = row.syncedLyrics
+        ? parseLrc(row.syncedLyrics)
+        : row.plainLyrics
+          ? row.plainLyrics
+              .split(/\r?\n/)
+              .map((line, i) => ({ time: i * 4, text: line.trim() }))
+              .filter((line) => line.text.length > 0)
+          : [];
+      const hit = findMatchingLyricExcerpt(parsedLines, normSnippet, tokens);
+      addCand({
+        title: row.trackName,
+        artist: row.artistName,
+        album: row.albumName || 'Single',
+        genre: 'Pop',
+        duration: Number(row.duration) || 210,
+        coverUrl: '',
+        seedRank: 92 - idx * 6 + (hit.score >= 50 ? 30 : 0),
+        preMatchedLine: hit.line || undefined,
+        preScore: hit.score
+      });
+    });
+  }
 
   if (ovhSuggest.status === 'fulfilled' && Array.isArray(ovhSuggest.value?.data)) {
     const ovhRows = ovhSuggest.value.data as Array<{
@@ -4933,7 +4984,7 @@ export async function searchTracksByLyricsOnline(lyricQuery: string): Promise<Ly
             source: 'none',
             lyrics: [] as LyricLine[]
           })),
-        needsEnrich && idx < 5
+        needsEnrich && idx < 1
           ? fetchItunesSongSearch(`${c.title} ${c.artist}`, primaryCountry).catch(() => [])
           : Promise.resolve([] as ITunesItem[])
       ]);
