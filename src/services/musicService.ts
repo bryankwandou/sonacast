@@ -239,27 +239,15 @@ export async function fetchLyricsWithMeta(
   const cleanTrack = cleanLyricsTitle(trackName);
   const cleanArtist = cleanLyricsArtist(artistName);
 
-  // Direct external CORS multi-provider lookup: LRCLIB (/get + /search synced & plain) + lyrics.ovh (0 Vercel compute)
+  // Direct external CORS multi-provider lookup: LRCLIB cascaded (/get -> /search only on miss) + lyrics.ovh (0 Vercel compute)
   try {
-    const [lrGet, lrPair, lrQ, ovh] = await Promise.all([
+    const [lrGet, ovh] = await Promise.all([
       fetch(
         `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(cleanArtist)}`,
         { signal: AbortSignal.timeout(4200) }
       )
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
-      fetch(
-        `https://lrclib.net/api/search?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(cleanArtist)}`,
-        { signal: AbortSignal.timeout(4200) }
-      )
-        .then((r) => (r.ok ? r.json() : []))
-        .catch(() => []),
-      fetch(
-        `https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanArtist} ${cleanTrack}`)}`,
-        { signal: AbortSignal.timeout(4200) }
-      )
-        .then((r) => (r.ok ? r.json() : []))
-        .catch(() => []),
       fetch(
         `https://api.lyrics.ovh/v1/${encodeURIComponent(cleanArtist)}/${encodeURIComponent(cleanTrack)}`,
         { signal: AbortSignal.timeout(4200) }
@@ -268,11 +256,29 @@ export async function fetchLyricsWithMeta(
         .catch(() => null)
     ]);
 
-    const pool: BrowserLrcItem[] = [
-      ...(Array.isArray(lrPair) ? lrPair : []),
-      ...(Array.isArray(lrQ) ? lrQ : []),
-      ...(lrGet ? [lrGet] : [])
-    ];
+    const pool: BrowserLrcItem[] = [...(lrGet ? [lrGet] : [])];
+    const hasSyncedInGet = Boolean(lrGet?.syncedLyrics);
+    if (!hasSyncedInGet) {
+      const lrPair = await fetch(
+        `https://lrclib.net/api/search?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(cleanArtist)}`,
+        { signal: AbortSignal.timeout(3600) }
+      )
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []);
+      if (Array.isArray(lrPair) && lrPair.length > 0) {
+        pool.push(...lrPair);
+      } else if (!lrGet?.plainLyrics) {
+        const lrQ = await fetch(
+          `https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanArtist} ${cleanTrack}`)}`,
+          { signal: AbortSignal.timeout(3600) }
+        )
+          .then((r) => (r.ok ? r.json() : []))
+          .catch(() => []);
+        if (Array.isArray(lrQ) && lrQ.length > 0) {
+          pool.push(...lrQ);
+        }
+      }
+    }
     let bestSynced: { item: BrowserLrcItem; parsed: LyricLine[]; score: number } | null = null;
     for (const candidate of pool) {
       if (!candidate?.syncedLyrics) continue;
@@ -4981,7 +4987,7 @@ export async function searchTracksByLyricsOnline(lyricQuery: string): Promise<Ly
 
   const topCands = Array.from(candMap.values())
     .sort((a, b) => b.seedRank - a.seedRank)
-    .slice(0, 8);
+    .slice(0, 4);
 
   // 3. Verify candidate lyrics + canonical artwork via parallel LRCLIB / lyrics.ovh + iTunes enrichment
   const emptyIds = new Set<string>();
