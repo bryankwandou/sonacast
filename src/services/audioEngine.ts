@@ -532,9 +532,14 @@ export class AudioEngine {
       this.highFilter.connect(this.eqMakeupGainNode);
 
       // Tap post-EQ / pre-AGC signal into K-weighted loudness detector sidechain
+      // Connect via a zero-gain sink to destination so Firefox/Safari/Chrome always pull the analyser branch
+      const kWeightSilentSink = this.ctx.createGain();
+      kWeightSilentSink.gain.value = 0;
       this.eqMakeupGainNode.connect(this.kWeightHighpass);
       this.kWeightHighpass.connect(this.kWeightHighshelf);
       this.kWeightHighshelf.connect(this.kWeightAnalyser);
+      this.kWeightAnalyser.connect(kWeightSilentSink);
+      kWeightSilentSink.connect(this.ctx.destination);
 
       // Main audio path through closed-loop AGC, glue compressor, brickwall limiter, and post analyser
       this.eqMakeupGainNode.connect(this.agcGainNode);

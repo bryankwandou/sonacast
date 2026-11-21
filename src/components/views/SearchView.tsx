@@ -189,23 +189,22 @@ export const SearchView: React.FC<SearchViewProps> = ({
           const verifiedHits = lyricHits.filter((h) => h.verifiedLyrics);
           if (verifiedHits.length > 0) {
             const nextMap: Record<string, LyricsSearchMatch> = {};
-            const extraTracks: Track[] = [];
+            const promotedTracks: Track[] = [];
+            const promotedIds = new Set<string>();
             for (const h of verifiedHits) {
-              nextMap[h.track.id] = h;
               const cleanNormTitle = sanitizeCanonicalTrackTitle(h.track.title, h.track.artist).toLowerCase();
-              if (!merged.some((m) => m.title.toLowerCase() === cleanNormTitle && m.artist.toLowerCase() === h.track.artist.toLowerCase())) {
-                extraTracks.push(h.track);
-              } else {
-                const matchedExisting = merged.find(
-                  (m) => m.title.toLowerCase() === cleanNormTitle && m.artist.toLowerCase() === h.track.artist.toLowerCase()
-                );
-                if (matchedExisting) {
-                  nextMap[matchedExisting.id] = h;
-                }
+              const matchedExisting = merged.find(
+                (m) => m.title.toLowerCase() === cleanNormTitle && m.artist.toLowerCase() === h.track.artist.toLowerCase()
+              );
+              const chosen = matchedExisting || h.track;
+              if (!promotedIds.has(chosen.id)) {
+                promotedIds.add(chosen.id);
+                nextMap[chosen.id] = h;
+                promotedTracks.push(chosen);
               }
             }
             setLyricSnippetMap(nextMap);
-            merged = [...extraTracks, ...merged];
+            merged = [...promotedTracks, ...merged.filter((m) => !promotedIds.has(m.id))];
           }
         }
         setResults(merged);
