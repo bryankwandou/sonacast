@@ -3061,10 +3061,44 @@ export class AudioEngine {
     this.onErrorCallbacks.forEach((cb) => cb(message));
   }
 
+  private synthesizeReactiveSpectrum(len: number): void {
+    const t = performance.now() / 1000;
+    const bpm = Math.max(60, Math.min(200, this.currentTrackBpm || 118));
+    const beatsPerSec = bpm / 60;
+    const beatPhase = (t * beatsPerSec) % 1;
+    const halfBeatPhase = (t * beatsPerSec * 2) % 1;
+    const barPhase = (t * beatsPerSec * 0.25) % 1;
+    const kickEnv = Math.exp(-beatPhase * 4.6);
+    const snareEnv = Math.exp(-Math.pow((halfBeatPhase - 0.5 + 1) % 1, 1.3) * 7.5);
+    const grooveSwell = 0.68 + 0.32 * Math.sin(barPhase * Math.PI * 2);
+    const gainScale = Math.max(0.35, Math.min(1.15, this.volume * 1.05));
+
+    for (let i = 0; i < len; i++) {
+      const norm = i / len;
+      const bassWeight = Math.max(0, 1 - norm * 3.0) * (95 + kickEnv * 145) * grooveSwell;
+      const midWeight =
+        Math.exp(-Math.pow((norm - 0.26) / 0.17, 2)) *
+        (65 + snareEnv * 115 + (Math.sin(t * 6.2 + i * 0.28) * 0.5 + 0.5) * 58);
+      const trebleWeight =
+        Math.exp(-Math.pow((norm - 0.62) / 0.24, 2)) *
+        (36 + (Math.cos(t * 14.5 - i * 0.22) * 0.5 + 0.5) * 84 * (0.55 + kickEnv * 0.45));
+      const shimmer = (Math.sin(t * 9.3 + i * 0.41) * 0.5 + 0.5) * 28 * (1 - norm * 0.5);
+      const val = (bassWeight + midWeight + trebleWeight + shimmer) * gainScale;
+      this.freqArray[i] = Math.min(255, Math.max(0, Math.round(val)));
+
+      const waveVal =
+        128 +
+        Math.sin(t * 11.5 + norm * Math.PI * 6) * (24 + kickEnv * 44) * gainScale +
+        Math.sin(t * 23.0 - norm * Math.PI * 12) * (14 + snareEnv * 26) * gainScale +
+        Math.cos(t * 37.0 + norm * Math.PI * 20) * 11 * gainScale;
+      this.waveArray[i] = Math.min(255, Math.max(0, Math.round(waveVal)));
+    }
+  }
+
   public getSpectrum(): SpectrumData {
     const len = this.freqArray.length;
 
-    if (this.lowCpuMode || this.isDocumentHidden || !this.isPlaying) {
+    if (this.isDocumentHidden || !this.isPlaying) {
       this.freqArray.fill(0);
       this.waveArray.fill(128);
       return {
@@ -3085,31 +3119,23 @@ export class AudioEngine {
     ) {
       this.analyser.getByteFrequencyData(this.freqArray);
       this.analyser.getByteTimeDomainData(this.waveArray);
+
+      // Guard against zero-filled FFT frames when AudioContext is suspended or remote stream lacks CORS PCM
+      let peakBin = 0;
+      for (let i = 0; i < len; i++) {
+        if (this.freqArray[i] > peakBin) peakBin = this.freqArray[i];
+      }
+      if (peakBin < 4) {
+        this.synthesizeReactiveSpectrum(len);
+      }
     } else if (
       (this.activeBackend === 'youtube' ||
         (this.activeBackend === 'html5' && this.usingPassthroughStream)) &&
       this.isPlaying
     ) {
-      // BPM-locked reactive envelope while official embed video streams audio
-      const t = performance.now() / 1000;
-      const beatsPerSec = this.currentTrackBpm / 60;
-      const beatPhase = (t * beatsPerSec) % 1;
-      const kickEnv = Math.exp(-beatPhase * 5.2);
-
-      for (let i = 0; i < len; i++) {
-        const norm = i / len;
-        const bassWeight = Math.max(0, 1 - norm * 3.2) * kickEnv * 190;
-        const harmonic =
-          (Math.sin(t * 7.5 + i * 0.25) * 0.5 + 0.5) * 95 * (1 - norm * 0.65) +
-          (Math.cos(t * 13.0 - i * 0.14) * 0.5 + 0.5) * 45;
-        this.freqArray[i] = Math.min(255, Math.max(0, Math.round(bassWeight + harmonic * this.volume)));
-
-        const waveVal =
-          128 +
-          Math.sin(t * 18 + i * 0.18) * 34 * kickEnv +
-          Math.cos(t * 42 + i * 0.35) * 16;
-        this.waveArray[i] = Math.min(255, Math.max(0, Math.round(waveVal)));
-      }
+      this.synthesizeReactiveSpectrum(len);
+    } else if (this.isPlaying) {
+      this.synthesizeReactiveSpectrum(len);
     } else {
       this.freqArray.fill(0);
       this.waveArray.fill(128);

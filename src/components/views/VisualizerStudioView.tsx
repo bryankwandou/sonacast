@@ -22,22 +22,28 @@ export const VisualizerStudioView: React.FC<VisualizerStudioViewProps> = ({
   const [palette, setPalette] = useState<'emerald' | 'cyber' | 'amber' | 'ice'>('emerald');
 
   useEffect(() => {
-    if (lowCpuMode || !isPlaying) {
-      setTelemetry({ bass: 0, mid: 0, treble: 0, level: 0 });
-      return;
-    }
     let animId = 0;
     let lastUpdate = 0;
+    const minInterval = lowCpuMode ? 180 : 95;
     const update = (ts: number) => {
-      if (ts - lastUpdate >= 120) {
+      if (ts - lastUpdate >= minInterval) {
         lastUpdate = ts;
-        const spec = sharedAudioEngine.getSpectrum();
-        setTelemetry({
-          bass: spec.bass,
-          mid: spec.mid,
-          treble: spec.treble,
-          level: spec.level
-        });
+        const livePlaying = isPlaying || sharedAudioEngine.getIsPlaying();
+        if (!livePlaying) {
+          setTelemetry((prev) =>
+            prev.bass === 0 && prev.mid === 0 && prev.treble === 0 && prev.level === 0
+              ? prev
+              : { bass: 0, mid: 0, treble: 0, level: 0 }
+          );
+        } else {
+          const spec = sharedAudioEngine.getSpectrum();
+          setTelemetry({
+            bass: spec.bass,
+            mid: spec.mid,
+            treble: spec.treble,
+            level: spec.level
+          });
+        }
       }
       animId = requestAnimationFrame(update);
     };
