@@ -869,6 +869,20 @@ export default function App() {
   }, []);
 
   const isStageVisible = isStageOpen || currentTab === 'visualizer';
+  const isVideoStageMode = stageMode === 'video-only' || stageMode === 'video-lyric';
+  const showSidebarVideoMonitor =
+    isYouTubeActive &&
+    isYtVisualReady &&
+    !streamError &&
+    !isStageVisible &&
+    isVideoStageMode &&
+    Boolean(
+      activeYtVideoId &&
+        (currentTrack.musicVideoId === activeYtVideoId ||
+          (currentTrack.musicVideoCandidates || []).some(
+            (c) => c.videoId === activeYtVideoId
+          ))
+    );
 
   // Synchronize fixed overlay #sonacast-yt-host bounds with active slot (Video stage or RightSidebar monitor)
   useEffect(() => {
@@ -876,33 +890,55 @@ export default function App() {
       const host = ytHostRef.current;
       if (!host) return;
 
+      const allowVisibleVideo = (isStageVisible && isVideoStageMode) || showSidebarVideoMonitor;
+
       if (document.fullscreenElement === host) {
-        host.style.position = 'fixed';
-        host.style.left = '0px';
-        host.style.top = '0px';
-        host.style.width = '100vw';
-        host.style.height = '100vh';
-        host.style.opacity = '1';
-        host.style.pointerEvents = 'auto';
-        host.style.borderRadius = '0px';
-        host.style.clipPath = 'none';
-        host.style.zIndex = '9999';
-        return;
+        if (!allowVisibleVideo) {
+          document.exitFullscreen().catch(() => { });
+        } else {
+          host.style.position = 'fixed';
+          host.style.left = '0px';
+          host.style.top = '0px';
+          host.style.width = '100vw';
+          host.style.height = '100vh';
+          host.style.opacity = '1';
+          host.style.pointerEvents = 'auto';
+          host.style.borderRadius = '0px';
+          host.style.clipPath = 'none';
+          host.style.zIndex = '9999';
+          return;
+        }
       }
 
       if (!isYouTubeActive) {
         host.style.left = '-9999px';
         host.style.top = '-9999px';
+        host.style.right = 'auto';
+        host.style.bottom = 'auto';
         host.style.width = '320px';
         host.style.height = '180px';
         host.style.opacity = '0';
         host.style.pointerEvents = 'none';
         host.style.clipPath = 'none';
+        host.style.zIndex = '0';
         return;
       }
 
-      const isVideoStage = stageMode === 'video-only' || stageMode === 'video-lyric';
-      const target = isStageVisible && isVideoStage ? videoSlotRef.current : ytMonitorRef.current;
+      if (!allowVisibleVideo) {
+        host.style.left = 'auto';
+        host.style.top = 'auto';
+        host.style.right = '12px';
+        host.style.bottom = '92px';
+        host.style.width = '160px';
+        host.style.height = '90px';
+        host.style.opacity = '0.001';
+        host.style.pointerEvents = 'none';
+        host.style.clipPath = 'none';
+        host.style.zIndex = '0';
+        return;
+      }
+
+      const target = isStageVisible && isVideoStageMode ? videoSlotRef.current : ytMonitorRef.current;
       if (!target) {
         host.style.left = 'auto';
         host.style.top = 'auto';
@@ -910,16 +946,16 @@ export default function App() {
         host.style.bottom = '92px';
         host.style.width = '160px';
         host.style.height = '90px';
-        host.style.opacity = '0.005';
+        host.style.opacity = '0.001';
         host.style.pointerEvents = 'none';
         host.style.clipPath = 'none';
-        host.style.zIndex = '1';
+        host.style.zIndex = '0';
         return;
       }
 
       const rect = target.getBoundingClientRect();
       if (rect.width >= 150 && rect.height >= 135) {
-        if (isStageVisible && isVideoStage && mainScrollRef.current) {
+        if (isStageVisible && isVideoStageMode && mainScrollRef.current) {
           const mainRect = mainScrollRef.current.getBoundingClientRect();
           if (rect.bottom <= mainRect.top + 8 || rect.top >= mainRect.bottom - 8) {
             host.style.left = 'auto';
@@ -928,10 +964,10 @@ export default function App() {
             host.style.bottom = '92px';
             host.style.width = '160px';
             host.style.height = '90px';
-            host.style.opacity = '0.005';
+            host.style.opacity = '0.001';
             host.style.pointerEvents = 'none';
             host.style.clipPath = 'none';
-            host.style.zIndex = '1';
+            host.style.zIndex = '0';
             return;
           }
           const clipTop = Math.max(0, mainRect.top - rect.top);
@@ -949,11 +985,11 @@ export default function App() {
         host.style.top = `${rect.top}px`;
         host.style.width = `${rect.width}px`;
         host.style.height = `${rect.height}px`;
-        const visualAllowed = !streamError && (isYtVisualReady || (isStageVisible && isVideoStage));
-        host.style.opacity = visualAllowed ? '1' : '0.005';
+        const visualAllowed = !streamError && (isYtVisualReady || (isStageVisible && isVideoStageMode));
+        host.style.opacity = visualAllowed ? '1' : '0.001';
         host.style.pointerEvents = visualAllowed ? 'auto' : 'none';
-        host.style.zIndex = visualAllowed ? '25' : '1';
-        host.style.borderRadius = isVideoStage ? '1rem' : '0.75rem';
+        host.style.zIndex = visualAllowed ? '25' : '0';
+        host.style.borderRadius = isStageVisible && isVideoStageMode ? '1rem' : '0.75rem';
       } else {
         host.style.left = 'auto';
         host.style.top = 'auto';
@@ -961,10 +997,10 @@ export default function App() {
         host.style.bottom = '92px';
         host.style.width = '160px';
         host.style.height = '90px';
-        host.style.opacity = '0.005';
+        host.style.opacity = '0.001';
         host.style.pointerEvents = 'none';
         host.style.clipPath = 'none';
-        host.style.zIndex = '1';
+        host.style.zIndex = '0';
       }
     };
 
@@ -988,7 +1024,17 @@ export default function App() {
       window.removeEventListener('scroll', syncPosition, true);
       document.removeEventListener('fullscreenchange', syncPosition);
     };
-  }, [isYouTubeActive, isYtVisualReady, streamError, stageMode, currentTab, isStageVisible, resolvingVideoTrackId]);
+  }, [
+    isYouTubeActive,
+    isYtVisualReady,
+    streamError,
+    stageMode,
+    currentTab,
+    isStageVisible,
+    isVideoStageMode,
+    showSidebarVideoMonitor,
+    resolvingVideoTrackId
+  ]);
 
   // Periodically check active Solana cluster balance & sync wallet switches (throttled when idle/hidden)
   useEffect(() => {
@@ -1243,10 +1289,13 @@ export default function App() {
           track.duration,
           ac.signal
         );
+        const stillInVideoMode =
+          stageModeRef.current === 'video-only' || stageModeRef.current === 'video-lyric';
         if (
           ac.signal.aborted ||
           mvToken !== mvSelectionTokenRef.current ||
-          currentTrackRef.current.id !== track.id
+          currentTrackRef.current.id !== track.id ||
+          !stillInVideoMode
         ) {
           return;
         }
@@ -1322,20 +1371,27 @@ export default function App() {
       mvResolveAbortRef.current = null;
     }
     setResolvingVideoTrackId(null);
+    sharedAudioEngine.setVideoStageActive(false);
 
     if (tr.audioUrl) {
       const resumeAt = Math.max(0, Math.floor(currentTimeRef.current));
+      const wasPlaying = sharedAudioEngine.getIsPlaying();
       setIsYouTubeActive(false);
       sharedAudioEngine.playTrack(tr.duration, tr.bpm, tr.audioUrl);
       if (resumeAt > 0) {
         sharedAudioEngine.seek(resumeAt);
       }
-      setStageMode('music-lyric');
-      setIsPlaying(true);
+      if (!wasPlaying) {
+        sharedAudioEngine.pause();
+      }
+      stageModeRef.current = 'music-only';
+      setStageMode('music-only');
+      setIsPlaying(wasPlaying);
       return;
     }
 
-    setStageMode('music-lyric');
+    stageModeRef.current = 'music-only';
+    setStageMode('music-only');
   }, []);
 
   const handleRequestVideoFullscreen = useCallback(() => {
@@ -2546,8 +2602,8 @@ export default function App() {
   }, [loudnessTarget, audioDataSaver]);
 
   useEffect(() => {
-    sharedAudioEngine.setVideoStageActive(isStageOpen && stageMode === 'video-lyric');
-  }, [isStageOpen, stageMode]);
+    sharedAudioEngine.setVideoStageActive(isStageVisible && isVideoStageMode);
+  }, [isStageVisible, isVideoStageMode]);
 
   const handleToggleVocalReduction = useCallback(() => {
     setVocalReductionEnabled((prev) => {
@@ -3316,6 +3372,7 @@ export default function App() {
   };
 
   const handleSelectStageMode = (mode: StageExperienceMode) => {
+    stageModeRef.current = mode;
     setStageMode(mode);
     setIsStageOpen(true);
     setIsFloatingMinimized(false);
@@ -3328,7 +3385,38 @@ export default function App() {
       resolveLyricsForTrack(currentTrackRef.current);
     }
     if (mode === 'video-only' || mode === 'video-lyric') {
+      sharedAudioEngine.setVideoStageActive(true);
       void activateMusicVideoForTrack(currentTrackRef.current);
+    } else {
+      // Leaving video mode: cancel any pending MV resolution, restore Audio Data Saver,
+      // and return to studio master audioUrl if the current track has one.
+      ++mvSelectionTokenRef.current;
+      if (mvResolveAbortRef.current) {
+        mvResolveAbortRef.current.abort();
+        mvResolveAbortRef.current = null;
+      }
+      setResolvingVideoTrackId(null);
+      sharedAudioEngine.setVideoStageActive(false);
+
+      const host = ytHostRef.current;
+      if (host && document.fullscreenElement === host) {
+        document.exitFullscreen().catch(() => { });
+      }
+
+      const tr = currentTrackRef.current;
+      if (isYouTubeActive && tr.audioUrl) {
+        const resumeAt = Math.max(0, Math.floor(currentTimeRef.current));
+        const wasPlaying = sharedAudioEngine.getIsPlaying();
+        setIsYouTubeActive(false);
+        sharedAudioEngine.playTrack(tr.duration, tr.bpm, tr.audioUrl);
+        if (resumeAt > 0) {
+          sharedAudioEngine.seek(resumeAt);
+        }
+        if (!wasPlaying) {
+          sharedAudioEngine.pause();
+        }
+        setIsPlaying(wasPlaying);
+      }
     }
   };
 
@@ -4501,20 +4589,9 @@ export default function App() {
               onSelectRadio={handleSelectRadio}
               onOpenLyricCard={() => handleOpenLyricCard()}
               ytMonitorRef={ytMonitorRef}
-              showYtMonitor={
-                isYouTubeActive &&
-                isYtVisualReady &&
-                !streamError &&
-                (!isStageVisible || (stageMode !== 'video-only' && stageMode !== 'video-lyric')) &&
-                Boolean(
-                  activeYtVideoId &&
-                  (currentTrack.musicVideoId === activeYtVideoId ||
-                    (currentTrack.musicVideoCandidates || []).some(
-                      (c) => c.videoId === activeYtVideoId
-                    ))
-                )
-              }
+              showYtMonitor={showSidebarVideoMonitor}
               onExpandVideoStage={() => handleSelectStageMode('video-lyric')}
+              onSwitchToAudioMode={handleSwitchToAudioMaster}
               onSaveQueueAsPlaylist={handleSaveQueueAsPlaylist}
               lyricsStatus={lyricsStatus}
               lyricsOffset={currentLyricsOffset}

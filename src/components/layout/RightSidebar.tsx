@@ -59,6 +59,7 @@ interface RightSidebarProps {
   ytMonitorRef: React.RefObject<HTMLDivElement | null>;
   showYtMonitor: boolean;
   onExpandVideoStage?: () => void;
+  onSwitchToAudioMode?: () => void;
   onSaveQueueAsPlaylist?: () => void;
   lyricsStatus?: 'idle' | 'loading' | 'loaded' | 'unavailable';
   onRetryLyrics?: (customTitle?: string, customArtist?: string) => void;
@@ -93,6 +94,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   ytMonitorRef,
   showYtMonitor,
   onExpandVideoStage,
+  onSwitchToAudioMode,
   onSaveQueueAsPlaylist,
   lyricsStatus = 'idle',
   onRetryLyrics,
@@ -229,18 +231,32 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               <Film size={11} />
               <span className="truncate">{currentTrack.title}</span>
             </span>
-            {onExpandVideoStage && (
-              <button
-                type="button"
-                data-testid="sidebar-expand-video-btn"
-                onClick={onExpandVideoStage}
-                title={t.expandVideoStage}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent-text)] font-semibold hover:brightness-110 transition cursor-pointer shrink-0"
-              >
-                <Maximize2 size={10} />
-                <span>{t.expandVideoStage}</span>
-              </button>
-            )}
+            <div className="inline-flex items-center gap-1 shrink-0">
+              {onExpandVideoStage && (
+                <button
+                  type="button"
+                  data-testid="sidebar-expand-video-btn"
+                  onClick={onExpandVideoStage}
+                  title={t.expandVideoStage}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent-text)] font-semibold hover:brightness-110 transition cursor-pointer shrink-0"
+                >
+                  <Maximize2 size={10} />
+                  <span>{t.expandVideoStage}</span>
+                </button>
+              )}
+              {onSwitchToAudioMode && (
+                <button
+                  type="button"
+                  data-testid="sidebar-close-video-btn"
+                  onClick={onSwitchToAudioMode}
+                  aria-label={t.modeMusicOnly}
+                  title={t.modeMusicOnly}
+                  className="inline-flex items-center justify-center w-5 h-5 rounded bg-[var(--bg-tint)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition cursor-pointer shrink-0"
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </div>
           </div>
         )}
         <div
