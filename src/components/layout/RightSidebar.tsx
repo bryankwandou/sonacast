@@ -245,7 +245,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         )}
         <div
           ref={ytMonitorRef}
-          className={showYtMonitor ? 'w-full aspect-video min-h-[160px] bg-black' : 'w-full h-[140px]'}
+          className={showYtMonitor ? 'w-full aspect-video min-h-[160px] bg-black' : 'w-[200px] h-[112px]'}
         />
       </div>
 

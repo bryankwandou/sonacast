@@ -1092,19 +1092,22 @@ function scoreCandidate(
     }
   }
 
-  if (
+  if (artistMatched && candAuthorLower.includes('- topic')) {
+    // Official YouTube Music auto-generated DDEX studio master: normalized to -14 LUFS & static cover frame (~85% less data)
+    score += 72;
+  } else if (
     artistMatched &&
-    (candAuthorLower.includes('- topic') ||
-      candRawLower.includes('official audio') ||
-      candRawLower.includes('audio only') ||
-      candRawLower.includes('lyrics'))
+    (candRawLower.includes('official audio') || candRawLower.includes('audio only'))
   ) {
-    score += 28;
+    score += 48;
+  } else if (artistMatched && candRawLower.includes('lyrics')) {
+    score += 4;
   } else if (
     artistMatched &&
     (candAuthorLower.includes('vevo') || candRawLower.includes('official video') || candRawLower.includes('music video'))
   ) {
-    score += 2;
+    // Demote moving music videos during Audio Mode (separate Music Video stage calls resolveMusicVideoStream)
+    score -= 14;
   }
 
   if (!rawLowerTitle.includes('live') && (candRawLower.includes('(live') || candRawLower.includes('live in ') || candRawLower.includes('concert'))) {
@@ -1129,7 +1132,7 @@ export interface ResolvedFullStream {
   duration: number;
 }
 
-const STREAM_CACHE_KEY = 'sonacast_stream_cache_v1';
+const STREAM_CACHE_KEY = 'sonacast_stream_cache_v2';
 const STREAM_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const streamMemoryCache = new Map<string, { value: ResolvedFullStream; cachedAt: number }>();
 
@@ -1316,8 +1319,7 @@ function detectSearchCountry(normQuery: string, rawQuery = ''): 'ID' | 'US' | 'J
   const exactIndexed = INDEXED_ARTIST_BY_NORM.get(normQuery);
   if (exactIndexed) {
     if (exactIndexed.genre === 'Indonesian') return 'ID';
-    if (exactIndexed.genre === 'K-Pop') return 'KR';
-    if (exactIndexed.genre === 'J-Pop') return 'JP';
+    // Keep Latin queries on international/US catalog so J-Pop/K-Pop titles resolve in canonical Latin ("Idol", "Yoru ni kakeru")
     return 'US';
   }
   for (const indArtist of INDONESIAN_ARTIST_NORMS) {

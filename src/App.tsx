@@ -26,7 +26,7 @@ import type {
 } from './types';
 import { TRACK_CATALOG, PODCAST_CATALOG, RADIO_STATIONS } from './data/catalog';
 import { COHESIVE_SEED_TRACKS } from './data/curatedPlaylists';
-import { sharedAudioEngine } from './services/audioEngine';
+import { sharedAudioEngine, type LoudnessTarget } from './services/audioEngine';
 import { solanaService } from './services/solanaService';
 import {
   fetchAlbumTracksOnline,
@@ -361,6 +361,15 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [initialBlendCode, setInitialBlendCode] = useState<string | null>(null);
   const [normalizationEnabled, setNormalizationEnabled] = useState(true);
+  const [loudnessTarget, setLoudnessTarget] = useState<LoudnessTarget>(() => {
+    if (typeof window === 'undefined') return 'balanced';
+    const raw = window.localStorage.getItem('sonacast_loudness_target_v1');
+    return raw === 'quiet' || raw === 'balanced' || raw === 'loud' ? raw : 'balanced';
+  });
+  const [audioDataSaver, setAudioDataSaver] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return window.localStorage.getItem('sonacast_audio_data_saver_v1') !== 'false';
+  });
   const [vocalReductionEnabled, setVocalReductionEnabled] = useState(false);
   const [offlineAudioKeys, setOfflineAudioKeys] = useState<Set<string>>(() => new Set());
   const [isOnline, setIsOnline] = useState<boolean>(() =>
@@ -2498,6 +2507,48 @@ export default function App() {
     });
   }, [showToast, t.normalizeVolume]);
 
+  const handleSelectLoudnessTarget = useCallback(
+    (target: LoudnessTarget) => {
+      setLoudnessTarget(target);
+      sharedAudioEngine.setLoudnessTarget(target);
+      if (!normalizationEnabled) {
+        setNormalizationEnabled(true);
+        sharedAudioEngine.setNormalization(true);
+      }
+      try {
+        window.localStorage.setItem('sonacast_loudness_target_v1', target);
+      } catch {
+        // Ignore storage errors
+      }
+      const lufsLabel = target === 'quiet' ? '-18 LUFS' : target === 'loud' ? '-11 LUFS' : '-14 LUFS';
+      showToast(`Auto-Loud Target: ${lufsLabel}`, 'success');
+    },
+    [normalizationEnabled, showToast]
+  );
+
+  const handleToggleAudioDataSaver = useCallback(() => {
+    setAudioDataSaver((prev) => {
+      const next = !prev;
+      sharedAudioEngine.setAudioDataSaver(next);
+      try {
+        window.localStorage.setItem('sonacast_audio_data_saver_v1', next ? 'true' : 'false');
+      } catch {
+        // Ignore storage errors
+      }
+      showToast(`Audio Data Saver: ${next ? 'ON (144p Low Bandwidth)' : 'OFF'}`, 'success');
+      return next;
+    });
+  }, [showToast]);
+
+  useEffect(() => {
+    sharedAudioEngine.setLoudnessTarget(loudnessTarget);
+    sharedAudioEngine.setAudioDataSaver(audioDataSaver);
+  }, [loudnessTarget, audioDataSaver]);
+
+  useEffect(() => {
+    sharedAudioEngine.setVideoStageActive(isStageOpen && stageMode === 'video-lyric');
+  }, [isStageOpen, stageMode]);
+
   const handleToggleVocalReduction = useCallback(() => {
     setVocalReductionEnabled((prev) => {
       const next = !prev;
@@ -4520,6 +4571,10 @@ export default function App() {
             }
             normalizationEnabled={normalizationEnabled}
             onToggleNormalization={handleToggleNormalization}
+            loudnessTarget={loudnessTarget}
+            onSelectLoudnessTarget={handleSelectLoudnessTarget}
+            audioDataSaver={audioDataSaver}
+            onToggleAudioDataSaver={handleToggleAudioDataSaver}
             vocalReductionEnabled={vocalReductionEnabled}
             onToggleVocalReduction={handleToggleVocalReduction}
             canSaveOffline={isCacheableAudioUrl(currentTrack.audioUrl)}
@@ -4642,6 +4697,10 @@ export default function App() {
         onOpenLyricCard={handleOpenLyricCard}
         normalizationEnabled={normalizationEnabled}
         onToggleNormalization={handleToggleNormalization}
+        loudnessTarget={loudnessTarget}
+        onSelectLoudnessTarget={handleSelectLoudnessTarget}
+        audioDataSaver={audioDataSaver}
+        onToggleAudioDataSaver={handleToggleAudioDataSaver}
         vocalReductionEnabled={vocalReductionEnabled}
         onToggleVocalReduction={handleToggleVocalReduction}
         canSaveOffline={isCacheableAudioUrl(currentTrack.audioUrl)}

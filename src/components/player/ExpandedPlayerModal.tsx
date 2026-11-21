@@ -28,6 +28,11 @@ import {
 import type { EqPreset, LyricLine, RepeatMode, Track, TrackCreditsInfo, UserPlaylist } from '../../types';
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { fetchTrackCreditsOnline } from '../../services/musicService';
+import {
+  sharedAudioEngine,
+  type LoudnessTarget,
+  type LoudnessTelemetry
+} from '../../services/audioEngine';
 import { applyCoverFallback } from '../../utils/coverFallback';
 import { exportLyricQuotePng } from '../../services/recommendationEngine';
 import { useCoverAccentRgb } from '../../utils/coverColor';
@@ -71,6 +76,10 @@ interface ExpandedPlayerModalProps {
   onWatchVideo?: () => void;
   normalizationEnabled?: boolean;
   onToggleNormalization?: () => void;
+  loudnessTarget?: LoudnessTarget;
+  onSelectLoudnessTarget?: (target: LoudnessTarget) => void;
+  audioDataSaver?: boolean;
+  onToggleAudioDataSaver?: () => void;
   vocalReductionEnabled?: boolean;
   onToggleVocalReduction?: () => void;
   canSaveOffline?: boolean;
@@ -128,6 +137,10 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   onWatchVideo,
   normalizationEnabled = true,
   onToggleNormalization,
+  loudnessTarget = 'balanced',
+  onSelectLoudnessTarget,
+  audioDataSaver = true,
+  onToggleAudioDataSaver,
   vocalReductionEnabled = false,
   onToggleVocalReduction,
   canSaveOffline = false,
@@ -143,6 +156,17 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [loudnessTelemetry, setLoudnessTelemetry] = useState<LoudnessTelemetry>(() =>
+    sharedAudioEngine.getLoudnessTelemetry()
+  );
+
+  useEffect(() => {
+    if (!isOpen || !showDsp) return;
+    const id = window.setInterval(() => {
+      setLoudnessTelemetry(sharedAudioEngine.getLoudnessTelemetry());
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [isOpen, showDsp]);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubPct, setScrubPct] = useState<number | null>(null);
   const lyricsPaneRef = useRef<HTMLDivElement | null>(null);
@@ -743,35 +767,118 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                 </div>
 
                 {(onToggleNormalization || onToggleVocalReduction) && (
-                  <div className="grid grid-cols-2 gap-2">
-                    {onToggleNormalization && (
-                      <button
-                        type="button"
-                        onClick={onToggleNormalization}
-                        aria-pressed={normalizationEnabled}
-                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer ${
-                          normalizationEnabled
-                            ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                            : 'bg-[var(--bg-surface)] text-[var(--text-secondary)]'
-                        }`}
-                      >
-                        <Gauge size={14} />
-                        <span>{t.normalizeVolume}</span>
-                      </button>
+                  <div className="space-y-2.5 pt-2 border-t border-[var(--border-subtle)]">
+                    <div className="grid grid-cols-2 gap-2">
+                      {onToggleNormalization && (
+                        <button
+                          type="button"
+                          onClick={onToggleNormalization}
+                          data-testid="expanded-normalize-toggle"
+                          aria-pressed={normalizationEnabled}
+                          className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer ${
+                            normalizationEnabled
+                              ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)]'
+                          }`}
+                        >
+                          <Gauge size={14} />
+                          <span>{t.normalizeVolume}</span>
+                        </button>
+                      )}
+                      {onToggleVocalReduction && (
+                        <button
+                          type="button"
+                          onClick={onToggleVocalReduction}
+                          aria-pressed={vocalReductionEnabled}
+                          className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer ${
+                            vocalReductionEnabled
+                              ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)]'
+                          }`}
+                        >
+                          <Mic2 size={14} />
+                          <span>{t.karaokeMode}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {onSelectLoudnessTarget && (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                          <span>Dynamic Auto-Loud Target (LUFS)</span>
+                          <span className="font-mono text-[var(--accent-text)]">
+                            {loudnessTelemetry.engineMode === 'webaudio-agc'
+                              ? 'WebAudio AGC'
+                              : loudnessTelemetry.engineMode === 'youtube-audio-saver'
+                                ? 'Calibrated Stream'
+                                : 'Calibrated'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {(
+                            [
+                              { id: 'quiet', label: 'Quiet -18' },
+                              { id: 'balanced', label: 'Balanced -14' },
+                              { id: 'loud', label: 'Loud -11' }
+                            ] as const
+                          ).map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              data-testid={`expanded-loudness-${opt.id}`}
+                              onClick={() => onSelectLoudnessTarget(opt.id)}
+                              className={`px-2 py-1.5 rounded-lg text-[11px] font-mono font-bold cursor-pointer transition-colors ${
+                                loudnessTarget === opt.id
+                                  ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div
+                          data-testid="expanded-live-loudness-meter"
+                          className="p-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] grid grid-cols-3 gap-1.5 text-[10px] font-mono"
+                        >
+                          <div>
+                            <span className="block text-[var(--text-dim)]">IN / OUT</span>
+                            <span className="font-bold text-[var(--text-primary)]">
+                              {loudnessTelemetry.inputLufs.toFixed(1)} / {loudnessTelemetry.outputLufs.toFixed(1)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[var(--text-dim)]">AUTO GAIN</span>
+                            <span className="font-bold text-[var(--accent-text)]">
+                              {loudnessTelemetry.agcGainDb >= 0 ? '+' : ''}
+                              {loudnessTelemetry.agcGainDb.toFixed(1)} dB
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[var(--text-dim)]">EQ COMP / GR</span>
+                            <span className="font-bold text-[var(--text-primary)]">
+                              {loudnessTelemetry.eqMakeupDb.toFixed(1)} / {loudnessTelemetry.limiterReductionDb.toFixed(1)} dB
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     )}
-                    {onToggleVocalReduction && (
+
+                    {onToggleAudioDataSaver && (
                       <button
                         type="button"
-                        onClick={onToggleVocalReduction}
-                        aria-pressed={vocalReductionEnabled}
-                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer ${
-                          vocalReductionEnabled
-                            ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-                            : 'bg-[var(--bg-surface)] text-[var(--text-secondary)]'
+                        data-testid="expanded-data-saver-toggle"
+                        aria-pressed={audioDataSaver}
+                        onClick={onToggleAudioDataSaver}
+                        className={`w-full inline-flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer border transition-colors ${
+                          audioDataSaver
+                            ? 'bg-[var(--accent-soft)] border-[var(--accent-border)] text-[var(--accent-text)]'
+                            : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
                         }`}
                       >
-                        <Mic2 size={14} />
-                        <span>{t.karaokeMode}</span>
+                        <span>Audio Data Saver (Topic Audio + 144p Low Bandwidth)</span>
+                        <span className="font-mono font-bold">{audioDataSaver ? 'ON' : 'OFF'}</span>
                       </button>
                     )}
                   </div>

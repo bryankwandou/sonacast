@@ -17,6 +17,26 @@ export interface SpectrumData {
 }
 
 export type AudioBackendType = 'none' | 'html5' | 'youtube';
+export type LoudnessTarget = 'quiet' | 'balanced' | 'loud';
+
+export interface LoudnessTelemetry {
+  enabled: boolean;
+  target: LoudnessTarget;
+  targetLufs: number;
+  inputLufs: number;
+  outputLufs: number;
+  agcGainDb: number;
+  eqMakeupDb: number;
+  limiterReductionDb: number;
+  audioDataSaver: boolean;
+  engineMode: 'webaudio-agc' | 'youtube-audio-saver' | 'passthrough-calibrated' | 'idle';
+}
+
+const LOUDNESS_TARGET_LUFS: Record<LoudnessTarget, number> = {
+  quiet: -18,
+  balanced: -14,
+  loud: -11
+};
 
 const EQ_GAIN_PRESETS: Record<EqPreset, [number, number, number]> = {
   flat: [0, 0, 0],
@@ -26,16 +46,32 @@ const EQ_GAIN_PRESETS: Record<EqPreset, [number, number, number]> = {
   acoustic: [2, 2.5, 3]
 };
 
+/** Psychoacoustic Same-Loudness EQ makeup offset (dB) so changing EQ changes tone without jumping volume. */
+const EQ_MAKEUP_GAIN_DB: Record<EqPreset, number> = {
+  flat: 0,
+  bass: -2.6,
+  vocal: -2.2,
+  club: -3.5,
+  acoustic: -2.4
+};
+
+function dbToLinear(db: number): number {
+  return Math.pow(10, db / 20);
+}
+
 interface YTPlayerInstance {
   playVideo: () => void;
   pauseVideo: () => void;
   seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
   loadVideoById: (
-    videoIdOrOptions: string | { videoId: string; startSeconds?: number }
+    videoIdOrOptions: string | { videoId: string; startSeconds?: number; suggestedQuality?: string }
   ) => void;
   setVolume: (volume: number) => void;
   unMute?: () => void;
   setPlaybackRate?: (rate: number) => void;
+  setPlaybackQuality?: (suggestedQuality: string) => void;
+  setPlaybackQualityRange?: (minQuality: string, maxQuality?: string) => void;
+  getPlaybackQuality?: () => string;
   getCurrentTime: () => number;
   getDuration: () => number;
   getPlayerState?: () => number;
@@ -76,7 +112,13 @@ declare global {
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
+  private kWeightAnalyser: AnalyserNode | null = null;
+  private kWeightHighpass: BiquadFilterNode | null = null;
+  private kWeightHighshelf: BiquadFilterNode | null = null;
+  private eqMakeupGainNode: GainNode | null = null;
+  private agcGainNode: GainNode | null = null;
   private compressorNode: DynamicsCompressorNode | null = null;
+  private limiterNode: DynamicsCompressorNode | null = null;
   private gainNode: GainNode | null = null;
   private bypassGainNode: GainNode | null = null;
   private vocalOutGainNode: GainNode | null = null;
@@ -90,7 +132,19 @@ export class AudioEngine {
   private playbackRate = 1;
   private crossfadeSeconds = 2;
   private normalizationEnabled = true;
+  private loudnessTarget: LoudnessTarget = 'balanced';
+  private audioDataSaverEnabled = true;
+  private videoStageActive = false;
   private vocalReductionEnabled = false;
+
+  // Real-time K-Weighted AGC dynamic loudness state
+  private agcInterval: number | null = null;
+  private kWeightTimeBuf: Float32Array<ArrayBuffer> = new Float32Array(new ArrayBuffer(512 * 4));
+  private postTimeBuf: Float32Array<ArrayBuffer> = new Float32Array(new ArrayBuffer(512 * 4));
+  private currentAgcGainDb = 0;
+  private smoothedInputLufs = -14;
+  private smoothedOutputLufs = -14;
+  private currentEqMakeupDb = 0;
 
   private activeBackend: AudioBackendType = 'none';
   private ytHostElement: HTMLElement | null = null;
@@ -164,6 +218,10 @@ export class AudioEngine {
   private ytWallAnchorPos = 0;
 
   constructor() {
+    if (typeof window !== 'undefined') {
+      (window as unknown as Record<string, unknown>).__getSonacastAudioTelemetry = () =>
+        this.getLoudnessTelemetry();
+    }
     if (typeof document !== 'undefined') {
       this.isDocumentHidden = document.visibilityState === 'hidden';
 
@@ -410,12 +468,42 @@ export class AudioEngine {
       this.gainNode = this.ctx.createGain();
       this.gainNode.gain.value = 1;
 
+      this.eqMakeupGainNode = this.ctx.createGain();
+      this.eqMakeupGainNode.gain.value = 1;
+
+      this.agcGainNode = this.ctx.createGain();
+      this.agcGainNode.gain.value = 1;
+
+      // ITU-R BS.1770 / EBU R128 K-Weighting sidechain for real-time perceived loudness measurement
+      this.kWeightHighpass = this.ctx.createBiquadFilter();
+      this.kWeightHighpass.type = 'highpass';
+      this.kWeightHighpass.frequency.value = 60;
+      this.kWeightHighpass.Q.value = 0.5;
+
+      this.kWeightHighshelf = this.ctx.createBiquadFilter();
+      this.kWeightHighshelf.type = 'highshelf';
+      this.kWeightHighshelf.frequency.value = 1500;
+      this.kWeightHighshelf.gain.value = 4;
+
+      this.kWeightAnalyser = this.ctx.createAnalyser();
+      this.kWeightAnalyser.fftSize = 512;
+      this.kWeightAnalyser.smoothingTimeConstant = 0.7;
+
+      // Gentle dynamic glue compressor
       this.compressorNode = this.ctx.createDynamicsCompressor();
       this.compressorNode.threshold.value = -18;
-      this.compressorNode.knee.value = 12;
-      this.compressorNode.ratio.value = 3.5;
-      this.compressorNode.attack.value = 0.005;
-      this.compressorNode.release.value = 0.18;
+      this.compressorNode.knee.value = 14;
+      this.compressorNode.ratio.value = 3.0;
+      this.compressorNode.attack.value = 0.008;
+      this.compressorNode.release.value = 0.22;
+
+      // True brickwall safety peak limiter (prevents clipping on +11 dB AGC auto-up or Bass EQ)
+      this.limiterNode = this.ctx.createDynamicsCompressor();
+      this.limiterNode.threshold.value = -1.0;
+      this.limiterNode.knee.value = 0;
+      this.limiterNode.ratio.value = 20;
+      this.limiterNode.attack.value = 0.001;
+      this.limiterNode.release.value = 0.06;
 
       this.bypassGainNode = this.ctx.createGain();
       this.bypassGainNode.gain.value = 1;
@@ -436,19 +524,33 @@ export class AudioEngine {
       this.highFilter.type = 'highshelf';
       this.highFilter.frequency.value = 4600;
 
+      // Main DSP Chain: Source -> Vocal/Bypass -> 3-Band EQ -> Same-Loud EQ Makeup -> Real-Time AGC -> Glue Comp -> Peak Limiter -> Post Analyser -> Output Gain
       this.bypassGainNode.connect(this.lowFilter);
       this.vocalOutGainNode.connect(this.lowFilter);
       this.lowFilter.connect(this.midFilter);
       this.midFilter.connect(this.highFilter);
-      this.highFilter.connect(this.compressorNode);
-      this.compressorNode.connect(this.analyser);
+      this.highFilter.connect(this.eqMakeupGainNode);
+
+      // Tap post-EQ / pre-AGC signal into K-weighted loudness detector sidechain
+      this.eqMakeupGainNode.connect(this.kWeightHighpass);
+      this.kWeightHighpass.connect(this.kWeightHighshelf);
+      this.kWeightHighshelf.connect(this.kWeightAnalyser);
+
+      // Main audio path through closed-loop AGC, glue compressor, brickwall limiter, and post analyser
+      this.eqMakeupGainNode.connect(this.agcGainNode);
+      this.agcGainNode.connect(this.compressorNode);
+      this.compressorNode.connect(this.limiterNode);
+      this.limiterNode.connect(this.analyser);
       this.analyser.connect(this.gainNode);
       this.gainNode.connect(this.ctx.destination);
       this.applyEqFilters();
       this.applyDspSettings();
+      this.startAgcLoop();
 
       this.freqArray = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
       this.waveArray = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
+      this.kWeightTimeBuf = new Float32Array(new ArrayBuffer(this.kWeightAnalyser.fftSize * 4));
+      this.postTimeBuf = new Float32Array(new ArrayBuffer(this.analyser.fftSize * 4));
 
       this.audioElement = new Audio();
       this.audioElement.crossOrigin = 'anonymous';
@@ -456,6 +558,7 @@ export class AudioEngine {
       this.audioElement.loop = false;
       this.audioElement.volume = this.volume;
       this.audioElement.playbackRate = this.playbackRate;
+      this.resetAgcForTrackTransition();
 
       try {
         this.mediaSourceNode = this.ctx.createMediaElementSource(this.audioElement);
@@ -836,9 +939,53 @@ export class AudioEngine {
     }
   }
 
+  private getCalibratedYouTubeVolume(): number {
+    const base = Math.max(0, Math.min(1, this.volume));
+    if (!this.normalizationEnabled) {
+      return Math.round(base * 100);
+    }
+    // Calibrate YouTube's -14 LUFS player curve to align with WebAudio AGC target levels
+    const mult =
+      this.loudnessTarget === 'quiet'
+        ? 0.68
+        : this.loudnessTarget === 'loud'
+          ? 1.0
+          : 0.9;
+    return Math.max(0, Math.min(100, Math.round(base * mult * 100)));
+  }
+
+  private getCalibratedPassthroughVolume(): number {
+    const base = Math.max(0, Math.min(1, this.volume));
+    if (!this.normalizationEnabled) return base;
+    // Live FM/Internet radio broadcasts typically master ~-10 LUFS; scale smoothly to match music target
+    const mult =
+      this.loudnessTarget === 'quiet'
+        ? 0.52
+        : this.loudnessTarget === 'loud'
+          ? 0.94
+          : 0.74;
+    return Math.max(0, Math.min(1, base * mult));
+  }
+
+  private applyYouTubeBandwidthMode(player?: YTPlayerInstance | null) {
+    const targetPlayer = player || this.ytPlayer;
+    if (!targetPlayer) return;
+    try {
+      if (this.audioDataSaverEnabled && !this.videoStageActive) {
+        targetPlayer.setPlaybackQualityRange?.('tiny', 'small');
+        targetPlayer.setPlaybackQuality?.('small');
+      } else {
+        targetPlayer.setPlaybackQualityRange?.('medium', 'hd720');
+        targetPlayer.setPlaybackQuality?.('default');
+      }
+    } catch {
+      // Ignore if YT player does not accept runtime quality hint
+    }
+  }
+
   private applyYouTubeFadeIn(gen: number) {
     this.clearYouTubeFade();
-    const targetVol = Math.round(this.volume * 100);
+    const targetVol = this.getCalibratedYouTubeVolume();
     if (!this.ytPlayer || !this.ytReady) return;
     if (this.crossfadeSeconds <= 0 || targetVol <= 5) {
       try {
@@ -1209,7 +1356,7 @@ export class AudioEngine {
       }
     }
 
-    streamEl.volume = this.volume;
+    streamEl.volume = this.getCalibratedPassthroughVolume();
     streamEl.playbackRate = this.playbackRate;
     const resolvedSrc = new URL(url, window.location.href).href;
     const wantSeek = !this.isLiveStream && fromOffset > 1 ? fromOffset : null;
@@ -1710,9 +1857,18 @@ export class AudioEngine {
         this.ytTrackTransitionUntil = performance.now() + 2600;
         this.applyYouTubeFadeIn(gen);
         this.ytPlayer.loadVideoById(
-          immediateSeek > 0 ? { videoId: firstVideoId, startSeconds: immediateSeek } : firstVideoId
+          immediateSeek > 0
+            ? {
+              videoId: firstVideoId,
+              startSeconds: immediateSeek,
+              ...(this.audioDataSaverEnabled && !this.videoStageActive ? { suggestedQuality: 'small' } : {})
+            }
+            : this.audioDataSaverEnabled && !this.videoStageActive
+              ? { videoId: firstVideoId, suggestedQuality: 'small' }
+              : firstVideoId
         );
         this.ytPlayer.unMute?.();
+        this.applyYouTubeBandwidthMode(this.ytPlayer);
         this.ytPlayer.setPlaybackRate?.(this.playbackRate);
         this.ytPlayer.playVideo();
         this.startYouTubePoll();
@@ -1761,6 +1917,9 @@ export class AudioEngine {
       iv_load_policy: 3,
       origin: window.location.origin
     };
+    if (this.audioDataSaverEnabled && !this.videoStageActive) {
+      playerVars.vq = 'small';
+    }
     if (clampedStart > 0) {
       playerVars.start = clampedStart;
     }
@@ -1779,6 +1938,7 @@ export class AudioEngine {
           if (activeGen !== this.playGeneration || this.activeBackend !== 'youtube') return;
           this.ytReady = true;
           event.target.unMute?.();
+          this.applyYouTubeBandwidthMode(event.target);
           this.applyYouTubeFadeIn(activeGen);
           try {
             event.target.setPlaybackRate?.(this.playbackRate);
@@ -1818,6 +1978,7 @@ export class AudioEngine {
             this.wasPlayingBeforeSleep = true;
             this.ytTrackTransitionUntil = 0;
             this.ytBgPauseRecoverCount = 0;
+            this.applyYouTubeBandwidthMode(event.target);
             if (this.pendingYtSeekSeconds !== null) {
               const deferredSeek = this.pendingYtSeekSeconds;
               this.pendingYtSeekSeconds = null;
@@ -1988,6 +2149,7 @@ export class AudioEngine {
       this.audioElement.loop = false;
       this.audioElement.volume = this.volume;
       this.audioElement.playbackRate = this.playbackRate;
+      this.resetAgcForTrackTransition();
 
       if (this.gainNode && this.ctx) {
         const now = this.ctx.currentTime;
@@ -2448,29 +2610,135 @@ export class AudioEngine {
       this.audioElement.volume = this.volume;
     }
     if (this.streamAudioElement) {
-      this.streamAudioElement.volume = this.volume;
+      this.streamAudioElement.volume = this.getCalibratedPassthroughVolume();
     }
     if (this.ytPlayer && this.ytReady) {
       try {
-        this.ytPlayer.setVolume(Math.round(this.volume * 100));
+        this.ytPlayer.setVolume(this.getCalibratedYouTubeVolume());
       } catch {
         // Ignore
       }
     }
   }
 
+  private resetAgcForTrackTransition() {
+    this.currentAgcGainDb = 0;
+    const targetLufs = LOUDNESS_TARGET_LUFS[this.loudnessTarget];
+    this.smoothedInputLufs = targetLufs;
+    this.smoothedOutputLufs = targetLufs;
+    if (this.agcGainNode && this.ctx) {
+      const now = this.ctx.currentTime;
+      this.agcGainNode.gain.cancelScheduledValues(now);
+      this.agcGainNode.gain.setTargetAtTime(1, now, 0.05);
+    }
+  }
+
+  private startAgcLoop() {
+    if (typeof window === 'undefined' || this.agcInterval !== null) return;
+    // Register read-only diagnostic hook for live verification
+    (window as unknown as Record<string, unknown>).__getSonacastAudioTelemetry = () =>
+      this.getLoudnessTelemetry();
+    this.agcInterval = window.setInterval(() => {
+      this.stepDynamicLoudnessControl();
+    }, 80);
+  }
+
+  private computeRmsDbfs(buf: Float32Array): number {
+    let sumSq = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const s = buf[i];
+      sumSq += s * s;
+    }
+    const rms = Math.sqrt(sumSq / Math.max(1, buf.length));
+    if (rms < 1e-6) return -60;
+    return Math.max(-60, Math.min(0, 20 * Math.log10(rms) - 0.691));
+  }
+
+  private stepDynamicLoudnessControl() {
+    if (
+      !this.ctx ||
+      !this.agcGainNode ||
+      !this.kWeightAnalyser ||
+      !this.analyser ||
+      this.activeBackend !== 'html5' ||
+      this.usingPassthroughStream ||
+      !this.isPlaying ||
+      this.ctx.state !== 'running'
+    ) {
+      return;
+    }
+
+    const now = this.ctx.currentTime;
+    this.kWeightAnalyser.getFloatTimeDomainData(this.kWeightTimeBuf);
+    this.analyser.getFloatTimeDomainData(this.postTimeBuf);
+
+    const instInLufs = this.computeRmsDbfs(this.kWeightTimeBuf);
+    const instOutLufs = this.computeRmsDbfs(this.postTimeBuf);
+
+    // Smooth loudness telemetry display
+    this.smoothedInputLufs = this.smoothedInputLufs * 0.72 + instInLufs * 0.28;
+    this.smoothedOutputLufs = this.smoothedOutputLufs * 0.72 + instOutLufs * 0.28;
+
+    if (!this.normalizationEnabled) {
+      if (Math.abs(this.currentAgcGainDb) > 0.05) {
+        this.currentAgcGainDb *= 0.8;
+        this.agcGainNode.gain.setTargetAtTime(dbToLinear(this.currentAgcGainDb), now, 0.05);
+      } else if (this.currentAgcGainDb !== 0) {
+        this.currentAgcGainDb = 0;
+        this.agcGainNode.gain.setTargetAtTime(1, now, 0.04);
+      }
+      return;
+    }
+
+    const targetLufs = LOUDNESS_TARGET_LUFS[this.loudnessTarget];
+
+    // Noise gate below -46 LUFS: gently drift gain back toward 0 dB during silence/intros (never boost noise floor)
+    if (instInLufs < -46) {
+      this.currentAgcGainDb = this.currentAgcGainDb * 0.96;
+      this.agcGainNode.gain.setTargetAtTime(dbToLinear(this.currentAgcGainDb), now, 0.12);
+      return;
+    }
+
+    // Closed-loop asymmetric AGC:
+    // - Auto-DOWN (fast ~220ms) when track or chorus is hotter than target LUFS
+    // - Auto-UP (smooth ~1.1s) when track or acoustic passage is quieter than target LUFS
+    const desiredGainDb = Math.max(-12, Math.min(11, targetLufs - instInLufs));
+    const isAttenuating = desiredGainDb < this.currentAgcGainDb;
+    const alpha = isAttenuating ? 0.28 : 0.08;
+    this.currentAgcGainDb = this.currentAgcGainDb + (desiredGainDb - this.currentAgcGainDb) * alpha;
+    this.agcGainNode.gain.setTargetAtTime(dbToLinear(this.currentAgcGainDb), now, isAttenuating ? 0.045 : 0.09);
+  }
+
   private applyEqFilters() {
     if (!this.ctx || !this.lowFilter || !this.midFilter || !this.highFilter) return;
     const [lowGain, midGain, highGain] = EQ_GAIN_PRESETS[this.eqPreset] || [0, 0, 0];
     const now = this.ctx.currentTime;
-    this.lowFilter.gain.setValueAtTime(lowGain, now);
-    this.midFilter.gain.setValueAtTime(midGain, now);
-    this.highFilter.gain.setValueAtTime(highGain, now);
+    this.lowFilter.gain.setTargetAtTime(lowGain, now, 0.02);
+    this.midFilter.gain.setTargetAtTime(midGain, now, 0.02);
+    this.highFilter.gain.setTargetAtTime(highGain, now, 0.02);
+
+    // Same-Loudness EQ makeup compensation: keeps perceived loudness steady across all EQ presets
+    const makeupDb = this.normalizationEnabled ? (EQ_MAKEUP_GAIN_DB[this.eqPreset] ?? 0) : 0;
+    this.currentEqMakeupDb = makeupDb;
+    if (this.eqMakeupGainNode) {
+      this.eqMakeupGainNode.gain.setTargetAtTime(dbToLinear(makeupDb), now, 0.025);
+    }
   }
 
   private applyDspSettings() {
+    if (this.streamAudioElement) {
+      this.streamAudioElement.volume = this.getCalibratedPassthroughVolume();
+    }
+    if (this.ytPlayer && this.ytReady) {
+      try {
+        this.ytPlayer.setVolume(this.getCalibratedYouTubeVolume());
+      } catch {
+        // Ignore YT volume sync error
+      }
+    }
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
+    this.applyEqFilters();
     if (this.compressorNode) {
       this.compressorNode.threshold.setTargetAtTime(
         this.normalizationEnabled ? -18 : 0,
@@ -2478,10 +2746,22 @@ export class AudioEngine {
         0.04
       );
       this.compressorNode.ratio.setTargetAtTime(
-        this.normalizationEnabled ? 3.5 : 1,
+        this.normalizationEnabled ? 3.0 : 1,
         now,
         0.04
       );
+    }
+    if (this.limiterNode) {
+      this.limiterNode.threshold.setTargetAtTime(
+        this.normalizationEnabled ? -1.0 : -0.4,
+        now,
+        0.03
+      );
+      this.limiterNode.ratio.setTargetAtTime(20, now, 0.03);
+    }
+    if (this.agcGainNode && !this.normalizationEnabled) {
+      this.currentAgcGainDb = 0;
+      this.agcGainNode.gain.setTargetAtTime(1, now, 0.04);
     }
     if (this.bypassGainNode && this.vocalOutGainNode) {
       this.bypassGainNode.gain.setTargetAtTime(
@@ -2504,6 +2784,85 @@ export class AudioEngine {
 
   public isNormalizationEnabled(): boolean {
     return this.normalizationEnabled;
+  }
+
+  public setLoudnessTarget(target: LoudnessTarget) {
+    this.loudnessTarget = target;
+    this.applyDspSettings();
+  }
+
+  public getLoudnessTarget(): LoudnessTarget {
+    return this.loudnessTarget;
+  }
+
+  public setAudioDataSaver(enabled: boolean) {
+    this.audioDataSaverEnabled = enabled;
+    if (this.activeBackend === 'youtube' && this.ytPlayer && this.ytReady) {
+      this.applyYouTubeBandwidthMode(this.ytPlayer);
+    }
+  }
+
+  public isAudioDataSaverEnabled(): boolean {
+    return this.audioDataSaverEnabled;
+  }
+
+  public setVideoStageActive(active: boolean) {
+    if (this.videoStageActive === active) return;
+    this.videoStageActive = active;
+    if (this.activeBackend === 'youtube' && this.ytPlayer && this.ytReady) {
+      this.applyYouTubeBandwidthMode(this.ytPlayer);
+    }
+  }
+
+  public getLoudnessTelemetry(): LoudnessTelemetry {
+    const targetLufs = LOUDNESS_TARGET_LUFS[this.loudnessTarget];
+    const engineMode: LoudnessTelemetry['engineMode'] =
+      this.activeBackend === 'html5'
+        ? this.usingPassthroughStream
+          ? 'passthrough-calibrated'
+          : 'webaudio-agc'
+        : this.activeBackend === 'youtube'
+          ? 'youtube-audio-saver'
+          : 'idle';
+
+    const compRed = this.compressorNode ? Number(this.compressorNode.reduction || 0) : 0;
+    const limRed = this.limiterNode ? Number(this.limiterNode.reduction || 0) : 0;
+    const totalGr = Math.round((compRed + limRed) * 10) / 10;
+
+    if (engineMode === 'webaudio-agc') {
+      return {
+        enabled: this.normalizationEnabled,
+        target: this.loudnessTarget,
+        targetLufs,
+        inputLufs: Math.round(this.smoothedInputLufs * 10) / 10,
+        outputLufs: Math.round(this.smoothedOutputLufs * 10) / 10,
+        agcGainDb: Math.round(this.currentAgcGainDb * 10) / 10,
+        eqMakeupDb: Math.round(this.currentEqMakeupDb * 10) / 10,
+        limiterReductionDb: totalGr,
+        audioDataSaver: this.audioDataSaverEnabled,
+        engineMode
+      };
+    }
+
+    const ytCalDb =
+      engineMode === 'youtube-audio-saver' && this.normalizationEnabled
+        ? targetLufs - -14
+        : engineMode === 'passthrough-calibrated' && this.normalizationEnabled
+          ? targetLufs - -10
+          : 0;
+
+    return {
+      enabled: this.normalizationEnabled,
+      target: this.loudnessTarget,
+      targetLufs,
+      inputLufs: engineMode === 'passthrough-calibrated' ? -10 : -14,
+      outputLufs: this.normalizationEnabled ? targetLufs : engineMode === 'passthrough-calibrated' ? -10 : -14,
+      agcGainDb: Math.round(ytCalDb * 10) / 10,
+      eqMakeupDb: 0,
+      limiterReductionDb: 0,
+      audioDataSaver: this.audioDataSaverEnabled,
+      engineMode
+    };
   }
 
   public setVocalReduction(enabled: boolean) {
