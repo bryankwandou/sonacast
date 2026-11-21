@@ -1513,6 +1513,9 @@ async function fetchCatalogApiSearch(query: string): Promise<CatalogSearchRespon
   }
 }
 
+const itunesArtistPopCache = new Map<string, { data: { matchedArtistName: string; items: ITunesItem[] }; cachedAt: number }>();
+const itunesSongSearchCache = new Map<string, { data: ITunesItem[]; cachedAt: number }>();
+
 async function fetchItunesPopularByArtist(
   artistQuery: string,
   normArtistQuery: string,
@@ -1520,8 +1523,14 @@ async function fetchItunesPopularByArtist(
 ): Promise<{ matchedArtistName: string; items: ITunesItem[] }> {
   try {
     const wordCount = normArtistQuery.split(' ').filter(Boolean).length;
-    if (wordCount === 0 || (wordCount > 4 && !INDEXED_ARTIST_BY_NORM.has(normArtistQuery))) {
+    if (wordCount === 0 || (wordCount > 2 && !INDEXED_ARTIST_BY_NORM.has(normArtistQuery))) {
       return { matchedArtistName: '', items: [] };
+    }
+
+    const cacheKey = `${country}:${normArtistQuery}`;
+    const cached = itunesArtistPopCache.get(cacheKey);
+    if (cached && Date.now() - cached.cachedAt < 15 * 60 * 1000) {
+      return cached.data;
     }
 
     const artUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(artistQuery)}&entity=musicArtist&attribute=artistTerm&country=${country}&limit=6`;
@@ -1559,7 +1568,13 @@ async function fetchItunesPopularByArtist(
       );
     });
 
-    return { matchedArtistName: exact.artistName || '', items: validTracks };
+    const out = { matchedArtistName: exact.artistName || '', items: validTracks };
+    if (itunesArtistPopCache.size >= 80) {
+      const oldest = itunesArtistPopCache.keys().next().value;
+      if (oldest) itunesArtistPopCache.delete(oldest);
+    }
+    itunesArtistPopCache.set(cacheKey, { data: out, cachedAt: Date.now() });
+    return out;
   } catch {
     return { matchedArtistName: '', items: [] };
   }
@@ -1567,12 +1582,17 @@ async function fetchItunesPopularByArtist(
 
 async function fetchItunesSongSearch(query: string, country: 'US' | 'ID' | 'JP' | 'KR'): Promise<ITunesItem[]> {
   try {
+    const cacheKey = `${country}:${normalizeText(query)}`;
+    const cached = itunesSongSearchCache.get(cacheKey);
+    if (cached && Date.now() - cached.cachedAt < 15 * 60 * 1000) {
+      return cached.data;
+    }
     const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&country=${country}&limit=40`;
     const res = await fetch(url, { signal: AbortSignal.timeout(2800) });
     if (!res.ok) return [];
     const data = await res.json();
     if (!Array.isArray(data?.results)) return [];
-    return data.results.filter((item: ITunesItem) => {
+    const filtered = data.results.filter((item: ITunesItem) => {
       const secs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
       return (
         secs >= 40 &&
@@ -1580,6 +1600,14 @@ async function fetchItunesSongSearch(query: string, country: 'US' | 'ID' | 'JP' 
         !isNonOriginalEntry(item.trackName || '', item.artistName || '', item.collectionName || '', query)
       );
     });
+    if (filtered.length > 0) {
+      if (itunesSongSearchCache.size >= 100) {
+        const oldest = itunesSongSearchCache.keys().next().value;
+        if (oldest) itunesSongSearchCache.delete(oldest);
+      }
+      itunesSongSearchCache.set(cacheKey, { data: filtered, cachedAt: Date.now() });
+    }
+    return filtered;
   } catch {
     return [];
   }
@@ -1812,15 +1840,22 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
     ]);
 
     const secondaryCountry: 'US' | 'ID' = country === 'ID' ? 'US' : 'ID';
-    const [catalogResp, itunesPopResp, itunesSearchItems, rawStreamCandidates, altItunesItems, audiusTracks] =
+    const shouldLookupArtistOnItunes =
+      Boolean(parsedIndexed.indexedArtistName) ||
+      (queryTokens.length === 1 && normQuery.length >= 3);
+
+    const [catalogResp, itunesPopResp, itunesSearchItems, rawStreamCandidates, audiusTracks] =
       await Promise.all([
         fetchCatalogApiSearch(trimmed),
-        fetchItunesPopularByArtist(itunesArtistTerm, itunesArtistNorm, country),
+        shouldLookupArtistOnItunes
+          ? fetchItunesPopularByArtist(itunesArtistTerm, itunesArtistNorm, country)
+          : Promise.resolve({ matchedArtistName: '', items: [] as ITunesItem[] }),
         fetchItunesSongSearch(trimmed, country),
         fastStreamsPromise,
-        fetchItunesSongSearch(trimmed, secondaryCountry),
         searchAudiusTracks(trimmed)
       ]);
+    const altItunesItems =
+      itunesSearchItems.length < 6 ? await fetchItunesSongSearch(trimmed, secondaryCountry) : [];
 
     let targetArtistNorm = parsedIndexed.indexedArtistNorm;
     let cleanTargetSong = parsedIndexed.songNorm;
@@ -2037,6 +2072,29 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
         { itunesSearchIdx: idx + 15 }
       );
     });
+
+    // Resilience guard: if an official indexed artist appears in Piped streams (e.g. when Apple iTunes throttles),
+    // upsert it so canonical studio artists like Nidji still surface ahead of obscure covers.
+    if (itunesSearchItems.length === 0 && rawStreamCandidates.length > 0) {
+      rawStreamCandidates.slice(0, 6).forEach((c, idx) => {
+        if (c.duration < 40 || isNonOriginalEntry(c.title, c.author, '', trimmed)) return;
+        const parsed = parseArtistAndTitleFromVideo(c.title, c.author);
+        const primaryArt = normalizeText(parsed.artist.split(/[,&]|ft\.?|feat\.?/i)[0] || '');
+        if (!parsed.title || !primaryArt || !INDEXED_ARTIST_BY_NORM.has(primaryArt)) return;
+        upsert(
+          {
+            id: `yt-${c.videoId}`,
+            title: parsed.title,
+            artist: parsed.artist,
+            album: 'Official Release',
+            genre: INDEXED_ARTIST_BY_NORM.get(primaryArt)?.genre || 'Pop',
+            duration: c.duration,
+            coverUrl: safeYtThumbnail(c.thumbnail, c.videoId)
+          },
+          { itunesSearchIdx: idx }
+        );
+      });
+    }
 
     const uniqueCandidates = Array.from(new Set(bucket.values()));
     const scoredAll = uniqueCandidates
