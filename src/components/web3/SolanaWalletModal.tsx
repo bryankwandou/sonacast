@@ -441,8 +441,8 @@ export const SolanaWalletModal: React.FC<SolanaWalletModalProps> = ({
               <AlertTriangle size={14} className="shrink-0 mt-0.5" />
               <span>
                 {cluster === 'mainnet-beta'
-                  ? 'Mainnet-Beta Treasury public key is not yet configured on server env (SOLANA_MAINNET_TREASURY_ADDRESS). Switch to Devnet to run live split transactions.'
-                  : 'Devnet Treasury address unavailable cleanly from /api/tips.'}
+                  ? 'Mainnet-Beta Treasury public key is not yet configured (VITE_SOLANA_MAINNET_TREASURY_ADDRESS). Switch to Devnet to run live split transactions.'
+                  : 'Devnet Treasury address unavailable.'}
               </span>
             </div>
           )}

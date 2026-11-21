@@ -72,8 +72,7 @@ export function extractPrivyEmbeddedSolanaAddress(
 }
 
 /**
- * Exchanges a verified Privy ES256 access/identity JWT with /api/auth (`action: 'privy_session'`)
- * so Neon Postgres issues a standard HttpOnly SonaCast listener session.
+ * Binds a Privy access/identity JWT directly into the client-side listener session vault.
  */
 export async function submitPrivyTokenToBackend(params: {
   accessToken: string;

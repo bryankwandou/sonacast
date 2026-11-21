@@ -21,8 +21,131 @@ export const MIN_TIP_SOL = 0.001;
 export const ESTIMATED_TX_FEE_LAMPORTS = 5000;
 
 const DEVNET_PUBLIC_RPC = 'https://api.devnet.solana.com';
+const DEVNET_FALLBACK_RPC = 'https://solana-devnet-rpc.publicnode.com';
+const MAINNET_PUBLIC_RPC = 'https://solana-rpc.publicnode.com';
+const MAINNET_FALLBACK_RPC = 'https://api.mainnet-beta.solana.com';
+const DEFAULT_DEVNET_TREASURY_ADDRESS = 'CQnYk4YcnLE7AK1xbEjacojrqS2CDhJPq5NZN5tJgvwT';
+const DEFAULT_DEVNET_ESCROW_ADDRESS = '9X5yX6XtUyjPVof1Fv7ewva8bRFK4yHhECu74dDxN33K';
 const STORAGE_KEY = 'sonacast_solana_devnet_wallet_v1';
 const CLUSTER_STORAGE_KEY = 'sonacast_solana_cluster_v1';
+const WEB3_LEDGER_STORAGE_KEY = 'sonacast_web3_ledger_v1';
+
+const FEE_BENCHMARKS = [
+  { platform: 'YouTube Super Chat', creatorSharePct: 70, platformFeePct: 30 },
+  { platform: 'Twitch Standard Subs', creatorSharePct: 50, platformFeePct: 50 },
+  { platform: 'Spotify Streaming Pool', creatorSharePct: 70, platformFeePct: 30 },
+  { platform: 'Patreon Pro + Processing', creatorSharePct: 87.1, platformFeePct: 12.9 },
+  { platform: 'Sonacast Web3 Direct/Escrow', creatorSharePct: 85, platformFeePct: 15 }
+];
+
+interface StoredVerifiedArtist {
+  artistKey: string;
+  artistName: string;
+  walletAddress: string;
+  verifiedAt: string;
+  signatureBase64: string;
+}
+
+interface StoredWeb3Ledger {
+  verifiedArtists: Record<string, StoredVerifiedArtist>;
+  tips: TipRecord[];
+  proofOfStream: (ProofOfStreamRecord & { listenerId?: string })[];
+}
+
+function readRuntimeEnv(key: string): string {
+  try {
+    return String(
+      (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.[key] || ''
+    ).trim();
+  } catch {
+    return '';
+  }
+}
+
+function normalizeArtistKey(name: string): string {
+  return String(name || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 96);
+}
+
+function readWeb3Ledger(): StoredWeb3Ledger {
+  if (typeof window === 'undefined') {
+    return { verifiedArtists: {}, tips: [], proofOfStream: [] };
+  }
+  try {
+    const raw = window.localStorage.getItem(WEB3_LEDGER_STORAGE_KEY);
+    if (!raw) return { verifiedArtists: {}, tips: [], proofOfStream: [] };
+    const parsed = JSON.parse(raw) as Partial<StoredWeb3Ledger>;
+    return {
+      verifiedArtists:
+        parsed.verifiedArtists && typeof parsed.verifiedArtists === 'object'
+          ? parsed.verifiedArtists
+          : {},
+      tips: Array.isArray(parsed.tips) ? parsed.tips : [],
+      proofOfStream: Array.isArray(parsed.proofOfStream) ? parsed.proofOfStream : []
+    };
+  } catch {
+    return { verifiedArtists: {}, tips: [], proofOfStream: [] };
+  }
+}
+
+function writeWeb3Ledger(ledger: StoredWeb3Ledger): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const bounded: StoredWeb3Ledger = {
+      verifiedArtists: ledger.verifiedArtists,
+      tips: ledger.tips.slice(0, 200),
+      proofOfStream: ledger.proofOfStream.slice(0, 200)
+    };
+    window.localStorage.setItem(WEB3_LEDGER_STORAGE_KEY, JSON.stringify(bounded));
+  } catch {
+    // ignore storage quota failure
+  }
+}
+
+function base64ToUint8(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function verifyEd25519Signature(
+  walletAddress: string,
+  messageBytes: Uint8Array,
+  signatureBase64: string
+): Promise<boolean> {
+  try {
+    if (!globalThis.crypto?.subtle) return false;
+    const pubBytes = new PublicKey(walletAddress).toBytes();
+    const sigBytes = base64ToUint8(signatureBase64);
+    if (pubBytes.length !== 32 || sigBytes.length !== 64) return false;
+    const spkiPrefix = new Uint8Array([
+      0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00
+    ]);
+    const spki = new Uint8Array(spkiPrefix.length + pubBytes.length);
+    spki.set(spkiPrefix, 0);
+    spki.set(pubBytes, spkiPrefix.length);
+    const verifyKey = await globalThis.crypto.subtle.importKey(
+      'spki',
+      spki,
+      { name: 'Ed25519' },
+      false,
+      ['verify']
+    );
+    const msgCopy = new Uint8Array(messageBytes.length);
+    msgCopy.set(messageBytes);
+    const sigCopy = new Uint8Array(sigBytes.length);
+    sigCopy.set(sigBytes);
+    return await globalThis.crypto.subtle.verify('Ed25519', verifyKey, sigCopy, msgCopy);
+  } catch {
+    return false;
+  }
+}
 
 interface InjectedSolanaProvider {
   isPhantom?: boolean;
@@ -358,43 +481,54 @@ class SolanaService {
     return targetCluster === 'mainnet-beta' ? base : `${base}?cluster=devnet`;
   }
 
+  private getExternalRpcEndpoints(targetCluster: SolanaCluster): string[] {
+    if (targetCluster === 'mainnet-beta') {
+      const custom = readRuntimeEnv('VITE_SOLANA_MAINNET_RPC');
+      return [custom, MAINNET_PUBLIC_RPC, MAINNET_FALLBACK_RPC].filter(
+        (url, idx, arr) => Boolean(url) && arr.indexOf(url) === idx
+      );
+    }
+    const custom = readRuntimeEnv('VITE_SOLANA_DEVNET_RPC');
+    return [custom, DEVNET_PUBLIC_RPC, DEVNET_FALLBACK_RPC].filter(
+      (url, idx, arr) => Boolean(url) && arr.indexOf(url) === idx
+    );
+  }
+
   private async rpcCall<T = unknown>(
     targetCluster: SolanaCluster,
     method: string,
     params: unknown[] = []
   ): Promise<T> {
-    if (targetCluster === 'devnet') {
+    const endpoints = this.getExternalRpcEndpoints(targetCluster);
+    let lastError = `Solana RPC unavailable for ${targetCluster}`;
+
+    for (const endpoint of endpoints) {
       try {
-        const directRes = await fetch(DEVNET_PUBLIC_RPC, {
+        const directRes = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-          signal: AbortSignal.timeout(5000)
+          signal: AbortSignal.timeout(7000)
         });
+        if (!directRes.ok) {
+          lastError = `Solana RPC HTTP ${directRes.status}`;
+          continue;
+        }
         const json = await directRes.json();
         if (json && json.result !== undefined && !json.error) {
           return json.result as T;
         }
-      } catch {
-        // Fallback below if direct public Devnet RPC is unreachable
+        if (json?.error?.message) {
+          lastError = String(json.error.message);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message) {
+          lastError = err.message;
+        }
       }
     }
 
-    const proxyRes = await fetch('/api/tips?action=rpc_proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'rpc_proxy', cluster: targetCluster, method, params })
-    }).catch(() => null);
-
-    if (proxyRes && proxyRes.ok) {
-      const data = await proxyRes.json();
-      if (data && data.result !== undefined) {
-        return data.result as T;
-      }
-    }
-
-    const errPayload = proxyRes ? await proxyRes.json().catch(() => null) : null;
-    throw new Error(errPayload?.error || `Solana RPC unavailable for ${targetCluster}`);
+    throw new Error(lastError);
   }
 
   public async fetchBalanceLamports(): Promise<number> {
@@ -423,45 +557,196 @@ class SolanaService {
 
   public async fetchWeb3Config(force = false): Promise<Web3TipsConfig> {
     if (this.cachedConfig && !force) return this.cachedConfig;
-    const res = await fetch('/api/tips?action=config');
-    if (!res.ok) {
-      throw new Error('Failed to load Sonacast Web3 treasury configuration.');
-    }
-    const data = (await res.json()) as Web3TipsConfig;
-    this.cachedConfig = data;
-    return data;
+
+    const devnetTreasuryCandidate =
+      readRuntimeEnv('VITE_SOLANA_DEVNET_TREASURY_ADDRESS') || DEFAULT_DEVNET_TREASURY_ADDRESS;
+    const devnetEscrowCandidate =
+      readRuntimeEnv('VITE_SOLANA_DEVNET_ESCROW_ADDRESS') || DEFAULT_DEVNET_ESCROW_ADDRESS;
+    const mainnetTreasuryCandidate = readRuntimeEnv('VITE_SOLANA_MAINNET_TREASURY_ADDRESS');
+    const mainnetEscrowCandidate = readRuntimeEnv('VITE_SOLANA_MAINNET_ESCROW_ADDRESS');
+
+    const devnetTreasury = isValidSolanaAddress(devnetTreasuryCandidate)
+      ? devnetTreasuryCandidate
+      : DEFAULT_DEVNET_TREASURY_ADDRESS;
+    const devnetEscrow = isValidSolanaAddress(devnetEscrowCandidate)
+      ? devnetEscrowCandidate
+      : DEFAULT_DEVNET_ESCROW_ADDRESS;
+    const mainnetTreasury = isValidSolanaAddress(mainnetTreasuryCandidate)
+      ? mainnetTreasuryCandidate
+      : '';
+    const mainnetEscrow = isValidSolanaAddress(mainnetEscrowCandidate)
+      ? mainnetEscrowCandidate
+      : '';
+
+    const config: Web3TipsConfig = {
+      connected: true,
+      platformFeeBps: PLATFORM_FEE_BPS,
+      artistShareBps: ARTIST_SHARE_BPS,
+      minTipSol: MIN_TIP_SOL,
+      feeBenchmarks: FEE_BENCHMARKS,
+      clusters: {
+        devnet: {
+          ready: Boolean(devnetTreasury),
+          escrowReady: Boolean(devnetEscrow),
+          treasuryAddress: devnetTreasury,
+          escrowAddress: devnetEscrow,
+          hasCustomRpc: Boolean(readRuntimeEnv('VITE_SOLANA_DEVNET_RPC'))
+        },
+        'mainnet-beta': {
+          ready: Boolean(mainnetTreasury),
+          escrowReady: Boolean(mainnetEscrow),
+          treasuryAddress: mainnetTreasury,
+          escrowAddress: mainnetEscrow,
+          hasCustomRpc: Boolean(readRuntimeEnv('VITE_SOLANA_MAINNET_RPC'))
+        }
+      }
+    };
+
+    this.cachedConfig = config;
+    return config;
   }
 
   public async fetchArtistStatus(
     artistName: string,
     targetCluster: SolanaCluster = this.cluster
   ): Promise<ArtistWalletStatus> {
-    const q = new URLSearchParams({
-      action: 'artist_status',
-      artist: artistName,
-      cluster: targetCluster
-    });
-    const res = await fetch(`/api/tips?${q.toString()}`);
-    if (!res.ok) {
-      const err = await res.json().catch(() => null);
-      throw new Error(err?.error || 'Failed to inspect artist wallet status.');
+    const cleanArtist = String(artistName || '').trim() || 'Artist';
+    const artistKey = normalizeArtistKey(cleanArtist);
+    const cfg = await this.fetchWeb3Config();
+    const clusterCfg = cfg.clusters[targetCluster];
+    const ledger = readWeb3Ledger();
+    const verifiedRecord = ledger.verifiedArtists[artistKey] || null;
+
+    const artistTips = ledger.tips.filter(
+      (tip) =>
+        normalizeArtistKey(tip.recipientName) === artistKey &&
+        tip.cluster === targetCluster
+    );
+
+    let totalGrossSol = 0;
+    let totalArtistSol = 0;
+    let totalPlatformFeeSol = 0;
+    let unclaimedEscrowSol = 0;
+    for (const tip of artistTips) {
+      totalGrossSol += Number(tip.amountSol) || 0;
+      totalArtistSol += Number(tip.artistShareSol) || 0;
+      totalPlatformFeeSol += Number(tip.feeSol) || 0;
+      if (tip.routeType === 'escrow_vault' && !tip.claimed) {
+        unclaimedEscrowSol += Number(tip.artistShareSol) || 0;
+      }
     }
-    return (await res.json()) as ArtistWalletStatus;
+
+    const verified = Boolean(verifiedRecord && isValidSolanaAddress(verifiedRecord.walletAddress));
+    let effectiveRecipient: string | null = null;
+    let routeType: 'direct_artist' | 'escrow_vault' | 'unconfigured' = 'unconfigured';
+
+    if (verified && verifiedRecord) {
+      effectiveRecipient = verifiedRecord.walletAddress;
+      routeType = 'direct_artist';
+    } else if (isValidSolanaAddress(clusterCfg?.escrowAddress)) {
+      effectiveRecipient = clusterCfg.escrowAddress;
+      routeType = 'escrow_vault';
+    }
+
+    return {
+      artistKey,
+      artistName: verifiedRecord?.artistName || cleanArtist,
+      cluster: targetCluster,
+      verified,
+      verifiedWallet: verified && verifiedRecord ? verifiedRecord.walletAddress : null,
+      verifiedAt: verified && verifiedRecord ? verifiedRecord.verifiedAt : null,
+      effectiveRecipient,
+      treasuryAddress: clusterCfg?.treasuryAddress || null,
+      escrowAddress: clusterCfg?.escrowAddress || null,
+      routeType,
+      stats: {
+        tipCount: artistTips.length,
+        totalGrossSol: Number(totalGrossSol.toFixed(6)),
+        totalArtistSol: Number(totalArtistSol.toFixed(6)),
+        totalPlatformFeeSol: Number(totalPlatformFeeSol.toFixed(6)),
+        unclaimedEscrowSol: Number(unclaimedEscrowSol.toFixed(6))
+      }
+    };
   }
 
   public async fetchLedger(
     targetCluster?: SolanaCluster,
     listenerId?: string
   ): Promise<TipLedgerResponse> {
-    const q = new URLSearchParams({ action: 'ledger' });
-    if (targetCluster) q.set('cluster', targetCluster);
-    if (listenerId) q.set('listenerId', listenerId);
-    const res = await fetch(`/api/tips?${q.toString()}`);
-    if (!res.ok) {
-      const err = await res.json().catch(() => null);
-      throw new Error(err?.error || 'Failed to load Neon tipping ledger.');
+    const ledger = readWeb3Ledger();
+    const filteredTips = targetCluster
+      ? ledger.tips.filter((tip) => tip.cluster === targetCluster)
+      : ledger.tips;
+
+    let totalGrossSol = 0;
+    let totalArtistSol = 0;
+    let totalPlatformFeeSol = 0;
+    let unclaimedEscrowSol = 0;
+
+    const escrowMap = new Map<
+      string,
+      { artistKey: string; artistName: string; tipCount: number; unclaimedSol: number }
+    >();
+
+    for (const tip of filteredTips) {
+      totalGrossSol += Number(tip.amountSol) || 0;
+      totalArtistSol += Number(tip.artistShareSol) || 0;
+      totalPlatformFeeSol += Number(tip.feeSol) || 0;
+      if (tip.routeType === 'escrow_vault' && !tip.claimed) {
+        const artistShare = Number(tip.artistShareSol) || 0;
+        unclaimedEscrowSol += artistShare;
+        const key = normalizeArtistKey(tip.recipientName);
+        const existing = escrowMap.get(key) || {
+          artistKey: key,
+          artistName: tip.recipientName,
+          tipCount: 0,
+          unclaimedSol: 0
+        };
+        existing.tipCount += 1;
+        existing.unclaimedSol = Number((existing.unclaimedSol + artistShare).toFixed(6));
+        escrowMap.set(key, existing);
+      }
     }
-    return (await res.json()) as TipLedgerResponse;
+
+    const verifiedArtists = Object.values(ledger.verifiedArtists).map((item) => ({
+      artistKey: item.artistKey,
+      artistName: item.artistName,
+      walletAddress: item.walletAddress,
+      verifiedAt: item.verifiedAt
+    }));
+
+    const posLogs = listenerId
+      ? ledger.proofOfStream.filter((log) => !log.listenerId || log.listenerId === listenerId)
+      : ledger.proofOfStream;
+
+    let totalSeconds = 0;
+    let totalEstimatedSol = 0;
+    for (const log of posLogs) {
+      totalSeconds += Math.max(0, Number(log.secondsListened) || 0);
+      totalEstimatedSol += Number(log.earnedRewardSol) || 0;
+    }
+
+    return {
+      platformFeeBps: PLATFORM_FEE_BPS,
+      artistShareBps: ARTIST_SHARE_BPS,
+      summary: {
+        totalTipsCount: filteredTips.length,
+        totalGrossSol: Number(totalGrossSol.toFixed(6)),
+        totalArtistSol: Number(totalArtistSol.toFixed(6)),
+        totalPlatformFeeSol: Number(totalPlatformFeeSol.toFixed(6)),
+        unclaimedEscrowSol: Number(unclaimedEscrowSol.toFixed(6)),
+        verifiedArtistsCount: verifiedArtists.length
+      },
+      tips: filteredTips.slice(0, 60),
+      verifiedArtists,
+      escrowPools: [...escrowMap.values()],
+      proofOfStream: {
+        totalSessions: posLogs.length,
+        totalSeconds,
+        totalEstimatedSol: Number(totalEstimatedSol.toFixed(6)),
+        logs: posLogs.slice(0, 50)
+      }
+    };
   }
 
   private async signMessageBytes(messageBytes: Uint8Array): Promise<string> {
@@ -524,24 +809,42 @@ class SolanaService {
       `Issued: ${new Date().toISOString()}`
     ].join('\n');
 
-    const signatureBase64 = await this.signMessageBytes(new TextEncoder().encode(message));
-    const res = await fetch('/api/tips', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'verify_artist_wallet',
-        artistName: cleanArtist,
-        walletAddress,
-        message,
-        signatureBase64
-      })
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || !data?.verified) {
-      throw new Error(data?.error || 'Server Ed25519 signature verification rejected.');
+    const messageBytes = new TextEncoder().encode(message);
+    const signatureBase64 = await this.signMessageBytes(messageBytes);
+    const isValidSig = await verifyEd25519Signature(walletAddress, messageBytes, signatureBase64);
+    if (!isValidSig) {
+      throw new Error('Ed25519 cryptographic signature verification failed.');
     }
+
+    const artistKey = normalizeArtistKey(cleanArtist);
+    const ledger = readWeb3Ledger();
+    ledger.verifiedArtists[artistKey] = {
+      artistKey,
+      artistName: cleanArtist,
+      walletAddress,
+      verifiedAt: new Date().toISOString(),
+      signatureBase64
+    };
+    writeWeb3Ledger(ledger);
+
+    let unclaimedEscrowSol = 0;
+    for (const tip of ledger.tips) {
+      if (
+        normalizeArtistKey(tip.recipientName) === artistKey &&
+        tip.routeType === 'escrow_vault' &&
+        !tip.claimed
+      ) {
+        unclaimedEscrowSol += Number(tip.artistShareSol) || 0;
+      }
+    }
+
     this.notify();
-    return data;
+    return {
+      verified: true,
+      artistName: cleanArtist,
+      walletAddress,
+      unclaimedEscrowSol: Number(unclaimedEscrowSol.toFixed(6))
+    };
   }
 
   public async requestAirdrop(): Promise<{ success: boolean; balance: number; error?: string }> {
@@ -557,31 +860,6 @@ class SolanaService {
       return { success: false, balance: 0, error: 'Wallet address unavailable.' };
     }
     try {
-      // Try server proxy first if a Devnet faucet secret/RPC is provisioned
-      const serverRes = await fetch('/api/tips', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'faucet_devnet', recipient: addr })
-      }).catch(() => null);
-      if (serverRes && serverRes.ok) {
-        const serverData = await serverRes.json().catch(() => null);
-        if (serverData?.signature) {
-          await this.waitForSignatureConfirmation('devnet', String(serverData.signature), 22000);
-          const balance = await this.fetchBalance();
-          this.notify();
-          return { success: true, balance };
-        }
-      } else if (serverRes && serverRes.status === 429) {
-        const errData = await serverRes.json().catch(() => null);
-        return {
-          success: false,
-          balance: this.cachedBalanceSol,
-          error:
-            errData?.error ||
-            'Devnet test wallet already has enough SOL to send tips.'
-        };
-      }
-
       const resp = await fetch(DEVNET_PUBLIC_RPC, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -590,7 +868,8 @@ class SolanaService {
           id: 1,
           method: 'requestAirdrop',
           params: [addr, LAMPORTS_PER_SOL]
-        })
+        }),
+        signal: AbortSignal.timeout(8000)
       });
       if (resp.status === 410 || resp.status === 429) {
         return {
@@ -598,8 +877,8 @@ class SolanaService {
           balance: this.cachedBalanceSol,
           error:
             resp.status === 410
-              ? `Solana Devnet RPC faucet is closed (HTTP 410). Copy your Devnet address (${addr.slice(0, 6)}...${addr.slice(-4)}) and request Devnet SOL at https://spigot-devnet.vercel.app or https://faucet.solana.com.`
-              : 'Devnet faucet rate-limited. Open https://spigot-devnet.vercel.app or https://faucet.solana.com with your copied Devnet wallet address.'
+              ? `Solana Devnet RPC faucet is closed (HTTP 410). Copy your Devnet address (${addr.slice(0, 6)}...${addr.slice(-4)}) and request Devnet SOL at https://faucet.solana.com.`
+              : 'Devnet faucet rate-limited. Open https://faucet.solana.com with your copied Devnet wallet address.'
         };
       }
       const data = await resp.json();
@@ -690,7 +969,7 @@ class SolanaService {
     if (!clusterCfg?.treasuryAddress || !isValidSolanaAddress(clusterCfg.treasuryAddress)) {
       throw new Error(
         cluster === 'mainnet-beta'
-          ? 'Mainnet Treasury wallet is not configured on the server (SOLANA_MAINNET_TREASURY_ADDRESS).'
+          ? 'Mainnet Treasury wallet is not configured (VITE_SOLANA_MAINNET_TREASURY_ADDRESS).'
           : 'Devnet Treasury wallet is not configured.'
       );
     }
@@ -790,39 +1069,33 @@ class SolanaService {
 
     await this.waitForSignatureConfirmation(cluster, txSignature, 32000);
     await this.fetchBalance();
+
+    const tipRecord: TipRecord = {
+      id: `tip_${Date.now().toString(36)}_${txSignature.slice(0, 8)}`,
+      recipient: recipientAddress,
+      recipientName: artistName,
+      amountSol: Number(split.grossSol.toFixed(6)),
+      artistShareSol: Number(split.artistSol.toFixed(6)),
+      feeSol: Number(split.feeSol.toFixed(6)),
+      platformFeeBps: PLATFORM_FEE_BPS,
+      treasuryAddress: clusterCfg.treasuryAddress,
+      routeType,
+      cluster,
+      senderWallet: senderAddress,
+      verifiedOnChain: true,
+      claimed: routeType === 'direct_artist',
+      claimedTx: routeType === 'direct_artist' ? txSignature : null,
+      txSignature,
+      timestamp: new Date().toISOString(),
+      trackTitle
+    };
+
+    const ledger = readWeb3Ledger();
+    ledger.tips.unshift(tipRecord);
+    writeWeb3Ledger(ledger);
     this.notify();
 
-    // Verify split deltas & record transaction authoritatively in Neon Postgres
-    const verifyRes = await fetch('/api/tips', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'record_verified_tip',
-        cluster,
-        txSignature,
-        senderWallet: senderAddress,
-        recipientWallet: recipientAddress,
-        treasuryWallet: clusterCfg.treasuryAddress,
-        artistName,
-        trackTitle,
-        routeType,
-        grossLamports: split.grossLamports,
-        artistLamports: split.artistLamports,
-        feeLamports: split.feeLamports,
-        feeBps: PLATFORM_FEE_BPS,
-        allowTrackDirect
-      })
-    });
-
-    const verifiedJson = await verifyRes.json().catch(() => null);
-    if (!verifyRes.ok || !verifiedJson?.tip) {
-      throw new Error(
-        verifiedJson?.error ||
-        `On-chain transfer succeeded (${txSignature.slice(0, 12)}...), but Neon verification failed.`
-      );
-    }
-
-    return verifiedJson.tip as TipRecord;
+    return tipRecord;
   }
 
   public async recordProofOfStream(
@@ -831,37 +1104,26 @@ class SolanaService {
     trackTitle: string,
     artistName: string,
     secondsListened: number,
-    displayName = 'Listener'
+    _displayName = 'Listener'
   ): Promise<ProofOfStreamRecord> {
-    const res = await fetch('/api/tips', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'log_proof_of_stream',
-        listenerId,
-        displayName,
-        trackId,
-        trackTitle,
-        artistName,
-        secondsListened
-      })
-    });
-    const data = await res.json().catch(() => null);
-    if (res.ok && data?.record) {
-      return data.record as ProofOfStreamRecord;
-    }
-
-    const units = Math.max(1, Math.round(secondsListened / 10));
-    return {
-      id: `pos-${Date.now().toString(36)}`,
+    const safeSeconds = Math.max(1, Math.round(Number(secondsListened) || 0));
+    const units = Math.max(1, Math.round(safeSeconds / 10));
+    const record: ProofOfStreamRecord = {
+      id: `pos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       trackId,
       trackTitle,
       artist: artistName,
-      secondsListened,
+      secondsListened: safeSeconds,
       earnedRewardSol: Number((units * 0.0001).toFixed(6)),
       verifiedOnChain: false,
-      settlementStatus: 'pending_batch'
+      settlementStatus: 'pending_batch',
+      createdAt: new Date().toISOString()
     };
+
+    const ledger = readWeb3Ledger();
+    ledger.proofOfStream.unshift({ ...record, listenerId });
+    writeWeb3Ledger(ledger);
+    return record;
   }
 }
 
