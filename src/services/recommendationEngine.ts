@@ -105,6 +105,7 @@ type GenreFamily =
 export type SonicClassId =
   | 'piano_neoclassical'
   | 'soundtrack_epic'
+  | 'indo_timur_hits'
   | 'indo_pop_ballad'
   | 'indo_band_rock'
   | 'indo_indie_folk'
@@ -147,19 +148,40 @@ export const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     peerArtists: ['Hans Zimmer', 'John Williams', 'Ramin Djawadi', 'Howard Shore', 'Ennio Morricone', 'Ludwig Goransson'],
     keywords: ['hans zimmer', 'john williams', 'ramin djawadi', 'howard shore', 'ennio morricone', 'thomas bergersen', 'two steps from hell', 'hiroyuki sawano', 'kensuke ushio']
   },
+  indo_timur_hits: {
+    classId: 'indo_timur_hits',
+    classLabel: 'Indo Timur & Eastern Pop',
+    isInstrumental: false,
+    compatibleClasses: ['indo_pop_ballad', 'indo_indie_folk'],
+    peerArtists: [
+      'Near', 'Dian Sorowea', 'Dandy Barakati', 'Silet Open Up', 'Juan Reza',
+      'Wizz Baker', 'Fresly Nikijuluw', 'Toton Caribo', 'Mace Purba', 'Jacson Zeran',
+      'Justy Aldrin', 'Vicky Salamor', 'Mario G Klau', 'Gihon Marel', 'Ecko Show',
+      'Raim Laode', 'Chesylino', 'Gery Gany', 'M.A.C', 'Shine Of Black'
+    ],
+    keywords: [
+      'near', 'dian sorowea', 'dandy barakati', 'silet open up', 'juan reza',
+      'wizz baker', 'fresly nikijuluw', 'toton caribo', 'mace purba', 'jacson zeran',
+      'jecson zeran', 'justy aldrin', 'vicky salamor', 'mario g klau', 'gihon marel',
+      'ecko show', 'raim laode', 'chesylino', 'gery gany', 'shine of black',
+      'ona hetharua', 'mitha talahatu', 'glenn sebastian', 'doddie latuharhary',
+      'yochen amos', 'whllyano', 'nyong franco', 'dj qhelfin', 'sanjay', 'marvey kaya',
+      'aldy maldini', 'faris adam', 'tenxi', 'naykilla', 'jemsii', 'm.a.c', 'mac papua',
+      'timur', 'ambon', 'papua', 'kupang', 'manado', 'ntt'
+    ]
+  },
   indo_pop_ballad: {
     classId: 'indo_pop_ballad',
     classLabel: 'Indo Pop & Ballad Soul',
     isInstrumental: false,
-    compatibleClasses: ['indo_band_rock', 'indo_indie_folk', 'rnb_late_soul'],
+    compatibleClasses: ['indo_timur_hits', 'indo_band_rock', 'indo_indie_folk'],
     peerArtists: ['Tulus', 'Raisa', 'Mahalini', 'Bernadya', 'Tiara Andini', 'Nadin Amizah', 'Andmesh', 'Afgan', 'Judika', 'Lyodra'],
     keywords: [
       'tulus', 'raisa', 'afgan', 'glenn fredly', 'judika', 'mahalini', 'tiara andini',
       'lyodra', 'ziva magnolya', 'bernadya', 'nadin amizah', 'pamungkas', 'rizky febian',
       'juicy luicy', 'virgoun', 'budi doremi', 'rossa', 'bunga citra lestari',
       'isyana sarasvati', 'yura yunita', 'sal priadi', 'siti nurhaliza', 'maher zain',
-      'near', 'dian sorowea', 'wizz baker', 'juan reza', 'chesylino', 'mario g klau',
-      'raim laode', 'andmesh', 'jaz', 'cakra khan', 'fabio asher', 'anggi marito',
+      'andmesh', 'jaz', 'cakra khan', 'fabio asher', 'anggi marito',
       'keisya levronka', 'nyoman paul', 'rony parulian', 'aziz hedra', 'brisia jodie',
       'stevan pasaribu', 'mahen', 'anji', 'marcell', 'krisdayanti', 'melly goeslaw'
     ]
@@ -168,7 +190,7 @@ export const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     classId: 'indo_band_rock',
     classLabel: 'Indo Band & Pop Rock',
     isInstrumental: false,
-    compatibleClasses: ['indo_pop_ballad', 'indo_indie_folk', 'alt_indie_rock'],
+    compatibleClasses: ['indo_pop_ballad', 'indo_indie_folk', 'indo_timur_hits'],
     peerArtists: ['Sheila On 7', 'Dewa 19', 'Noah', 'Padi', 'Peterpan', 'Gigi', 'Ada Band', 'Chrisye', 'Nidji'],
     keywords: [
       'dewa 19', 'sheila on 7', 'noah', 'peterpan', 'padi', 'gigi', 'ada band', 'chrisye',
@@ -181,7 +203,7 @@ export const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     classId: 'indo_indie_folk',
     classLabel: 'Indo Indie & Folk',
     isInstrumental: false,
-    compatibleClasses: ['indo_pop_ballad', 'indo_band_rock', 'alt_indie_rock', 'jazz_blues_acoustic'],
+    compatibleClasses: ['indo_pop_ballad', 'indo_band_rock', 'indo_timur_hits'],
     peerArtists: ['Hindia', 'Payung Teduh', 'Fourtwnty', 'Efek Rumah Kaca', 'Reality Club', 'Banda Neira', 'Feby Putri', 'Kunto Aji'],
     keywords: ['hindia', 'feast', 'efek rumah kaca', 'payung teduh', 'fourtwnty', 'banda neira', 'reality club', 'barasuara', 'feby putri', 'kunto aji', 'fiersa besari', 'dere', 'idgitaf', 'iwan fals', 'danilla', 'dialog dini hari', 'stars and rabbit']
   },
@@ -189,9 +211,9 @@ export const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
     classId: 'indo_koplo_dangdut',
     classLabel: 'Indo Dangdut & Koplo',
     isInstrumental: false,
-    compatibleClasses: ['indo_band_rock'],
+    compatibleClasses: ['indo_band_rock', 'indo_timur_hits'],
     peerArtists: ['Denny Caknan', 'Happy Asmara', 'Guyon Waton', 'NDX A.K.A.', 'Wali', 'Didi Kempot'],
-    keywords: ['denny caknan', 'happy asmara', 'ndx', 'guyon waton', 'wali', 'kangen band', 'st12', 'didi kempot', 'rhoma irama', 'muslih fvnky', 'masdddho', 'ndarboy', 'aftershine', 'wahyu', 'nyong franco']
+    keywords: ['denny caknan', 'happy asmara', 'ndx', 'guyon waton', 'wali', 'kangen band', 'st12', 'didi kempot', 'rhoma irama', 'muslih fvnky', 'masdddho', 'ndarboy', 'aftershine', 'wahyu']
   },
   rnb_late_soul: {
     classId: 'rnb_late_soul',
@@ -294,8 +316,11 @@ export interface AudioFeatureVector {
   tempoNorm: number;
 }
 
+const TIMUR_TITLE_CUES =
+  /\b(karna su sayang|tabola bale|mode pesawat|bale pulang|sa stop|sa sayang|sa tra|ko tra|trada|jang ganggu|kaka main salah|aduh mamae|nona ambon|nona papua|ste cu|stecu|pica pica|garam dan madu|par ale|deng dia|so bilang|su tunggu|beta rindu|beta sayang|ale pung|pigi jo|bintang trada|mama su tunggu|hits timur|lagu timur|rindu timur|orang timur)\b/i;
+
 const INDONESIAN_TITLE_CUES =
-  /\b(sayang|cinta|rindu|hati|kenangan|kisah|tertawan|trakan|mendua|dirimu|sialnya|sempurna|kasih|separuh|monokrom|tujuh belas|berdua|bertahan|menunggu|selamanya|karena|jangan|terlalu|karna|jang|komang|tak segampang itu|sisa rasa|hilang tanpa bilang|tak ingin usai|pesan terakhir|penjaga hati|semata karenamu|berhenti berharap|seluruh nafas|cukup tahu|dan\.\.\.|kangen|negoro|angin|mendung|rungkad|ojo|lali|saliva|gomu)\b/i;
+  /\b(sayang|cinta|rindu|hati|kenangan|kisah|tertawan|trakan|mendua|dirimu|sialnya|sempurna|kasih|separuh|monokrom|tujuh belas|berdua|bertahan|menunggu|selamanya|karena|jangan|terlalu|karna|jang|komang|tak segampang itu|sisa rasa|hilang tanpa bilang|tak ingin usai|pesan terakhir|penjaga hati|semata karenamu|berhenti berharap|seluruh nafas|cukup tahu|dan\.\.\.|kangen|negoro|angin|mendung|rungkad|ojo|lali|saliva|gomu|pulang|pesawat|bale|tabola|trada|nona|mamae|selow|laskar|pelangi|menangis|sial|satu bulan|mati-matian|berjalan|terlintas|bintang|senja|pelukan)\b/i;
 
 const RECOGNIZED_ARTIST_SET: Set<string> = (() => {
   const set = new Set<string>();
@@ -364,8 +389,10 @@ export function inferTrackLanguageRegion(
     genreLower.includes('indo') ||
     genreLower.includes('dangdut') ||
     genreLower.includes('koplo') ||
+    genreLower.includes('timur') ||
+    TIMUR_TITLE_CUES.test(titleLower) ||
     INDONESIAN_TITLE_CUES.test(titleLower) ||
-    ['indo_pop_ballad', 'indo_band_rock', 'indo_indie_folk', 'indo_koplo_dangdut'].some((cid) =>
+    ['indo_timur_hits', 'indo_pop_ballad', 'indo_band_rock', 'indo_indie_folk', 'indo_koplo_dangdut'].some((cid) =>
       SONIC_CLASS_PROFILES[cid as SonicClassId].keywords.some((kw) => isWordBoundaryMatch(artistLower, kw))
     )
   ) {
@@ -420,6 +447,11 @@ export function classifyTrackTier(
     if (profile.keywords.some((kw) => isWordBoundaryMatch(artistLower, kw))) {
       return profile;
     }
+  }
+
+  // Catch Eastern Indonesian (Lagu Timur) tracks explicitly before generic pop/hip-hop rules
+  if (TIMUR_TITLE_CUES.test(titleLower) || genreLower.includes('timur')) {
+    return SONIC_CLASS_PROFILES.indo_timur_hits;
   }
 
   // Catch Indonesian / Malay titles with generic 'Pop' genre metadata (e.g. Karna Su Sayang, Komang, Sial)
@@ -618,6 +650,9 @@ export function estimateAudioFeatures(
       break;
     case 'soundtrack_epic':
       base = { energy: 0.62, valence: 0.42, danceability: 0.30, acousticness: 0.55, instrumentalness: 0.88 };
+      break;
+    case 'indo_timur_hits':
+      base = { energy: 0.72, valence: 0.68, danceability: 0.80, acousticness: 0.28, instrumentalness: 0.02 };
       break;
     case 'indo_pop_ballad':
       base = { energy: 0.44, valence: 0.38, danceability: 0.52, acousticness: 0.62, instrumentalness: 0.02 };
@@ -1165,7 +1200,9 @@ export function getClassMatchedSeedQueries(
     return classifyTrackTier({ title: '', artist: entry.name, genre: entry.genre, bpm: track.bpm }).classId === classProfile.classId;
   }).map((e) => e.name);
 
-  const moodQueries = mood !== 'all' ? getMoodSeedQueries(mood) : [];
+  const seedLang = inferTrackLanguageRegion(track);
+  const moodQueries =
+    mood !== 'all' && (seedLang === 'en' || mood === 'indonesian') ? getMoodSeedQueries(mood) : [];
   const seedHash = Math.floor(hashPair(track.artist || 'artist', track.title || 'title') * 100);
 
   const combined = Array.from(new Set(peerPool));
@@ -1225,6 +1262,20 @@ export function selectCohesiveCandidatePool(
     deduped.push(cand);
   }
 
+  const exactClassAndLang = deduped.filter((cand) => {
+    const ct = classifyTrackTier(cand);
+    const cl = inferTrackLanguageRegion(cand);
+    if (ct.classId !== seedTier.classId) return false;
+    if (seedLang !== 'en' && seedLang !== 'instrumental') {
+      return cl === seedLang;
+    }
+    return true;
+  });
+
+  if (exactClassAndLang.length >= minSameLangClass) {
+    return exactClassAndLang;
+  }
+
   const sameLangAndClass = deduped.filter((cand) => {
     const ct = classifyTrackTier(cand);
     const cl = inferTrackLanguageRegion(cand);
@@ -1241,6 +1292,18 @@ export function selectCohesiveCandidatePool(
 
   if (sameLangAndClass.length >= minSameLangClass) {
     return sameLangAndClass;
+  }
+
+  // Strict language lock for non-English seeds (e.g. Lagu Timur / Indonesian / K-Pop / J-Pop):
+  // NEVER leak English TRACK_CATALOG fallback songs when ANY same-language candidates exist
+  if (seedLang !== 'en' && seedLang !== 'instrumental') {
+    const anySameLang = deduped.filter((cand) => inferTrackLanguageRegion(cand) === seedLang);
+    if (anySameLang.length > 0) {
+      return sameLangAndClass.length > 0
+        ? [...sameLangAndClass, ...anySameLang.filter((c) => !sameLangAndClass.some((s) => s.id === c.id))]
+        : anySameLang;
+    }
+    return [];
   }
 
   const compatibleClassPool = deduped.filter((cand) => {

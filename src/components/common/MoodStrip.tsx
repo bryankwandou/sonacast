@@ -25,7 +25,7 @@ export function MoodStrip({
       className={
         wrap
           ? 'flex flex-wrap items-center gap-1.5'
-          : 'flex items-center md:flex-wrap gap-1.5 overflow-x-auto no-scrollbar pb-1'
+          : 'flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1'
       }
     >
       {MOOD_PRESETS.map((preset) => {
@@ -36,13 +36,11 @@ export function MoodStrip({
             type="button"
             data-testid={`${testIdPrefix}-${preset.id}`}
             onClick={() => onSelectMood(preset.id)}
-            className={`${
-              compact ? 'min-h-[28px] px-2.5 py-1 text-[11px]' : 'min-h-[34px] px-3.5 py-1.5 text-xs'
-            } rounded-full font-semibold shrink-0 cursor-pointer border transition-colors ${
-              isSelected
+            className={`${compact ? 'min-h-[28px] px-2.5 py-1 text-[11px]' : 'min-h-[34px] px-3.5 py-1.5 text-xs'
+              } rounded-full font-semibold shrink-0 cursor-pointer border transition-colors ${isSelected
                 ? 'bg-[var(--ink-solid)] text-[var(--ink-solid-fg)] border-transparent'
                 : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-medium)] hover:text-[var(--text-primary)]'
-            }`}
+              }`}
           >
             {getMoodLabel(preset.id, t)}
           </button>

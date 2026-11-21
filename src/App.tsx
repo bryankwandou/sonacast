@@ -606,8 +606,8 @@ export default function App() {
   );
 
   const hydrateListenerData = useCallback(
-    async (targetListenerId: string, syncLocalIfNeeded: boolean) => {
-      const snapshot = await fetchNeonLibrary(targetListenerId);
+    async (targetListenerId: string, syncLocalIfNeeded: boolean, forceCloudRefresh = false) => {
+      const snapshot = await fetchNeonLibrary(targetListenerId, forceCloudRefresh);
       if (snapshot && snapshot.connected) {
         if (syncLocalIfNeeded) {
           const local = recStateRef.current;
@@ -630,12 +630,23 @@ export default function App() {
           applyCloudSnapshot(snapshot);
         }
       }
-      const listenerBlends = await fetchListenerBlends(targetListenerId);
-      setBlends(listenerBlends);
       return snapshot;
     },
     [applyCloudSnapshot]
   );
+
+  // Lazy-load Neon Blends ONLY when the user actually visits the Blend tab (0 boot compute)
+  useEffect(() => {
+    if (currentTab !== 'blend') return;
+    const targetId = authUserRef.current?.listenerId || getOrCreateListenerIdentity().listenerId;
+    let cancelled = false;
+    void fetchListenerBlends(targetId).then((list) => {
+      if (!cancelled) setBlends(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTab, authUser]);
 
   const handleAuthSuccess = useCallback(
     async (user: AuthUser) => {
@@ -648,7 +659,8 @@ export default function App() {
         listenerId: user.listenerId,
         displayName: user.displayName
       }));
-      await hydrateListenerData(user.listenerId, sameListener);
+      // Force fresh authoritative pull from Neon Postgres once on explicit Login/Register
+      await hydrateListenerData(user.listenerId, sameListener, true);
     },
     [hydrateListenerData]
   );
@@ -678,8 +690,7 @@ export default function App() {
       saveRecommendationState(next);
       return next;
     });
-    await hydrateListenerData(guest.listenerId, false);
-  }, [hydrateListenerData]);
+  }, []);
 
   // Hydrate Neon Auth session, Postgres library, blends, and share deep-links (?blend= / ?album=)
   useEffect(() => {
@@ -1541,35 +1552,63 @@ export default function App() {
         setLyricsSynced(track.lyrics.length > 4);
       }
 
-      // Silently pre-fetch lyrics for next track in queue so Up Next starts instantaneously
+      // Silently pre-fetch lyrics AND playable stream ID for next track so background transitions start in <1s
       const qAfter = queueRef.current;
       const curIdxInQ = qAfter.findIndex((item) => item.id === track.id);
       const nextPreviewTrack = curIdxInQ >= 0 ? qAfter[curIdxInQ + 1] : qAfter[0];
       if (
         nextPreviewTrack &&
         nextPreviewTrack.id !== track.id &&
-        nextPreviewTrack.lyrics.length <= 2 &&
         nextPreviewTrack.sourceTag !== 'live-radio' &&
         nextPreviewTrack.genre !== 'Podcast'
       ) {
-        fetchLyricsWithMeta(
-          nextPreviewTrack.title,
-          nextPreviewTrack.artist,
-          nextPreviewTrack.duration,
-          nextPreviewTrack.album
-        )
-          .then((prefetched) => {
-            if (prefetched.lyrics.length > 0) {
-              setQueue((prevQ) =>
-                prevQ.map((item) =>
-                  item.id === nextPreviewTrack.id && item.lyrics.length <= 2
-                    ? { ...item, lyrics: prefetched.lyrics }
-                    : item
-                )
-              );
-            }
-          })
-          .catch(() => { });
+        if (nextPreviewTrack.lyrics.length <= 2) {
+          fetchLyricsWithMeta(
+            nextPreviewTrack.title,
+            nextPreviewTrack.artist,
+            nextPreviewTrack.duration,
+            nextPreviewTrack.album
+          )
+            .then((prefetched) => {
+              if (prefetched.lyrics.length > 0) {
+                setQueue((prevQ) =>
+                  prevQ.map((item) =>
+                    item.id === nextPreviewTrack.id && item.lyrics.length <= 2
+                      ? { ...item, lyrics: prefetched.lyrics }
+                      : item
+                  )
+                );
+              }
+            })
+            .catch(() => { });
+        }
+        if (
+          !nextPreviewTrack.audioUrl &&
+          !nextPreviewTrack.youtubeId &&
+          !(nextPreviewTrack.candidateVideoIds && nextPreviewTrack.candidateVideoIds.length > 0)
+        ) {
+          resolveFullTrackStream(
+            nextPreviewTrack.title,
+            nextPreviewTrack.artist,
+            nextPreviewTrack.duration
+          )
+            .then((streamRes) => {
+              if (!streamRes || streamRes.candidateIds.length === 0) return;
+              const patchItem = (item: Track) =>
+                item.id === nextPreviewTrack.id && !item.youtubeId
+                  ? {
+                      ...item,
+                      youtubeId: streamRes.youtubeId,
+                      candidateVideoIds: streamRes.candidateIds,
+                      duration: streamRes.duration || item.duration,
+                      streamSource: 'official-stream' as const
+                    }
+                  : item;
+              queueRef.current = queueRef.current.map(patchItem);
+              setQueue((prevQ) => prevQ.map(patchItem));
+            })
+            .catch(() => { });
+        }
       }
 
       const fallbackYtIds =

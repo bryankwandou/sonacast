@@ -12,51 +12,41 @@ import type {
 
 const LISTENER_ID_KEY = 'sonacast_listener_id_v1';
 const DISPLAY_NAME_KEY = 'sonacast_display_name_v1';
-const LIBRARY_VAULT_PREFIX = 'sonacast_library_vault_v1_';
-const BLENDS_VAULT_KEY = 'sonacast_blends_vault_v1';
-const SHARED_ALBUMS_VAULT_KEY = 'sonacast_shared_albums_vault_v1';
-const SYNC_CHANNEL_NAME = 'sonacast_sync_v1';
+const LIB_CACHE_PREFIX = 'sonacast_neon_lib_cache_v2_';
+const BLENDS_CACHE_PREFIX = 'sonacast_neon_blends_cache_v1_';
 
-interface StoredLibraryVault {
-  profile: ListenerProfile;
-  favorites: FavoriteTrack[];
-  albums: UserPlaylist[];
-  followedArtists: FollowedArtist[];
-  recentHistory: (Track & { playedAt?: number })[];
-  searchHistory: SearchHistoryEntry[];
-  totalPlays: number;
-  totalSeconds: number;
-  updatedAt: number;
+// 24h snapshot cache prevents repeated GET /api/library invocations on page reloads
+const LIB_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const BLENDS_CACHE_TTL_MS = 10 * 60 * 1000;
+// 8s debounce window coalesces rapid like/album edits into minimal lightweight Neon calls
+const CLOUD_FLUSH_DEBOUNCE_MS = 8000;
+
+// Ephemeral high-frequency events remain 100% browser-local (0 ms Vercel compute)
+const LOCAL_ONLY_ACTIONS = new Set([
+  'record_play',
+  'clear_history',
+  'record_search',
+  'delete_search_item',
+  'clear_search_history'
+]);
+
+interface CachedLibraryEntry {
+  snapshot: CloudLibrarySnapshot;
+  cachedAt: number;
+  remoteSyncedAt: number;
+}
+
+interface PendingCloudOp {
+  key: string;
+  listenerId: string;
+  displayName: string;
+  action: string;
+  payload: Record<string, unknown>;
 }
 
 export interface ListenerIdentity {
   listenerId: string;
   displayName: string;
-}
-
-function randomCodeHex(bytesCount: number): string {
-  const bytes = new Uint8Array(bytesCount);
-  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.getRandomValues === 'function') {
-    globalThis.crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytesCount; i += 1) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-  }
-  let hex = '';
-  for (let i = 0; i < bytes.length; i += 1) {
-    hex += bytes[i].toString(16).padStart(2, '0');
-  }
-  return hex.toUpperCase();
-}
-
-function makeShareCode(prefix: string): string {
-  return `${prefix}-${randomCodeHex(3)}`;
-}
-
-function makeBlendCode(): string {
-  const suffix = Math.floor(10 + Math.random() * 89);
-  return `BLND-${randomCodeHex(2)}${suffix}`;
 }
 
 function sanitizeText(raw: unknown, maxLen: number, fallback = ''): string {
@@ -73,9 +63,25 @@ function sanitizeText(raw: unknown, maxLen: number, fallback = ''): string {
 function sanitizeId(raw: unknown, fallback = '', maxLen = 96): string {
   const cleaned = String(raw ?? '')
     .trim()
-    .replace(/[^a-zA-Z0-9_.:-]+/g, '')
+    .replace(/[^a-zA-Z0-9_.:@-]+/g, '')
     .slice(0, maxLen);
   return cleaned || fallback;
+}
+
+function randomHex(byteCount: number): string {
+  const bytes = new Uint8Array(byteCount);
+  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.getRandomValues === 'function') {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < byteCount; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    out += bytes[i].toString(16).padStart(2, '0');
+  }
+  return out.toUpperCase();
 }
 
 function normalizeTrackPayload(raw: unknown): Track | null {
@@ -98,35 +104,15 @@ function normalizeTrackPayload(raw: unknown): Track | null {
     ...(obj.fallbackAudioUrl ? { fallbackAudioUrl: sanitizeText(obj.fallbackAudioUrl, 1200, '') } : {}),
     ...(obj.youtubeId ? { youtubeId: sanitizeText(obj.youtubeId, 32, '') } : {}),
     ...(Array.isArray(obj.candidateVideoIds)
-      ? {
-          candidateVideoIds: obj.candidateVideoIds
-            .map((vid) => sanitizeText(vid, 32, ''))
-            .filter(Boolean)
-            .slice(0, 8)
-        }
-      : {}),
-    ...(obj.musicVideoId ? { musicVideoId: sanitizeText(obj.musicVideoId, 32, '') } : {}),
-    ...(Array.isArray(obj.musicVideoCandidates)
-      ? { musicVideoCandidates: obj.musicVideoCandidates.slice(0, 6) }
+      ? { candidateVideoIds: obj.candidateVideoIds.slice(0, 8).map((v) => sanitizeText(v, 32, '')).filter(Boolean) }
       : {}),
     ...(obj.streamSource ? { streamSource: obj.streamSource } : {}),
-    ...(obj.sourceTag ? { sourceTag: sanitizeText(obj.sourceTag, 80, '') } : {}),
+    ...(obj.sourceTag ? { sourceTag: sanitizeText(obj.sourceTag, 64, '') } : {}),
     genre: sanitizeText(obj.genre, 64, 'Pop'),
     lyrics: Array.isArray(obj.lyrics) ? obj.lyrics.slice(0, 200) : [],
-    artistSolanaAddress: sanitizeText(obj.artistSolanaAddress, 64, ''),
-    bpm: Math.max(40, Math.min(260, Math.round(Number(obj.bpm) || 118)))
+    artistSolanaAddress: sanitizeText(obj.artistSolanaAddress, 80, ''),
+    bpm: Math.max(40, Math.min(260, Math.round(Number(obj.bpm) || 120)))
   };
-}
-
-function broadcastSyncUpdate(kind: 'library' | 'blends', listenerId: string): void {
-  if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
-  try {
-    const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
-    channel.postMessage({ kind, listenerId, ts: Date.now() });
-    channel.close();
-  } catch {
-    // Ignore BroadcastChannel errors in restricted contexts
-  }
 }
 
 export function getOrCreateListenerIdentity(): ListenerIdentity {
@@ -176,188 +162,363 @@ export function rotateGuestListenerIdentity(): ListenerIdentity {
   return { listenerId, displayName };
 }
 
-function defaultVault(listenerId: string, displayName?: string): StoredLibraryVault {
-  const safeName = sanitizeText(
-    displayName,
-    60,
-    `Listener ${listenerId.slice(-4).toUpperCase()}`
-  );
+function buildEmptySnapshot(listenerId: string, displayName = 'Listener'): CloudLibrarySnapshot {
+  const safeName = sanitizeText(displayName, 60, 'Listener');
   const rawHandle = safeName.toLowerCase().replace(/[^a-z0-9_]+/g, '') || 'listener';
+  const profile: ListenerProfile = {
+    listenerId,
+    displayName: safeName,
+    handle: `@${rawHandle}`,
+    bio: ''
+  };
+  const stats: ListeningStats = {
+    totalPlays: 0,
+    totalMinutes: 0,
+    favoritesCount: 0,
+    albumsCount: 0,
+    followedCount: 0,
+    topArtists: [],
+    topGenres: []
+  };
   return {
-    profile: {
-      listenerId,
-      displayName: safeName,
-      handle: `@${rawHandle}`,
-      bio: ''
-    },
+    connected: true,
+    database: 'neon-postgres',
+    profile,
     favorites: [],
     albums: [],
     followedArtists: [],
     recentHistory: [],
     searchHistory: [],
-    totalPlays: 0,
-    totalSeconds: 0,
-    updatedAt: Date.now()
+    stats
   };
 }
 
-function readLibraryVault(listenerId: string, fallbackDisplayName?: string): StoredLibraryVault {
-  if (typeof window === 'undefined') {
-    return defaultVault(listenerId, fallbackDisplayName);
-  }
-  try {
-    const raw = window.localStorage.getItem(`${LIBRARY_VAULT_PREFIX}${listenerId}`);
-    if (!raw) {
-      return defaultVault(listenerId, fallbackDisplayName);
-    }
-    const parsed = JSON.parse(raw) as Partial<StoredLibraryVault>;
-    const base = defaultVault(listenerId, fallbackDisplayName);
-    return {
-      profile: {
-        listenerId,
-        displayName: sanitizeText(parsed.profile?.displayName, 60, base.profile.displayName),
-        handle: sanitizeText(parsed.profile?.handle, 40, base.profile.handle),
-        bio: sanitizeText(parsed.profile?.bio, 240, '')
-      },
-      favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
-      albums: Array.isArray(parsed.albums) ? parsed.albums : [],
-      followedArtists: Array.isArray(parsed.followedArtists) ? parsed.followedArtists : [],
-      recentHistory: Array.isArray(parsed.recentHistory) ? parsed.recentHistory : [],
-      searchHistory: Array.isArray(parsed.searchHistory) ? parsed.searchHistory : [],
-      totalPlays: Math.max(0, Number(parsed.totalPlays) || 0),
-      totalSeconds: Math.max(0, Number(parsed.totalSeconds) || 0),
-      updatedAt: Number(parsed.updatedAt) || Date.now()
-    };
-  } catch {
-    return defaultVault(listenerId, fallbackDisplayName);
-  }
-}
-
-function writeLibraryVault(listenerId: string, vault: StoredLibraryVault): void {
-  if (typeof window === 'undefined') return;
-  try {
-    vault.updatedAt = Date.now();
-    window.localStorage.setItem(`${LIBRARY_VAULT_PREFIX}${listenerId}`, JSON.stringify(vault));
-    broadcastSyncUpdate('library', listenerId);
-  } catch {
-    // Ignore storage quota errors
-  }
-}
-
-function readSharedAlbumsMap(): Record<string, UserPlaylist> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(SHARED_ALBUMS_VAULT_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, UserPlaylist>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeSharedAlbumsMap(map: Record<string, UserPlaylist>): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(SHARED_ALBUMS_VAULT_KEY, JSON.stringify(map));
-  } catch {
-    // Ignore storage quota errors
-  }
-}
-
-function syncAlbumToSharedRegistry(album: UserPlaylist): void {
-  if (!album.shareCode) return;
-  const map = readSharedAlbumsMap();
-  if (album.isPublic === false) {
-    delete map[album.shareCode.toUpperCase()];
-  } else {
-    map[album.shareCode.toUpperCase()] = album;
-  }
-  writeSharedAlbumsMap(map);
-}
-
-function removeAlbumFromSharedRegistry(shareCode?: string): void {
-  if (!shareCode) return;
-  const map = readSharedAlbumsMap();
-  delete map[shareCode.toUpperCase()];
-  writeSharedAlbumsMap(map);
-}
-
-function computeListeningStats(vault: StoredLibraryVault): ListeningStats {
+function recomputeStats(snap: CloudLibrarySnapshot): ListeningStats {
   const artistScores = new Map<string, number>();
   const genreScores = new Map<string, number>();
-
-  const bump = (artist: string, genre: string, weight: number) => {
-    const primaryArtist = String(artist || '')
-      .split(/\s*(?:,|feat\.?|ft\.?|&)\s*/i)[0]
-      .trim();
-    if (primaryArtist) {
-      artistScores.set(primaryArtist, (artistScores.get(primaryArtist) || 0) + weight);
-    }
-    const cleanGenre = sanitizeText(genre, 48, 'Pop');
-    if (cleanGenre) {
-      genreScores.set(cleanGenre, (genreScores.get(cleanGenre) || 0) + weight);
-    }
+  const bump = (artist: string, genre: string, w: number) => {
+    const primary = String(artist || '').split(/,|feat\.?|ft\.?|&/i)[0].trim();
+    if (primary) artistScores.set(primary, (artistScores.get(primary) || 0) + w);
+    if (genre) genreScores.set(genre, (genreScores.get(genre) || 0) + w);
   };
-
-  for (const fav of vault.favorites) {
-    bump(fav.artist, fav.genre, 3);
-  }
-  for (const played of vault.recentHistory) {
-    bump(played.artist, played.genre, 1);
-  }
-  for (const artist of vault.followedArtists) {
-    bump(artist.name, artist.genre, 4);
-  }
-
-  const topArtists = [...artistScores.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([name, score]) => ({ name, score }));
-
-  const topGenres = [...genreScores.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([name, score]) => ({ name, score }));
+  for (const f of snap.favorites) bump(f.artist, f.genre, 2);
+  for (const h of snap.recentHistory) bump(h.artist, h.genre, 1);
+  for (const a of snap.followedArtists) bump(a.name, a.genre, 3);
 
   return {
-    totalPlays: Math.max(vault.totalPlays, vault.recentHistory.length),
-    totalMinutes: Math.max(0, Math.round(vault.totalSeconds / 60)),
-    favoritesCount: vault.favorites.length,
-    albumsCount: vault.albums.length,
-    followedCount: vault.followedArtists.length,
-    topArtists,
-    topGenres
+    totalPlays: Math.max(snap.stats?.totalPlays || 0, snap.recentHistory.length),
+    totalMinutes: Math.max(snap.stats?.totalMinutes || 0, Math.round(snap.recentHistory.length * 3)),
+    favoritesCount: snap.favorites.length,
+    albumsCount: snap.albums.length,
+    followedCount: snap.followedArtists.length,
+    topArtists: [...artistScores.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, score]) => ({ name, score })),
+    topGenres: [...genreScores.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, score]) => ({ name, score }))
   };
 }
 
-function buildSnapshot(vault: StoredLibraryVault): CloudLibrarySnapshot {
-  const sortedFavorites = [...vault.favorites].sort((a, b) => {
-    const pinDiff = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
-    if (pinDiff !== 0) return pinDiff;
-    return (Number(b.favoritedAt) || 0) - (Number(a.favoritedAt) || 0);
-  });
+function readCachedLibrary(listenerId: string): CachedLibraryEntry | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(`${LIB_CACHE_PREFIX}${listenerId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CachedLibraryEntry>;
+    if (!parsed?.snapshot?.connected) return null;
+    return {
+      snapshot: parsed.snapshot,
+      cachedAt: Number(parsed.cachedAt) || 0,
+      remoteSyncedAt: Number(parsed.remoteSyncedAt) || 0
+    };
+  } catch {
+    return null;
+  }
+}
 
-  return {
+function writeCachedLibrary(
+  listenerId: string,
+  snapshot: CloudLibrarySnapshot,
+  remoteSyncedAt?: number
+): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const prev = readCachedLibrary(listenerId);
+    const entry: CachedLibraryEntry = {
+      snapshot,
+      cachedAt: Date.now(),
+      remoteSyncedAt: remoteSyncedAt ?? prev?.remoteSyncedAt ?? 0
+    };
+    window.localStorage.setItem(`${LIB_CACHE_PREFIX}${listenerId}`, JSON.stringify(entry));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function applyOptimisticMutation(
+  base: CloudLibrarySnapshot,
+  action: string,
+  payload: Record<string, unknown>
+): CloudLibrarySnapshot {
+  const next: CloudLibrarySnapshot = {
+    ...base,
     connected: true,
-    database: 'local-external-vault',
-    profile: vault.profile,
-    favorites: sortedFavorites,
-    albums: vault.albums,
-    followedArtists: vault.followedArtists,
-    recentHistory: vault.recentHistory.slice(0, 40),
-    searchHistory: vault.searchHistory.slice(0, 30),
-    stats: computeListeningStats(vault)
+    profile: { ...base.profile },
+    favorites: [...base.favorites],
+    albums: base.albums.map((a) => ({ ...a, tracks: [...a.tracks] })),
+    followedArtists: [...base.followedArtists],
+    recentHistory: [...base.recentHistory],
+    searchHistory: [...(base.searchHistory || [])],
+    stats: { ...base.stats }
   };
+
+  if (action === 'upsert_profile') {
+    const displayName = sanitizeText(payload.displayName, 60, next.profile.displayName || 'Listener');
+    const rawHandle = sanitizeText(payload.handle, 32, displayName)
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, '');
+    next.profile = {
+      ...next.profile,
+      displayName,
+      handle: `@${rawHandle || 'listener'}`,
+      bio: sanitizeText(payload.bio, 240, '')
+    };
+  } else if (action === 'toggle_favorite') {
+    const track = normalizeTrackPayload(payload.track);
+    if (track) {
+      const idx = next.favorites.findIndex((f) => f.id === track.id);
+      if (idx >= 0 && payload.forceState !== true) {
+        next.favorites.splice(idx, 1);
+      } else if (idx >= 0) {
+        next.favorites[idx] = { ...next.favorites[idx], ...track };
+      } else {
+        const fav: FavoriteTrack = { ...track, favoritedAt: Date.now() };
+        next.favorites.unshift(fav);
+      }
+    }
+  } else if (action === 'update_favorite_meta') {
+    const trackId = sanitizeId(payload.trackId, '', 120);
+    const target = next.favorites.find((f) => f.id === trackId);
+    if (target) {
+      if (typeof payload.note === 'string') target.note = sanitizeText(payload.note, 500, '');
+      if (typeof payload.pinned === 'boolean') target.pinned = payload.pinned;
+    }
+  } else if (action === 'create_album') {
+    const name = sanitizeText(payload.name, 80);
+    if (name) {
+      const initialTrack = payload.initialTrack ? normalizeTrackPayload(payload.initialTrack) : null;
+      const now = Date.now();
+      const created: UserPlaylist = {
+        id: `alb_${now}_${randomHex(3).toLowerCase()}`,
+        name,
+        description: sanitizeText(payload.description, 240, ''),
+        coverUrl: sanitizeText(payload.coverUrl, 1000, initialTrack?.coverUrl || ''),
+        shareCode: `ALB-${randomHex(3)}`,
+        isPublic: payload.isPublic !== false,
+        tracks: initialTrack ? [initialTrack] : [],
+        createdAt: now,
+        updatedAt: now
+      };
+      next.albums.unshift(created);
+    }
+  } else if (action === 'rename_album') {
+    const albumId = sanitizeId(payload.albumId, '', 96);
+    const name = sanitizeText(payload.name, 80);
+    const target = next.albums.find((a) => a.id === albumId);
+    if (target && name) {
+      target.name = name;
+      target.description = sanitizeText(payload.description, 240, target.description || '');
+      target.updatedAt = Date.now();
+    }
+  } else if (action === 'delete_album') {
+    const albumId = sanitizeId(payload.albumId, '', 96);
+    next.albums = next.albums.filter((a) => a.id !== albumId);
+  } else if (action === 'add_to_album') {
+    const albumId = sanitizeId(payload.albumId, '', 96);
+    const track = normalizeTrackPayload(payload.track);
+    const target = next.albums.find((a) => a.id === albumId);
+    if (target && track) {
+      if (!target.tracks.some((t) => t.id === track.id)) {
+        target.tracks.push(track);
+      }
+      if (!target.coverUrl && track.coverUrl) target.coverUrl = track.coverUrl;
+      target.updatedAt = Date.now();
+    }
+  } else if (action === 'remove_from_album') {
+    const albumId = sanitizeId(payload.albumId, '', 96);
+    const trackId = sanitizeId(payload.trackId, '', 120);
+    const target = next.albums.find((a) => a.id === albumId);
+    if (target && trackId) {
+      target.tracks = target.tracks.filter((t) => t.id !== trackId);
+      target.updatedAt = Date.now();
+    }
+  } else if (action === 'toggle_follow_artist') {
+    const artistName = sanitizeText(payload.artistName, 120);
+    const genre = sanitizeText(payload.genre, 64, 'Pop');
+    if (artistName) {
+      const idx = next.followedArtists.findIndex(
+        (a) => a.name.toLowerCase() === artistName.toLowerCase()
+      );
+      if (idx >= 0) {
+        next.followedArtists.splice(idx, 1);
+      } else {
+        const entry: FollowedArtist = { name: artistName, genre, followedAt: Date.now() };
+        next.followedArtists.unshift(entry);
+      }
+    }
+  } else if (action === 'record_play') {
+    const track = normalizeTrackPayload(payload.track);
+    if (track) {
+      next.recentHistory = [
+        { ...track, playedAt: Date.now() },
+        ...next.recentHistory.filter((item) => item.id !== track.id)
+      ].slice(0, 50);
+      next.stats.totalPlays = (next.stats.totalPlays || 0) + 1;
+      next.stats.totalMinutes =
+        (next.stats.totalMinutes || 0) + Math.max(1, Math.round((track.duration || 180) / 60));
+    }
+  } else if (action === 'clear_history') {
+    next.recentHistory = [];
+  } else if (action === 'record_search') {
+    const q = sanitizeText(payload.query, 120);
+    const rawMode = String(payload.mode || 'songs');
+    const mode: SearchHistoryEntry['mode'] =
+      rawMode === 'albums' || rawMode === 'playlists' || rawMode === 'lyrics' ? rawMode : 'songs';
+    const matchedTrack = normalizeTrackPayload(payload.track ?? payload.matchedTrack);
+    if (q || matchedTrack) {
+      const finalQuery = q || `${matchedTrack?.title || ''} ${matchedTrack?.artist || ''}`.trim().slice(0, 120);
+      next.searchHistory = (next.searchHistory || []).filter((item) => {
+        if (matchedTrack && item.matchedTrack?.id === matchedTrack.id) return false;
+        if (!matchedTrack && !item.matchedTrack && item.query.toLowerCase() === finalQuery.toLowerCase()) return false;
+        return true;
+      });
+      next.searchHistory.unshift({
+        id: `sh_${Date.now().toString(36)}_${randomHex(2).toLowerCase()}`,
+        query: finalQuery,
+        mode,
+        ...(matchedTrack ? { matchedTrack } : {}),
+        searchedAt: Date.now()
+      });
+      next.searchHistory = next.searchHistory.slice(0, 24);
+    }
+  } else if (action === 'delete_search_item') {
+    const itemId = sanitizeId(payload.id, '', 64);
+    const query = sanitizeText(payload.query, 120, '').toLowerCase();
+    next.searchHistory = (next.searchHistory || []).filter((item) => {
+      if (itemId && item.id === itemId) return false;
+      if (!itemId && query && item.query.toLowerCase() === query) return false;
+      return true;
+    });
+  } else if (action === 'clear_search_history') {
+    next.searchHistory = [];
+  }
+
+  next.stats = recomputeStats(next);
+  return next;
 }
 
-export async function fetchNeonLibrary(listenerId: string): Promise<CloudLibrarySnapshot | null> {
+// Coalesced background cloud flush queue (keeps Vercel Active CPU < 30s/month even for 100 heavy users)
+const pendingOpsMap = new Map<string, PendingCloudOp>();
+let flushTimer: number | null = null;
+let pagehideHookAttached = false;
+
+async function flushPendingCloudOps(useKeepalive = false): Promise<void> {
+  if (flushTimer !== null && typeof window !== 'undefined') {
+    window.clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  if (pendingOpsMap.size === 0) return;
+
+  const ops = Array.from(pendingOpsMap.values());
+  pendingOpsMap.clear();
+
+  for (const op of ops) {
+    try {
+      await fetch('/api/library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: useKeepalive,
+        body: JSON.stringify({
+          listenerId: op.listenerId,
+          displayName: op.displayName,
+          action: op.action,
+          lightweight: true,
+          ...op.payload
+        })
+      });
+    } catch {
+      // Optimistic local cache remains intact if network drops
+    }
+  }
+}
+
+function scheduleCloudOp(op: PendingCloudOp): void {
+  pendingOpsMap.set(op.key, op);
+  if (typeof window === 'undefined') return;
+  if (!pagehideHookAttached) {
+    pagehideHookAttached = true;
+    window.addEventListener('pagehide', () => {
+      void flushPendingCloudOps(true);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && pendingOpsMap.size > 0) {
+        void flushPendingCloudOps(true);
+      }
+    });
+  }
+  if (flushTimer !== null) {
+    window.clearTimeout(flushTimer);
+  }
+  flushTimer = window.setTimeout(() => {
+    flushTimer = null;
+    void flushPendingCloudOps(false);
+  }, CLOUD_FLUSH_DEBOUNCE_MS);
+}
+
+export async function fetchNeonLibrary(
+  listenerId: string,
+  forceRefresh = false
+): Promise<CloudLibrarySnapshot | null> {
   const cleanId = sanitizeId(listenerId, '', 96);
   if (!cleanId) return null;
-  const identity = getOrCreateListenerIdentity();
-  const displayName = cleanId === identity.listenerId ? identity.displayName : undefined;
-  const vault = readLibraryVault(cleanId, displayName);
-  return buildSnapshot(vault);
+
+  const cached = readCachedLibrary(cleanId);
+  if (!forceRefresh && cached && cached.remoteSyncedAt > 0 && Date.now() - cached.remoteSyncedAt < LIB_CACHE_TTL_MS) {
+    return cached.snapshot;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+    const res = await fetch(`/api/library?listenerId=${encodeURIComponent(cleanId)}`, {
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    if (!res.ok) return cached?.snapshot || null;
+    const data = (await res.json()) as CloudLibrarySnapshot;
+    if (data && data.connected) {
+      // Preserve locally tracked play/search history alongside authoritative Neon favorites & albums
+      const merged: CloudLibrarySnapshot = cached
+        ? {
+            ...data,
+            recentHistory:
+              data.recentHistory.length > 0 ? data.recentHistory : cached.snapshot.recentHistory,
+            searchHistory:
+              (data.searchHistory?.length || 0) > 0
+                ? data.searchHistory
+                : cached.snapshot.searchHistory
+          }
+        : data;
+      writeCachedLibrary(cleanId, merged, Date.now());
+      return merged;
+    }
+    return cached?.snapshot || null;
+  } catch {
+    return cached?.snapshot || null;
+  }
 }
 
 let mutationChain: Promise<unknown> = Promise.resolve();
@@ -367,227 +528,66 @@ export function mutateNeonLibrary(
   payload: Record<string, unknown>
 ): Promise<CloudLibrarySnapshot | null> {
   const executeMutation = async (): Promise<CloudLibrarySnapshot | null> => {
-    try {
-      const { listenerId, displayName } = getOrCreateListenerIdentity();
-      const cleanAction = sanitizeText(action, 48);
-      if (!listenerId || !cleanAction) return null;
+    const { listenerId, displayName } = getOrCreateListenerIdentity();
+    const cached = readCachedLibrary(listenerId);
+    const base = cached?.snapshot || buildEmptySnapshot(listenerId, displayName);
+    const optimistic = applyOptimisticMutation(base, action, payload);
+    writeCachedLibrary(listenerId, optimistic);
 
-      const vault = readLibraryVault(listenerId, displayName);
-
-      if (cleanAction === 'upsert_profile') {
-        const nextName = sanitizeText(payload.displayName, 60, vault.profile.displayName || 'Listener');
-        const rawHandle = sanitizeText(payload.handle, 32, nextName)
-          .toLowerCase()
-          .replace(/[^a-z0-9_]+/g, '');
-        vault.profile = {
-          listenerId,
-          displayName: nextName,
-          handle: `@${rawHandle || 'listener'}`,
-          bio: sanitizeText(payload.bio, 240, '')
-        };
-      } else if (cleanAction === 'toggle_favorite') {
-        const track = normalizeTrackPayload(payload.track);
-        if (track) {
-          const existingIdx = vault.favorites.findIndex((item) => item.id === track.id);
-          if (existingIdx >= 0 && payload.forceState !== true) {
-            vault.favorites.splice(existingIdx, 1);
-          } else if (existingIdx >= 0) {
-            vault.favorites[existingIdx] = {
-              ...vault.favorites[existingIdx],
-              ...track
-            };
-          } else {
-            vault.favorites.unshift({
-              ...track,
-              favoritedAt: Date.now()
-            });
-          }
-        }
-      } else if (cleanAction === 'update_favorite_meta') {
-        const trackId = sanitizeId(payload.trackId, '', 120);
-        const target = vault.favorites.find((item) => item.id === trackId);
-        if (target) {
-          if (typeof payload.note === 'string') {
-            target.note = sanitizeText(payload.note, 500, '');
-          }
-          if (typeof payload.pinned === 'boolean') {
-            target.pinned = payload.pinned;
-          }
-        }
-      } else if (cleanAction === 'create_album') {
-        const name = sanitizeText(payload.name, 80);
-        if (name) {
-          const description = sanitizeText(payload.description, 240, '');
-          const isPublic = payload.isPublic !== false;
-          const initialTrack = payload.initialTrack
-            ? normalizeTrackPayload(payload.initialTrack)
-            : null;
-          const coverUrl = sanitizeText(payload.coverUrl, 1000, initialTrack?.coverUrl || '');
-          const now = Date.now();
-          const newAlbum: UserPlaylist = {
-            id: `alb_${now}_${randomCodeHex(3).toLowerCase()}`,
-            name,
-            description,
-            coverUrl,
-            shareCode: makeShareCode('ALB'),
-            isPublic,
-            tracks: initialTrack ? [initialTrack] : [],
-            createdAt: now,
-            updatedAt: now
-          };
-          vault.albums.unshift(newAlbum);
-          syncAlbumToSharedRegistry(newAlbum);
-        }
-      } else if (cleanAction === 'rename_album') {
-        const albumId = sanitizeId(payload.albumId, '', 96);
-        const name = sanitizeText(payload.name, 80);
-        const target = vault.albums.find((alb) => alb.id === albumId);
-        if (target && name) {
-          target.name = name;
-          target.description = sanitizeText(payload.description, 240, target.description || '');
-          target.updatedAt = Date.now();
-          syncAlbumToSharedRegistry(target);
-        }
-      } else if (cleanAction === 'delete_album') {
-        const albumId = sanitizeId(payload.albumId, '', 96);
-        const idx = vault.albums.findIndex((alb) => alb.id === albumId);
-        if (idx >= 0) {
-          const [removed] = vault.albums.splice(idx, 1);
-          removeAlbumFromSharedRegistry(removed?.shareCode);
-        }
-      } else if (cleanAction === 'add_to_album') {
-        const albumId = sanitizeId(payload.albumId, '', 96);
-        const track = normalizeTrackPayload(payload.track);
-        const target = vault.albums.find((alb) => alb.id === albumId);
-        if (target && track) {
-          if (!target.tracks.some((item) => item.id === track.id)) {
-            target.tracks.push(track);
-          }
-          if (!target.coverUrl && track.coverUrl) {
-            target.coverUrl = track.coverUrl;
-          }
-          target.updatedAt = Date.now();
-          syncAlbumToSharedRegistry(target);
-        }
-      } else if (cleanAction === 'remove_from_album') {
-        const albumId = sanitizeId(payload.albumId, '', 96);
-        const trackId = sanitizeId(payload.trackId, '', 120);
-        const target = vault.albums.find((alb) => alb.id === albumId);
-        if (target && trackId) {
-          target.tracks = target.tracks.filter((item) => item.id !== trackId);
-          target.updatedAt = Date.now();
-          syncAlbumToSharedRegistry(target);
-        }
-      } else if (cleanAction === 'toggle_follow_artist') {
-        const artistName = sanitizeText(payload.artistName, 120);
-        const genre = sanitizeText(payload.genre, 64, 'Pop');
-        if (artistName) {
-          const idx = vault.followedArtists.findIndex(
-            (item) => item.name.toLowerCase() === artistName.toLowerCase()
-          );
-          if (idx >= 0) {
-            vault.followedArtists.splice(idx, 1);
-          } else {
-            vault.followedArtists.unshift({
-              name: artistName,
-              genre,
-              followedAt: Date.now()
-            });
-          }
-        }
-      } else if (cleanAction === 'record_play') {
-        const track = normalizeTrackPayload(payload.track);
-        if (track) {
-          vault.recentHistory = [
-            { ...track, playedAt: Date.now() },
-            ...vault.recentHistory.filter((item) => item.id !== track.id)
-          ].slice(0, 60);
-          vault.totalPlays += 1;
-          vault.totalSeconds += Math.max(30, track.duration || 180);
-        }
-      } else if (cleanAction === 'clear_history') {
-        vault.recentHistory = [];
-      } else if (cleanAction === 'record_search') {
-        const q = sanitizeText(payload.query, 120);
-        const rawMode = String(payload.mode || 'songs');
-        const mode: SearchHistoryEntry['mode'] =
-          rawMode === 'albums' || rawMode === 'playlists' || rawMode === 'lyrics'
-            ? rawMode
-            : 'songs';
-        const matchedTrack = normalizeTrackPayload(payload.track ?? payload.matchedTrack);
-        if (q || matchedTrack) {
-          const finalQuery = q || `${matchedTrack?.title || ''} ${matchedTrack?.artist || ''}`.trim().slice(0, 120);
-          vault.searchHistory = vault.searchHistory.filter((entry) => {
-            if (matchedTrack && entry.matchedTrack?.id === matchedTrack.id) return false;
-            if (!matchedTrack && !entry.matchedTrack && entry.query.toLowerCase() === finalQuery.toLowerCase() && entry.mode === mode) {
-              return false;
-            }
-            return true;
-          });
-          vault.searchHistory.unshift({
-            id: `sh_${Date.now().toString(36)}_${randomCodeHex(2).toLowerCase()}`,
-            query: finalQuery,
-            mode,
-            ...(matchedTrack ? { matchedTrack } : {}),
-            searchedAt: Date.now()
-          });
-          vault.searchHistory = vault.searchHistory.slice(0, 30);
-        }
-      } else if (cleanAction === 'delete_search_item') {
-        const itemId = sanitizeId(payload.id, '', 64);
-        const query = sanitizeText(payload.query, 120, '').toLowerCase();
-        vault.searchHistory = vault.searchHistory.filter((entry) => {
-          if (itemId && entry.id === itemId) return false;
-          if (!itemId && query && entry.query.toLowerCase() === query) return false;
-          return true;
-        });
-      } else if (cleanAction === 'clear_search_history') {
-        vault.searchHistory = [];
-      } else if (cleanAction === 'sync_local_state') {
-        const localFavs = Array.isArray(payload.favorites) ? payload.favorites.slice(0, 80) : [];
-        for (const rawTrack of localFavs) {
-          const track = normalizeTrackPayload(rawTrack);
-          if (!track) continue;
-          if (!vault.favorites.some((item) => item.id === track.id)) {
-            vault.favorites.push({
-              ...track,
-              favoritedAt: Date.now()
-            });
-          }
-        }
-        const localAlbums = Array.isArray(payload.albums) ? payload.albums.slice(0, 30) : [];
-        for (const rawAlb of localAlbums) {
-          if (!rawAlb || typeof rawAlb !== 'object') continue;
-          const alb = rawAlb as Partial<UserPlaylist>;
-          const albId = sanitizeId(alb.id, '', 96);
-          const albName = sanitizeText(alb.name, 80);
-          if (!albId || !albName) continue;
-          if (vault.albums.some((existing) => existing.id === albId)) continue;
-          const albTracks = (Array.isArray(alb.tracks) ? alb.tracks : [])
-            .map(normalizeTrackPayload)
-            .filter((t): t is Track => Boolean(t))
-            .slice(0, 80);
-          const mergedAlbum: UserPlaylist = {
-            id: albId,
-            name: albName,
-            description: sanitizeText(alb.description, 240, ''),
-            coverUrl: sanitizeText(alb.coverUrl, 1000, albTracks[0]?.coverUrl || ''),
-            shareCode: sanitizeId(alb.shareCode, '', 32) || makeShareCode('ALB'),
-            isPublic: alb.isPublic !== false,
-            tracks: albTracks,
-            createdAt: Number(alb.createdAt) || Date.now(),
-            updatedAt: Date.now()
-          };
-          vault.albums.push(mergedAlbum);
-          syncAlbumToSharedRegistry(mergedAlbum);
-        }
-      }
-
-      writeLibraryVault(listenerId, vault);
-      return buildSnapshot(vault);
-    } catch {
-      return null;
+    // High-frequency ephemeral events stay 100% browser-local (0 ms Vercel compute)
+    if (LOCAL_ONLY_ACTIONS.has(action)) {
+      return optimistic;
     }
+
+    // Immediate cloud sync for structural album creation (needs server-assigned album ID/shareCode)
+    if (action === 'create_album' || action === 'sync_local_state') {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch('/api/library', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            listenerId,
+            displayName,
+            action,
+            ...payload
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timer);
+        if (res.ok) {
+          const data = (await res.json()) as CloudLibrarySnapshot;
+          if (data && data.connected) {
+            writeCachedLibrary(listenerId, data, Date.now());
+            return data;
+          }
+        }
+      } catch {
+        // Fall back to optimistic snapshot
+      }
+      return optimistic;
+    }
+
+    // Coalesce & debounce lightweight persistent Neon mutations (favorites, album edits, follows, profile)
+    const opKey =
+      action === 'toggle_favorite'
+        ? `${action}:${String((payload.track as Track | undefined)?.id || '')}`
+        : action === 'update_favorite_meta'
+          ? `${action}:${String(payload.trackId || '')}`
+          : action === 'add_to_album' || action === 'remove_from_album'
+            ? `${action}:${String(payload.albumId || '')}:${String((payload.track as Track | undefined)?.id || payload.trackId || '')}`
+            : `${action}:${String(payload.albumId || payload.artistName || 'profile')}`;
+
+    scheduleCloudOp({
+      key: opKey,
+      listenerId,
+      displayName,
+      action,
+      payload
+    });
+
+    return optimistic;
   };
 
   const next = mutationChain.then(executeMutation, executeMutation);
@@ -595,152 +595,57 @@ export function mutateNeonLibrary(
   return next;
 }
 
-// ============================================================================
-// Blend Rooms & Shared Albums (100% Zero-Vercel Local Vault)
-// ============================================================================
+export async function fetchListenerBlends(
+  listenerId: string,
+  forceRefresh = false
+): Promise<BlendRoom[]> {
+  const cleanId = sanitizeId(listenerId, '', 96);
+  if (!cleanId) return [];
 
-interface TasteSummary {
-  name: string;
-  artists: string[];
-  genres: string[];
-  avgBpm: number;
-  tracks: Track[];
-}
-
-function primaryArtistLower(artist: string): string {
-  return String(artist || '')
-    .split(/\s*(?:,|feat\.?|ft\.?|&| x )\s*/i)[0]
-    .trim()
-    .toLowerCase();
-}
-
-function buildTasteSummary(tracks: Track[], fallbackName = 'Listener'): TasteSummary {
-  const safeTracks = (Array.isArray(tracks) ? tracks : [])
-    .map(normalizeTrackPayload)
-    .filter((t): t is Track => Boolean(t))
-    .slice(0, 40);
-
-  const artistMap = new Map<string, number>();
-  const genreMap = new Map<string, number>();
-  let bpmSum = 0;
-
-  for (const t of safeTracks) {
-    const artist = String(t.artist || '')
-      .split(/,|feat\.?|ft\.?|&/i)[0]
-      .trim();
-    if (artist) artistMap.set(artist, (artistMap.get(artist) || 0) + 1);
-    const genre = t.genre || 'Pop';
-    genreMap.set(genre, (genreMap.get(genre) || 0) + 1);
-    bpmSum += Number(t.bpm) || 120;
-  }
-
-  return {
-    name: sanitizeText(fallbackName, 60, 'Listener'),
-    artists: [...artistMap.keys()],
-    genres: [...genreMap.keys()],
-    avgBpm: safeTracks.length > 0 ? Math.round(bpmSum / safeTracks.length) : 118,
-    tracks: safeTracks
-  };
-}
-
-function computeBlendResult(profileA: TasteSummary, profileB: TasteSummary): {
-  matchScore: number;
-  sharedArtists: string[];
-  sharedGenres: string[];
-  blendedTracks: Track[];
-} {
-  const tracksA = profileA.tracks || [];
-  const tracksB = profileB.tracks || [];
-
-  const artistSetA = new Set(profileA.artists.map((a) => a.toLowerCase()));
-  const artistMapB = new Map(profileB.artists.map((a) => [a.toLowerCase(), a]));
-  const sharedArtists: string[] = [];
-  for (const [low, display] of artistMapB.entries()) {
-    if (artistSetA.has(low)) sharedArtists.push(display);
-  }
-
-  const genreSetA = new Set(profileA.genres.map((g) => g.toLowerCase()));
-  const genreMapB = new Map(profileB.genres.map((g) => [g.toLowerCase(), g]));
-  const sharedGenres: string[] = [];
-  for (const [low, display] of genreMapB.entries()) {
-    if (genreSetA.has(low)) sharedGenres.push(display);
-  }
-
-  const bpmDelta = Math.abs((profileA.avgBpm || 118) - (profileB.avgBpm || 118));
-  const bpmScore = Math.max(0, 28 - bpmDelta * 0.6);
-  const unionArtists = Math.max(1, new Set([...artistSetA, ...artistMapB.keys()]).size);
-  const artistScore = Math.min(40, (sharedArtists.length / unionArtists) * 110);
-  const unionGenres = Math.max(1, new Set([...genreSetA, ...genreMapB.keys()]).size);
-  const genreScore = Math.min(32, (sharedGenres.length / unionGenres) * 65);
-
-  const matchScore = Math.max(
-    46,
-    Math.min(99, Math.round(32 + artistScore + genreScore + bpmScore))
-  );
-
-  const seenKeys = new Set<string>();
-  const blended: Track[] = [];
-  const maxLen = Math.max(tracksA.length, tracksB.length);
-
-  for (let i = 0; i < maxLen && blended.length < 36; i += 1) {
-    const pair: (Track | null)[] = [
-      tracksA[i] ? { ...tracksA[i], sourceTag: `Blend · ${profileA.name}` } : null,
-      tracksB[i] ? { ...tracksB[i], sourceTag: `Blend · ${profileB.name}` } : null
-    ];
-    for (const item of pair) {
-      if (!item) continue;
-      const key = `${item.title.toLowerCase()}::${primaryArtistLower(item.artist)}`;
-      if (seenKeys.has(key)) continue;
-      seenKeys.add(key);
-      blended.push(item);
+  if (!forceRefresh && typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(`${BLENDS_CACHE_PREFIX}${cleanId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { blends?: BlendRoom[]; cachedAt?: number };
+        if (Array.isArray(parsed.blends) && Date.now() - (parsed.cachedAt || 0) < BLENDS_CACHE_TTL_MS) {
+          return parsed.blends;
+        }
+      }
+    } catch {
+      // Ignore cache error
     }
   }
 
-  return {
-    matchScore,
-    sharedArtists: sharedArtists.slice(0, 8),
-    sharedGenres: sharedGenres.slice(0, 8),
-    blendedTracks: blended
-  };
-}
-
-function readBlendsVault(): BlendRoom[] {
-  if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(BLENDS_VAULT_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as BlendRoom[]) : [];
+    const res = await fetch(`/api/blend?listenerId=${encodeURIComponent(cleanId)}`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as { blends?: BlendRoom[] };
+    const list = Array.isArray(data.blends) ? data.blends : [];
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(
+          `${BLENDS_CACHE_PREFIX}${cleanId}`,
+          JSON.stringify({ blends: list, cachedAt: Date.now() })
+        );
+      } catch {
+        // Ignore quota error
+      }
+    }
+    return list;
   } catch {
     return [];
   }
 }
 
-function writeBlendsVault(blends: BlendRoom[], listenerId: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(BLENDS_VAULT_KEY, JSON.stringify(blends.slice(0, 60)));
-    broadcastSyncUpdate('blends', listenerId);
-  } catch {
-    // Ignore storage quota errors
-  }
-}
-
-export async function fetchListenerBlends(listenerId: string): Promise<BlendRoom[]> {
-  const cleanId = sanitizeId(listenerId, '', 96);
-  const all = readBlendsVault();
-  if (!cleanId) return all.slice(0, 12);
-  return all
-    .filter((room) => room.creatorId === cleanId || room.partnerId === cleanId)
-    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-    .slice(0, 25);
-}
-
 export async function fetchBlendByCode(code: string): Promise<BlendRoom | null> {
-  const cleanCode = sanitizeId(code, '', 32).toUpperCase();
-  if (!cleanCode) return null;
-  const all = readBlendsVault();
-  return all.find((room) => room.blendCode.toUpperCase() === cleanCode) || null;
+  try {
+    const res = await fetch(`/api/blend?code=${encodeURIComponent(code.trim().toUpperCase())}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { blend?: BlendRoom };
+    return data.blend || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function createBlendInNeon(params: {
@@ -752,79 +657,22 @@ export async function createBlendInNeon(params: {
 }): Promise<BlendRoom | null> {
   try {
     const { listenerId, displayName } = getOrCreateListenerIdentity();
-    const creatorSummary = buildTasteSummary(params.tracks, displayName);
-    const partnerTracks = Array.isArray(params.partnerTracks) ? params.partnerTracks : [];
-    const hasPartner = partnerTracks.length > 0 && Boolean(sanitizeText(params.partnerName, 60));
-    const blendCode = makeBlendCode();
-    const now = Date.now();
-
-    let room: BlendRoom;
-    if (hasPartner) {
-      const partnerName = sanitizeText(params.partnerName, 60, 'Curated Mix');
-      const partnerSummary = buildTasteSummary(partnerTracks, partnerName);
-      const computed = computeBlendResult(creatorSummary, partnerSummary);
-      const title = sanitizeText(
-        params.title,
-        96,
-        `${creatorSummary.name} + ${partnerSummary.name}`
-      );
-      room = {
-        blendCode,
-        creatorId: listenerId,
-        creatorName: creatorSummary.name,
-        partnerId: sanitizeId(params.partnerId, 'persona', 96),
-        partnerName: partnerSummary.name,
-        title,
-        matchScore: computed.matchScore,
-        sharedArtists: computed.sharedArtists,
-        sharedGenres: computed.sharedGenres,
-        blendedTracks: computed.blendedTracks,
-        creatorProfile: {
-          name: creatorSummary.name,
-          artists: creatorSummary.artists,
-          genres: creatorSummary.genres,
-          avgBpm: creatorSummary.avgBpm
-        },
-        partnerProfile: {
-          name: partnerSummary.name,
-          artists: partnerSummary.artists,
-          genres: partnerSummary.genres,
-          avgBpm: partnerSummary.avgBpm
-        },
-        status: 'matched',
-        createdAt: now,
-        updatedAt: now
-      };
-    } else {
-      const title = sanitizeText(params.title, 96, `${creatorSummary.name}'s Blend`);
-      room = {
-        blendCode,
-        creatorId: listenerId,
-        creatorName: creatorSummary.name,
-        partnerId: null,
-        partnerName: null,
-        title,
-        matchScore: 0,
-        sharedArtists: creatorSummary.artists.slice(0, 6),
-        sharedGenres: creatorSummary.genres.slice(0, 6),
-        blendedTracks: creatorSummary.tracks.slice(0, 20),
-        creatorProfile: {
-          name: creatorSummary.name,
-          artists: creatorSummary.artists,
-          genres: creatorSummary.genres,
-          avgBpm: creatorSummary.avgBpm
-        },
-        partnerProfile: null,
-        status: 'open',
-        createdAt: now,
-        updatedAt: now
-      };
+    const res = await fetch('/api/blend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create_blend',
+        listenerId,
+        displayName,
+        ...params
+      })
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { blend?: BlendRoom };
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(`${BLENDS_CACHE_PREFIX}${listenerId}`);
     }
-
-    const all = readBlendsVault();
-    all.unshift(room);
-    writeBlendsVault(all, listenerId);
-    return room;
+    return data.blend || null;
   } catch {
     return null;
   }
@@ -833,44 +681,23 @@ export async function createBlendInNeon(params: {
 export async function joinBlendInNeon(blendCode: string, tracks: Track[]): Promise<BlendRoom | null> {
   try {
     const { listenerId, displayName } = getOrCreateListenerIdentity();
-    const cleanCode = sanitizeId(blendCode, '', 32).toUpperCase();
-    const all = readBlendsVault();
-    const idx = all.findIndex((room) => room.blendCode.toUpperCase() === cleanCode);
-    if (idx < 0) return null;
-
-    const existing = all[idx];
-    const creatorSummary: TasteSummary = {
-      name: existing.creatorName || 'Creator',
-      artists: existing.creatorProfile?.artists || [],
-      genres: existing.creatorProfile?.genres || [],
-      avgBpm: existing.creatorProfile?.avgBpm || 118,
-      tracks: existing.blendedTracks || []
-    };
-    const partnerSummary = buildTasteSummary(tracks, displayName);
-    const computed = computeBlendResult(creatorSummary, partnerSummary);
-
-    const updated: BlendRoom = {
-      ...existing,
-      partnerId: listenerId,
-      partnerName: partnerSummary.name,
-      title: `${creatorSummary.name} + ${partnerSummary.name}`,
-      matchScore: computed.matchScore,
-      sharedArtists: computed.sharedArtists,
-      sharedGenres: computed.sharedGenres,
-      blendedTracks: computed.blendedTracks,
-      partnerProfile: {
-        name: partnerSummary.name,
-        artists: partnerSummary.artists,
-        genres: partnerSummary.genres,
-        avgBpm: partnerSummary.avgBpm
-      },
-      status: 'matched',
-      updatedAt: Date.now()
-    };
-
-    all[idx] = updated;
-    writeBlendsVault(all, listenerId);
-    return updated;
+    const res = await fetch('/api/blend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'join_blend',
+        listenerId,
+        displayName,
+        blendCode: blendCode.trim().toUpperCase(),
+        tracks
+      })
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { blend?: BlendRoom };
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(`${BLENDS_CACHE_PREFIX}${listenerId}`);
+    }
+    return data.blend || null;
   } catch {
     return null;
   }
@@ -879,46 +706,63 @@ export async function joinBlendInNeon(blendCode: string, tracks: Track[]): Promi
 export async function deleteBlendInNeon(blendCode: string): Promise<BlendRoom[] | null> {
   try {
     const { listenerId } = getOrCreateListenerIdentity();
-    const cleanCode = sanitizeId(blendCode, '', 32).toUpperCase();
-    const all = readBlendsVault().filter(
-      (room) => room.blendCode.toUpperCase() !== cleanCode
-    );
-    writeBlendsVault(all, listenerId);
-    return all
-      .filter((room) => room.creatorId === listenerId || room.partnerId === listenerId)
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    const res = await fetch('/api/blend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'delete_blend',
+        listenerId,
+        blendCode
+      })
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { blends?: BlendRoom[] };
+    const list = Array.isArray(data.blends) ? data.blends : [];
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(
+        `${BLENDS_CACHE_PREFIX}${listenerId}`,
+        JSON.stringify({ blends: list, cachedAt: Date.now() })
+      );
+    }
+    return list;
   } catch {
     return null;
   }
 }
 
 export async function fetchSharedAlbum(shareCode: string): Promise<UserPlaylist | null> {
-  const cleanCode = sanitizeId(shareCode, '', 32).toUpperCase();
-  if (!cleanCode) return null;
-  const map = readSharedAlbumsMap();
-  return map[cleanCode] || null;
+  try {
+    const res = await fetch(`/api/blend?albumCode=${encodeURIComponent(shareCode.trim().toUpperCase())}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { album?: UserPlaylist };
+    return data.album || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function cloneSharedAlbumToNeon(
   shareCode: string
 ): Promise<CloudLibrarySnapshot | null> {
   try {
-    const shared = await fetchSharedAlbum(shareCode);
-    if (!shared) return null;
     const { listenerId, displayName } = getOrCreateListenerIdentity();
-    const vault = readLibraryVault(listenerId, displayName);
-    const now = Date.now();
-    const clonedAlbum: UserPlaylist = {
-      ...shared,
-      id: `alb_${now}_${randomCodeHex(3).toLowerCase()}`,
-      shareCode: makeShareCode('ALB'),
-      createdAt: now,
-      updatedAt: now
-    };
-    vault.albums.unshift(clonedAlbum);
-    syncAlbumToSharedRegistry(clonedAlbum);
-    writeLibraryVault(listenerId, vault);
-    return buildSnapshot(vault);
+    const res = await fetch('/api/blend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'clone_shared_album',
+        listenerId,
+        displayName,
+        shareCode: shareCode.trim().toUpperCase()
+      })
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { snapshot?: CloudLibrarySnapshot };
+    if (data.snapshot && data.snapshot.connected) {
+      writeCachedLibrary(listenerId, data.snapshot, Date.now());
+      return data.snapshot;
+    }
+    return null;
   } catch {
     return null;
   }

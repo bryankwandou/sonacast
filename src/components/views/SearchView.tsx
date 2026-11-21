@@ -487,6 +487,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             </div>
             <MoodStrip
               activeMood={activeMood}
+              compact
               testIdPrefix="search-mood-pill"
               onSelectMood={(mood) => {
                 onSelectMood?.(mood);
@@ -503,36 +504,26 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </div>
       </div>
 
-      {/* Sound Search History */}
-      {searchHistory.length > 0 && (
+      {/* Compact Single-Line Recent Searches (never wraps into multi-row keyword clutter) */}
+      {searchHistory.length > 0 && searchMode !== 'lyrics' && (
         <div
           data-testid="search-history-section"
-          className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3"
+          className="px-3.5 py-2.5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center gap-2.5 overflow-hidden"
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
-              <Clock size={14} className="text-[var(--accent-text)]" />
-              <span>{t.recentSearches} ({searchHistory.length})</span>
-            </div>
-            {onClearSearchHistory && (
-              <button
-                type="button"
-                data-testid="search-history-clear"
-                onClick={onClearSearchHistory}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-[var(--text-dim)] hover:text-rose-400 hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
-              >
-                <Trash2 size={11} />
-                <span>{t.clearSearchHistory}</span>
-              </button>
-            )}
+          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--text-dim)] shrink-0">
+            <Clock size={13} className="text-[var(--accent-text)]" />
+            <span className="hidden sm:inline">{t.recentSearches}</span>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {searchHistory.slice(0, 14).map((item) => (
+          <div
+            className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0"
+            style={{ scrollbarWidth: 'none' }}
+          >
+            {searchHistory.slice(0, 6).map((item) => (
               <div
                 key={item.id}
                 data-testid="search-history-chip"
-                className="group inline-flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent-emerald)] transition-colors max-w-full"
+                className="group inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent-emerald)] transition-colors shrink-0"
               >
                 <button
                   type="button"
@@ -550,7 +541,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     setActiveArtistFilter('');
                     executeSearch(item.query, nextMode);
                   }}
-                  className="inline-flex items-center gap-2 min-w-0 text-left cursor-pointer"
+                  className="inline-flex items-center gap-1.5 min-w-0 text-left cursor-pointer"
                 >
                   {item.matchedTrack?.coverUrl ? (
                     <img
@@ -559,19 +550,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       onError={(e) => {
                         e.currentTarget.style.display = 'none';
                       }}
-                      className="w-5 h-5 rounded-full object-cover shrink-0"
+                      className="w-4 h-4 rounded-full object-cover shrink-0"
                     />
                   ) : (
-                    <Clock size={12} className="text-[var(--text-dim)] shrink-0" />
+                    <Clock size={11} className="text-[var(--text-dim)] shrink-0" />
                   )}
-                  <span className="text-xs font-semibold text-[var(--text-primary)] truncate max-w-[180px]">
+                  <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate max-w-[130px]">
                     {item.matchedTrack?.title || item.query}
                   </span>
-                  {item.matchedTrack?.artist && (
-                    <span className="text-[10px] text-[var(--text-dim)] truncate max-w-[110px] hidden sm:inline">
-                      &middot; {item.matchedTrack.artist}
-                    </span>
-                  )}
                 </button>
                 {onDeleteSearchHistory && (
                   <button
@@ -584,12 +570,24 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     }}
                     className="p-0.5 rounded-full text-[var(--text-dim)] hover:text-rose-400 cursor-pointer shrink-0"
                   >
-                    <X size={11} />
+                    <X size={10} />
                   </button>
                 )}
               </div>
             ))}
           </div>
+
+          {onClearSearchHistory && (
+            <button
+              type="button"
+              data-testid="search-history-clear"
+              onClick={onClearSearchHistory}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold text-[var(--text-dim)] hover:text-rose-400 hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer shrink-0"
+            >
+              <Trash2 size={11} />
+              <span className="hidden sm:inline">{t.clearSearchHistory}</span>
+            </button>
+          )}
         </div>
       )}
 
