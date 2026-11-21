@@ -21,32 +21,56 @@ interface RadioViewProps {
 
 const RADIO_CATEGORIES = ['All', 'Indonesia', 'Global', 'Focus', 'Dance', 'Talk'] as const;
 
-const REGIONAL_MINORITY_PRESETS: {
+interface MinorityRadioPreset {
   id: string;
+  group: 'nusantara' | 'global';
   label: string;
   query: string;
   language?: string;
   tag?: string;
-}[] = [
-  { id: 'indigenous', label: 'Indigenous & Native', query: 'indigenous', tag: 'indigenous' },
-  { id: 'javanese', label: 'Jawa / Javanese', query: 'javanese', language: 'javanese' },
-  { id: 'sunda', label: 'Sunda & Jabar', query: 'sunda' },
-  { id: 'minang', label: 'Minang / Padang', query: 'minang' },
-  { id: 'batak', label: 'Batak & Sumut', query: 'batak' },
-  { id: 'dayak', label: 'Dayak / Kalimantan', query: 'dayak' },
-  { id: 'bugis', label: 'Bugis / Makassar', query: 'makassar' },
-  { id: 'bali', label: 'Bali / Denpasar', query: 'bali' },
-  { id: 'papua', label: 'Papua & Maluku', query: 'papua' },
-  { id: 'aceh', label: 'Aceh', query: 'aceh' },
-  { id: 'maori', label: 'Māori & Pacific', query: 'maori', language: 'maori' },
-  { id: 'welsh', label: 'Welsh / Cymraeg', query: 'welsh', language: 'welsh' },
-  { id: 'basque', label: 'Basque / Euskara', query: 'basque', language: 'basque' },
-  { id: 'catalan', label: 'Catalan / Català', query: 'catalan', language: 'catalan' },
-  { id: 'kurdish', label: 'Kurdish', query: 'kurdish', language: 'kurdish' },
-  { id: 'hawaiian', label: 'Hawaiian', query: 'hawaiian', language: 'hawaiian' },
-  { id: 'gaelic', label: 'Scottish Gaelic', query: 'scottish gaelic', language: 'scottish gaelic' },
-  { id: 'breton', label: 'Breton / Brezhoneg', query: 'breton', language: 'breton' },
-  { id: 'community', label: 'Community & Folk', query: 'community', tag: 'community' }
+}
+
+const REGIONAL_MINORITY_PRESETS: MinorityRadioPreset[] = [
+  // Nusantara & Indonesian Regional/Minority Communities
+  { id: 'papua', group: 'nusantara', label: 'Papua & Jayapura', query: 'papua' },
+  { id: 'aceh', group: 'nusantara', label: 'Aceh', query: 'aceh' },
+  { id: 'sunda', group: 'nusantara', label: 'Sunda & Jabar', query: 'sunda' },
+  { id: 'javanese', group: 'nusantara', label: 'Jawa / Javanese', query: 'javanese', language: 'javanese' },
+  { id: 'minang', group: 'nusantara', label: 'Minang / Padang', query: 'minang' },
+  { id: 'batak', group: 'nusantara', label: 'Batak & Medan', query: 'batak' },
+  { id: 'dayak', group: 'nusantara', label: 'Dayak / Kalimantan', query: 'dayak' },
+  { id: 'banjar', group: 'nusantara', label: 'Banjar / Kalsel', query: 'banjar' },
+  { id: 'bugis', group: 'nusantara', label: 'Bugis / Makassar', query: 'makassar' },
+  { id: 'manado', group: 'nusantara', label: 'Manado / Minahasa', query: 'manado' },
+  { id: 'maluku', group: 'nusantara', label: 'Maluku & Ambon', query: 'ambon' },
+  { id: 'ntt', group: 'nusantara', label: 'NTT / Kupang / Alor', query: 'kupang' },
+  { id: 'bali', group: 'nusantara', label: 'Bali / Denpasar', query: 'bali' },
+  { id: 'lombok', group: 'nusantara', label: 'Lombok / Sasak', query: 'lombok' },
+  { id: 'palembang', group: 'nusantara', label: 'Palembang / Sumsel', query: 'palembang' },
+  { id: 'bengkulu', group: 'nusantara', label: 'Bengkulu', query: 'bengkulu' },
+  { id: 'melayu', group: 'nusantara', label: 'Melayu / Riau', query: 'melayu' },
+  // Global Indigenous & Minority Language Broadcasters
+  { id: 'indigenous', group: 'global', label: 'Indigenous & Native', query: 'indigenous', tag: 'indigenous' },
+  { id: 'sami', group: 'global', label: 'Sámi', query: 'sami' },
+  { id: 'frisian', group: 'global', label: 'Frisian / Fryslân', query: 'frisian' },
+  { id: 'maori', group: 'global', label: 'Māori & Pacific', query: 'maori', language: 'maori' },
+  { id: 'hawaiian', group: 'global', label: 'Hawaiian', query: 'hawaiian', language: 'hawaiian' },
+  { id: 'welsh', group: 'global', label: 'Welsh / Cymraeg', query: 'welsh', language: 'welsh' },
+  { id: 'basque', group: 'global', label: 'Basque / Euskara', query: 'basque', language: 'basque' },
+  { id: 'catalan', group: 'global', label: 'Catalan / Català', query: 'catalan', language: 'catalan' },
+  { id: 'breton', group: 'global', label: 'Breton / Brezhoneg', query: 'breton', language: 'breton' },
+  { id: 'occitan', group: 'global', label: 'Occitan', query: 'occitan' },
+  { id: 'sardinian', group: 'global', label: 'Sardinian', query: 'sardinian' },
+  { id: 'corsican', group: 'global', label: 'Corsican', query: 'corsican' },
+  { id: 'gaelic', group: 'global', label: 'Scottish Gaelic', query: 'scottish gaelic', language: 'scottish gaelic' },
+  { id: 'kurdish', group: 'global', label: 'Kurdish', query: 'kurdish', language: 'kurdish' },
+  { id: 'hmong', group: 'global', label: 'Hmong', query: 'hmong' },
+  { id: 'quechua', group: 'global', label: 'Quechua & Andean', query: 'quechua' },
+  { id: 'tamazight', group: 'global', label: 'Tamazight / Amazigh', query: 'tamazight' },
+  { id: 'tibetan', group: 'global', label: 'Tibetan', query: 'tibetan' },
+  { id: 'yoruba', group: 'global', label: 'Yoruba', query: 'yoruba' },
+  { id: 'amharic', group: 'global', label: 'Amharic', query: 'amharic' },
+  { id: 'community', group: 'global', label: 'Community & Folk', query: 'community', tag: 'community' }
 ];
 
 const CUSTOM_RADIO_STORAGE_KEY = 'sonacast_custom_radio_stations_v1';
@@ -79,6 +103,7 @@ export const RadioView: React.FC<RadioViewProps> = ({
   const [directoryMeta, setDirectoryMeta] = useState<RadioDirectoryMeta | null>(null);
   const [selectedLang, setSelectedLang] = useState('');
   const [selectedCountry, setSelectedCountry] = useState('');
+  const [presetGroup, setPresetGroup] = useState<'all' | 'nusantara' | 'global'>('all');
   const [activeSearchArgs, setActiveSearchArgs] = useState<{
     q: string;
     countryCode?: string;
@@ -268,12 +293,10 @@ export const RadioView: React.FC<RadioViewProps> = ({
               <Radio size={13} className="animate-pulse" />
               <span>
                 {directoryMeta?.stats?.stations
-                  ? `${directoryMeta.stats.stations.toLocaleString()}+ ${
-                      language === 'id' ? 'Stasiun Global' : 'Indexed Stations'
-                    } · ${directoryMeta.stats.countries} Countries · ${directoryMeta.stats.languages} Languages`
+                  ? `${directoryMeta.stats.stations.toLocaleString()}+ Radio-Browser + TuneIn + radio.net · ${directoryMeta.stats.countries} Countries · ${directoryMeta.stats.languages} Languages`
                   : language === 'id'
-                    ? 'SIARAN RADIO LANGSUNG 24/7'
-                    : '24/7 LIVE FM & WEB RADIO'}
+                    ? 'SIARAN RADIO LANGSUNG 24/7 · MULTI-DIREKTORI GLOBAL & DAERAH'
+                    : '24/7 LIVE FM & WEB RADIO · FEDERATED GLOBAL & REGIONAL DIRECTORIES'}
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-[var(--text-primary)]">{t.navRadio}</h2>
@@ -435,12 +458,37 @@ export const RadioView: React.FC<RadioViewProps> = ({
               </select>
             )}
 
-            {REGIONAL_MINORITY_PRESETS.map((preset) => (
+            <div className="inline-flex items-center rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-0.5">
+              {(
+                [
+                  { id: 'all', label: language === 'id' ? 'Semua Minoritas' : 'All Regional' },
+                  { id: 'nusantara', label: 'Nusantara' },
+                  { id: 'global', label: 'Global Minority' }
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  data-testid={`radio-preset-group-${tab.id}`}
+                  onClick={() => setPresetGroup(tab.id)}
+                  className={`h-8 px-2.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                    presetGroup === tab.id
+                      ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {REGIONAL_MINORITY_PRESETS.filter((p) => presetGroup === 'all' || p.group === presetGroup).map((preset) => (
               <button
                 key={preset.id}
                 type="button"
                 data-testid={`radio-preset-${preset.id}`}
                 onClick={() => {
+                  setSelectedCountry('');
                   setSelectedLang(preset.language || '');
                   void runLiveDirectorySearch(preset.query, undefined, preset.label, {
                     language: preset.language,

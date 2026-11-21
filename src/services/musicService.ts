@@ -362,15 +362,17 @@ const MASTER_TRACK_ENTRIES: MasterTrackEntry[] = [
 ];
 
 const BLOCKED_MODIFIER_REGEX =
-  /\b(karaoke|8d\s+audio|nightcore|slowed(?:\s*\+\s*|\s+)reverb|sped\s+up|ringtone|parody|backing\s+track|music\s+box|lullaby|8-bit|10\s+hours?|1\s+hour|extended\s+mix|snippet|30\s+sec|originally\s+performed\s+by|in\s+the\s+style\s+of)\b/i;
+  /\b(karaoke|8d\s+audio|nightcore|slowed(?:\s*\+\s*|\s+)reverb|sped\s+up|ringtone|parody|backing\s+track|music\s+box|lullaby|8-bit|10\s+hours?|1\s+hour|extended\s+mix|snippet|30\s+sec|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+famous\s+by|piano\s+rendition|for\s+babies)\b|原曲歌手|カラオケ/i;
 const PAREN_COVER_OR_REMIX_REGEX =
-  /(?:[([]\s*(?:cover|remix|karaoke|instrumental|tribute|slowed|reverb|sped\s*up|nightcore|8d|loop|piano\s+(?:instrumental|version)|(?:koplo|dangdut|violin|guitar)\s*(?:version)?)\b|\b(?:acoustic|piano|guitar|violin|vocal|drum)\s+(?:cover|instrumental|version)\b|\bcover\s+(?:by|version)\b|\btribute\s+to\b)/i;
+  /(?:[([]\s*(?:cover|remix|karaoke|instrumental|tribute|slowed|reverb|sped\s*up|nightcore|8d|loop|piano\s+(?:instrumental|version|rendition)|(?:koplo|dangdut|violin|guitar|music\s+box)\s*(?:version)?)\b|\b(?:acoustic|piano|guitar|violin|vocal|drum)\s+(?:cover|instrumental|version|rendition)\b|\bcover\s+(?:by|version)\b|\btribute\s+to\b)/i;
+const NON_ORIGINAL_META_REGEX =
+  /\b(karaoke|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+famous\s+by|music\s+box|lullaby|for\s+babies|tribute\s+to|bossa\s+nova\s+covers|piano\s+dreamers|piano\s+echoes|wind\s+echoes|anime\s+ringtones|ringtones?|lullabeats|sing2piano|halcyonmusic|cover\s+band|piano\s+tribute|vitamin\s+string\s+quartet)\b|原曲歌手|ガイド無しカラオケ|カラオケ/i;
 const UNREQUESTED_VARIANT_REGEX =
-  /(?:\b(?:live(?:\s+(?:at|in|from|session|studio))?|unplugged|acoustic|recorded\s+at|deezer\s+session|spotify\s+singles|koplo|dangdut|remix|cover|karaoke|instrumental|piano\s+version|violin|dj\s+\w+|tribute|sped\s+up|slowed|reverb|nightcore|a\s+cappella|anniversary\s+edition|remaster(?:ed)?|8-bit|orchestral)\b|\[\s*(?:live|acoustic|koplo|remix|instrumental)\s*\])/i;
+  /(?:\b(?:live(?:\s+(?:at|in|from|session|studio))?|unplugged|acoustic|recorded\s+at|deezer\s+session|spotify\s+singles|koplo|dangdut\s+(?:cover|version|remix)|remix|cover|karaoke|instrumental|piano\s+version|violin|dj\s+\w+|tribute|sped\s+up|slowed|reverb|nightcore|a\s+cappella|8-bit|orchestral|music\s+box|lullaby|alt\s+mix|tiktok\s+dance)\b|\[\s*(?:live|acoustic|koplo|remix|instrumental)\s*\])/i;
 const NOISE_TITLE_BRACKET_RE =
-  /\s*(?:\(|\[)\s*(?:official\s*(?:music\s*)?(?:video|audio|lyric(?:s)?(?:\s*video)?|visualizer|mv)|lyric(?:s)?(?:\s*video)?|lirik(?:\s*lagu)?|video\s*(?:clip|klip|lirik|resmi)|audio\s*only|music\s*video|m\/v|mv|hd|hq|4k|8d\s+audio|(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?|anniversary\s+edition|deluxe(?:\s+edition)?|expanded(?:\s+edition)?|super\s+deluxe|explicit|clean|single\s+version|album\s+version|radio\s+edit|recorded\s+at\s+[^)\]]*|deezer\s+sessions?(?:\s*[^)\]]*)?|spotify\s+singles?)\s*[)\]]/gi;
+  /\s*(?:\(|\[)\s*(?:official\s*(?:music\s*)?(?:video|audio|lyric(?:s)?(?:\s*video)?|visualizer|mv)|lyric(?:s)?(?:\s*video)?|lirik(?:\s*lagu)?|video\s*(?:clip|klip|lirik|resmi)|audio\s*only|music\s*video|m[/]v|mv|hd|hq|4k|8d\s+audio|(?:\d{4}\s+)?(?:digital\s+)?remaster(?:ed)?(?:\s+\d{4})?|\d{1,2}(?:st|nd|rd|th)?\s+anniversary(?:\s+(?:super\s+)?deluxe)?(?:\s+edition)?|anniversary\s+edition|deluxe(?:\s+edition)?|expanded(?:\s+edition)?|super\s+deluxe|bonus\s+track|explicit|clean|mono|stereo|single\s+version|album\s+version|radio\s+edit|from\s+["“][^"”]+["”]|love\s+theme\s+from\s+[^)\]]*|original\s+motion\s+picture\s+soundtrack|recorded\s+at\s+[^)\]]*|deezer\s+sessions?(?:\s*[^)\]]*)?|spotify\s+singles?)\s*[)\]]/gi;
 const TRAILING_NOISE_SUFFIX_RE =
-  /\s*(?:\|\s*.*|\s[-–—]\s+(?:(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?|single\s+version|album\s+version|radio\s+edit|explicit|clean|official\s+(?:video|audio|lyric\s+video)|lyrics?|lirik(?:\s+lagu)?))\s*$/i;
+  /\s*(?:\|\s*.*|\s[-–—]\s+(?:(?:\d{4}\s+)?(?:digital\s+)?remaster(?:ed)?(?:\s+\d{4})?|single\s+version|album\s+version|radio\s+edit|explicit|clean|bonus\s+track|from\s+["“].*|love\s+theme\s+from\s+.*|official\s+(?:video|audio|lyric\s+video)|lyrics?|lirik(?:\s*lagu)?))\s*$/i;
 
 function normalizeText(input: string): string {
   return (input || '')
@@ -379,6 +381,35 @@ function normalizeText(input: string): string {
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
+}
+
+function normalizeConjunctions(normStr: string): string {
+  return normStr
+    .replace(/\b(?:and|dan|n)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isNonLatinScript(input: string): boolean {
+  const s = String(input || '');
+  let nonLatin = 0;
+  let latin = 0;
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if ((code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)) {
+      latin++;
+    } else if (
+      (code >= 0x3040 && code <= 0x30ff) ||
+      (code >= 0x4e00 && code <= 0x9faf) ||
+      (code >= 0xac00 && code <= 0xd7af) ||
+      (code >= 0x0400 && code <= 0x04ff) ||
+      (code >= 0x0600 && code <= 0x06ff) ||
+      (code >= 0x0e00 && code <= 0x0e7f)
+    ) {
+      nonLatin++;
+    }
+  }
+  return nonLatin >= 2 && nonLatin > latin;
 }
 
 const INDEXED_ARTIST_BY_NORM = new Map<string, { name: string; genre: string }>(
@@ -394,7 +425,7 @@ function stripTitleModifiers(title: string): string {
   return (title || '')
     .replace(/\(.*?\)/g, ' ')
     .replace(/\[.*?\]/g, ' ')
-    .replace(/\s+-\s+(remaster|single|radio|album|explicit|clean).*$/i, '')
+    .replace(/\s+-\s+(remaster|single|radio|album|explicit|clean|from\s+|love\s+theme).*$/i, '')
     .trim();
 }
 
@@ -403,9 +434,12 @@ export function sanitizeCanonicalTrackTitle(rawTitle: string, rawArtist?: string
   let title = String(rawTitle || '').replace(/\s+/g, ' ').trim();
   if (!title) return '';
 
-  // Strip trailing "| ..." and edition/remaster hyphen clutter
+  // Clean inline radio/single/remaster prefixes inside featured-artist parentheses:
+  // e.g. "(Radio Edit - feat. Pharrell Williams)" -> "(feat. Pharrell Williams)"
+  title = title.replace(/\(\s*(?:radio\s+edit|single\s+version|album\s+version)\s*[-–—]\s*(feat\.?|ft\.?|with)\s+/gi, '($1 ');
+
+  // Strip trailing "| ..." and edition/remaster/OST hyphen/bracket clutter (2 passes for stacked tags)
   title = title.replace(NOISE_TITLE_BRACKET_RE, ' ').replace(TRAILING_NOISE_SUFFIX_RE, '').replace(/\s+/g, ' ').trim();
-  // Second pass in case noise brackets were stacked (e.g. "(Lyrics) [Official Video]")
   title = title.replace(NOISE_TITLE_BRACKET_RE, ' ').replace(TRAILING_NOISE_SUFFIX_RE, '').replace(/\s+/g, ' ').trim();
 
   if (rawArtist) {
@@ -431,7 +465,7 @@ export function sanitizeCanonicalTrackTitle(rawTitle: string, rawArtist?: string
 }
 
 function parseArtistAndTitleFromVideo(rawTitle: string, rawUploader?: string): { title: string; artist: string } {
-  let cleaned = String(rawTitle || '')
+  const cleaned = String(rawTitle || '')
     .replace(NOISE_TITLE_BRACKET_RE, ' ')
     .replace(/\|.*$/g, '')
     .replace(/\s+/g, ' ')
@@ -441,8 +475,14 @@ function parseArtistAndTitleFromVideo(rawTitle: string, rawUploader?: string): {
   if (sepMatch) {
     const left = sepMatch[1].trim();
     const right = sepMatch[2].trim();
-    if (cleanUploader && normalizeText(right).includes(normalizeText(cleanUploader.split(/[,&]/)[0] || ''))) {
+    const uploaderHead = normalizeText(cleanUploader.split(/[,&]/)[0] || '');
+    const rightMatchesUploader = Boolean(uploaderHead && uploaderHead.length >= 3 && normalizeText(right).includes(uploaderHead));
+    const leftMatchesUploader = Boolean(uploaderHead && uploaderHead.length >= 3 && normalizeText(left).includes(uploaderHead));
+    if (rightMatchesUploader && !leftMatchesUploader) {
       return { title: sanitizeCanonicalTrackTitle(left, right), artist: sanitizeCanonicalTrackTitle(right) };
+    }
+    if (isNonLatinScript(left) && cleanUploader && !isNonLatinScript(cleanUploader)) {
+      return { title: sanitizeCanonicalTrackTitle(right, cleanUploader), artist: cleanUploader };
     }
     return {
       title: sanitizeCanonicalTrackTitle(right, left),
@@ -459,7 +499,7 @@ export function isNonOriginalTitle(title: string, query: string): boolean {
   const lowerTitle = (title || '').toLowerCase();
   const lowerQuery = (query || '').toLowerCase();
   if (BLOCKED_MODIFIER_REGEX.test(lowerTitle)) {
-    const matched = lowerTitle.match(BLOCKED_MODIFIER_REGEX)?.[1] || '';
+    const matched = lowerTitle.match(BLOCKED_MODIFIER_REGEX)?.[0] || '';
     if (matched && !lowerQuery.includes(matched.toLowerCase())) {
       return true;
     }
@@ -476,6 +516,16 @@ export function isNonOriginalTitle(title: string, query: string): boolean {
     return true;
   }
   return false;
+}
+
+function isNonOriginalEntry(title: string, artist: string, album: string, query: string): boolean {
+  if (isNonOriginalTitle(title, query)) return true;
+  const lowerQuery = (query || '').toLowerCase();
+  const wantsSpecial = /\b(karaoke|cover|instrumental|piano|lullaby|music\s+box|tribute|ringtone|8-bit|bossa\s+nova)\b/i.test(
+    lowerQuery
+  );
+  if (wantsSpecial) return false;
+  return NON_ORIGINAL_META_REGEX.test(`${artist || ''} ${album || ''}`);
 }
 
 export function findMasterAudio(title: string, artist?: string): { audioUrl: string; duration: number } | null {
@@ -542,7 +592,7 @@ async function fetchDeezerJsonp<T>(path: string, timeoutMs = 4200): Promise<T | 
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
-      win[cbName] = () => {};
+      win[cbName] = () => { };
       window.setTimeout(() => {
         try {
           delete win[cbName];
@@ -1258,7 +1308,7 @@ const DEFAULT_FALLBACK_COVER =
   'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop';
 
 const INDONESIAN_QUERY_HINT_RE =
-  /\b(karna|karena|selow|sayang|cinta|rindu|hati|kamu|aku|dirimu|diriku|kekasih|kasih|telah|memilih|pasanganmu|tak|tidak|bisa|jangan|pergi|kembali|menangis|segampang|penggantimu|mencari|sempurna|berdua|senja|luka|pelukan|bertaut|monokrom|komang|terlintas|berjalan|pulang|mungkin|biarlah|ku\s+(?:cinta|sayang|tahu|tak|ingin|selow|menangis|mencari))\b/i;
+  /\b(karna|karena|selow|sayang|cinta|rindu|hati|kamu|aku|dirimu|diriku|kekasih|kasih|telah|memilih|pasanganmu|tak|tidak|bisa|jangan|pergi|kembali|menangis|segampang|penggantimu|mencari|sempurna|berdua|senja|luka|pelukan|bertaut|monokrom|komang|terlintas|berjalan|pulang|mungkin|biarlah|garam|madu|tabola|bale|ojo|dibandingke|rungkad|nemen|sial|sisa|rasa|jiwa|bersedih|runtuh|duka|kangen|separuh|laskar|pelangi|matian|bulan|untukmu|sampai|menutup|mata|mengejar|matahari|semata|karenamu|pesawat|timur|kenangan|terakhir|terbaik|selamanya|sejati|jodoh|janji|setia|kecewa|patah|menunggu|bertahan|melupakan|melepasmu|ku\s+(?:cinta|sayang|tahu|tak|ingin|selow|menangis|mencari))\b/i;
 
 function detectSearchCountry(normQuery: string, rawQuery = ''): 'ID' | 'US' | 'JP' | 'KR' {
   if (/[\uac00-\ud7af]/.test(rawQuery)) return 'KR';
@@ -1421,12 +1471,20 @@ async function fetchCatalogApiSearch(query: string): Promise<CatalogSearchRespon
       ]);
       const combinedTop = [...(topRes?.data || []), ...(exactSearchRes?.data || [])];
       artistTopItems = combinedTop
-        .filter((t) => Boolean(t?.title && t?.artist?.name) && !isNonOriginalTitle(t.title || '', query))
+        .filter(
+          (t) =>
+            Boolean(t?.title && t?.artist?.name) &&
+            !isNonOriginalEntry(t.title || '', t.artist?.name || '', t.album?.title || '', query)
+        )
         .map((t) => mapDeezerTrackRaw(t, true));
     }
 
     const searchItems = (trackRes?.data || [])
-      .filter((t) => Boolean(t?.title && t?.artist?.name) && !isNonOriginalTitle(t.title || '', query))
+      .filter(
+        (t) =>
+          Boolean(t?.title && t?.artist?.name) &&
+          !isNonOriginalEntry(t.title || '', t.artist?.name || '', t.album?.title || '', query)
+      )
       .map((t) => mapDeezerTrackRaw(t, false));
 
     const seen = new Set<string>();
@@ -1494,7 +1552,11 @@ async function fetchItunesPopularByArtist(
     const validTracks = rawTracks.filter((item) => {
       if (item.wrapperType !== 'track' || !item.trackName) return false;
       const secs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
-      return secs >= 40 && secs <= 2400 && !isNonOriginalTitle(item.trackName, artistQuery);
+      return (
+        secs >= 40 &&
+        secs <= 2400 &&
+        !isNonOriginalEntry(item.trackName, item.artistName || '', item.collectionName || '', artistQuery)
+      );
     });
 
     return { matchedArtistName: exact.artistName || '', items: validTracks };
@@ -1512,7 +1574,11 @@ async function fetchItunesSongSearch(query: string, country: 'US' | 'ID' | 'JP' 
     if (!Array.isArray(data?.results)) return [];
     return data.results.filter((item: ITunesItem) => {
       const secs = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
-      return secs >= 40 && secs <= 2400 && !isNonOriginalTitle(item.trackName || '', query);
+      return (
+        secs >= 40 &&
+        secs <= 2400 &&
+        !isNonOriginalEntry(item.trackName || '', item.artistName || '', item.collectionName || '', query)
+      );
     });
   } catch {
     return [];
@@ -1586,13 +1652,23 @@ function scoreUnifiedCandidate(
   queryTokens: string[],
   isPureArtistQuery: boolean,
   targetArtistNorm: string,
-  cleanTargetSong: string
+  cleanTargetSong: string,
+  queryPrefersLatin: boolean
 ): number {
+  if (isNonOriginalEntry(cand.title, cand.artist, cand.album, lowerQuery)) {
+    return -500;
+  }
   let score = 0;
   const rawLowerTitle = cand.title.toLowerCase();
   const baseTitleNorm = normalizeText(stripTitleModifiers(cand.title));
+  const baseTitleNoConj = normalizeConjunctions(baseTitleNorm);
+  const normQueryNoConj = normalizeConjunctions(normQuery);
+  const artistNorm = normalizeText(cand.artist);
+  const primaryArtistNorm = normalizeText((cand.artist || '').split(/[,&]|ft\.?|feat\.?/i)[0] || '');
   const role = targetArtistNorm ? classifyArtistRole(cand.artist, targetArtistNorm) : 'none';
-  const songTitleExact = Boolean(normQuery && baseTitleNorm === normQuery);
+  const songTitleExact = Boolean(
+    normQuery && (baseTitleNorm === normQuery || (normQueryNoConj && baseTitleNoConj === normQueryNoConj))
+  );
 
   if (targetArtistNorm) {
     // Never discard an exact queried song title even if an obscure artist shares that name
@@ -1600,52 +1676,91 @@ function scoreUnifiedCandidate(
       return -999;
     }
     if (role === 'primary') score += isPureArtistQuery ? 150 : 135;
-    else if (role === 'co-lead') score += 85;
-    else if (role === 'featured') score += isPureArtistQuery ? -75 : 15;
+    else if (role === 'co-lead') score += 110;
+    else if (role === 'featured') score += isPureArtistQuery ? -75 : 30;
     else if (!songTitleExact) score -= 180;
   }
 
   if (!isPureArtistQuery || songTitleExact) {
     const songTarget = cleanTargetSong || normQuery;
-    const songTokens = songTarget.split(' ').filter((t) => t.length >= 2);
-    if (baseTitleNorm === normQuery || baseTitleNorm === songTarget) {
+    const songTargetNoConj = normalizeConjunctions(songTarget);
+    const rawSongTokens = songTarget
+      .split(' ')
+      .filter((t) => t.length >= 2 && !/^(?:and|dan)$/.test(t));
+    // Exclude co-lead/featured artist tokens in the query (e.g. "rose" in "APT Rose Bruno Mars")
+    const effectiveSongTokens = rawSongTokens.filter((t) => !artistNorm.includes(t));
+    const matchedExtraArtistToken = effectiveSongTokens.length < rawSongTokens.length;
+    const titleCheckTokens = effectiveSongTokens.length > 0 ? effectiveSongTokens : rawSongTokens;
+
+    if (
+      baseTitleNorm === normQuery ||
+      baseTitleNorm === songTarget ||
+      (songTargetNoConj && baseTitleNoConj === songTargetNoConj)
+    ) {
       score += 225;
-    } else if (songTokens.length > 0 && songTokens.every((t) => baseTitleNorm.includes(t))) {
-      score += baseTitleNorm.startsWith(songTarget) ? 165 : 135;
+    } else if (
+      matchedExtraArtistToken &&
+      effectiveSongTokens.length > 0 &&
+      effectiveSongTokens.every((t) => baseTitleNorm.includes(t))
+    ) {
+      score += 245;
+    } else if (
+      titleCheckTokens.length > 0 &&
+      titleCheckTokens.every((t) => baseTitleNorm.includes(t))
+    ) {
+      score += songTargetNoConj && baseTitleNoConj.startsWith(songTargetNoConj) ? 165 : 135;
     } else {
-      const matchedCount = queryTokens.filter((t) => baseTitleNorm.includes(t)).length;
-      score += matchedCount > 0 ? Math.round((matchedCount / Math.max(1, queryTokens.length)) * 60) : -50;
+      const matchedCount = titleCheckTokens.filter((t) => baseTitleNorm.includes(t)).length;
+      score += matchedCount > 0 ? Math.round((matchedCount / Math.max(1, titleCheckTokens.length)) * 60) : -50;
     }
 
-    const haystack = `${baseTitleNorm} ${normalizeText(cand.artist)}`;
-    const allHit = queryTokens.length > 0 && queryTokens.every((t) => haystack.includes(t));
-    if (allHit) score += 60;
+    const haystack = `${baseTitleNorm} ${artistNorm}`;
+    const meaningfulQueryTokens = queryTokens.filter((t) => !/^(?:and|dan)$/.test(t));
+    const allHit = meaningfulQueryTokens.length > 0 && meaningfulQueryTokens.every((t) => haystack.includes(t));
+    if (allHit) score += 65;
   }
 
-  if (cand.deezerRank > 0) {
-    score += Math.round(Math.pow(Math.min(1_000_000, cand.deezerRank) / 1_000_000, 1.8) * 220);
+  const canGetPopBoost = !targetArtistNorm || role === 'primary' || role === 'co-lead' || songTitleExact;
+  // Deezer assigns exact rank=100000 as an uninitialized placeholder to zero-play/newly-ingested tracks
+  const effectiveDeezerRank = cand.deezerRank === 100000 ? 0 : cand.deezerRank;
+  if (effectiveDeezerRank > 0) {
+    // Smooth concave curve so regional/Indonesian hits (100k-350k) strongly outrank 0-rank covers
+    score += Math.round(Math.pow(Math.min(1_000_000, effectiveDeezerRank) / 1_000_000, 0.55) * 195);
   }
   if (cand.fromArtistTop) {
     score += 18;
   }
-  const canGetPopBoost = !targetArtistNorm || role === 'primary' || role === 'co-lead' || songTitleExact;
   if (cand.inItunesPop && canGetPopBoost) {
     score += Math.max(8, 65 - cand.itunesPopIdx * 2);
   }
-  if (cand.inDeezer && cand.inItunesPop && canGetPopBoost) {
-    score += 50;
+  if (cand.itunesSearchIdx >= 0 && cand.itunesSearchIdx < 28 && canGetPopBoost) {
+    score += Math.max(2, 52 - cand.itunesSearchIdx * 2) + (cand.itunesSearchIdx <= 1 ? 24 : 0);
   }
-  if (!cand.inDeezer && !cand.inItunesPop && cand.itunesSearchIdx >= 0) {
-    score += Math.max(0, 22 - cand.itunesSearchIdx);
+  if (
+    cand.inDeezer &&
+    effectiveDeezerRank >= 20000 &&
+    (cand.inItunesPop || cand.itunesSearchIdx < 16) &&
+    canGetPopBoost
+  ) {
+    // Cross-catalog consensus bonus: authentic official hits appear in both Deezer and Apple Music
+    score += 55;
   }
   if (findMasterAudio(cand.title, cand.artist)) {
     score += 25;
   }
 
+  // Script-aware canonical title preference (e.g. "Idol" / "Yoru ni kakeru" for Latin queries)
+  const titleNonLatin = isNonLatinScript(cand.title);
+  if (queryPrefersLatin) {
+    score += titleNonLatin ? -45 : 48;
+  } else if (isNonLatinScript(normQuery) && titleNonLatin) {
+    score += 48;
+  }
+
   // Prefer canonical studio releases over live sessions, covers, instrumentals, koplo/remix editions
   const combinedMetaLower = `${rawLowerTitle} ${String(cand.album || '').toLowerCase()} ${String(cand.artist || '').toLowerCase()}`;
   const wantsVariant =
-    /\b(live|acoustic|instrumental|piano|violin|koplo|remix|cover|dj|slowed|reverb|sped|karaoke|tribute|anniversary)\b/i.test(
+    /\b(live|acoustic|instrumental|piano|violin|koplo|remix|cover|dj|slowed|reverb|sped|karaoke|tribute)\b/i.test(
       lowerQuery
     );
   if (!wantsVariant) {
@@ -1657,12 +1772,12 @@ function scoreUnifiedCandidate(
     if (normalizeText(cand.title) === baseTitleNorm) {
       score += 28;
     }
-    const artistTokens = normalizeText(cand.artist).split(' ').filter((w) => w.length >= 2);
+    // Exact full artist or exact primary artist match only (never partial single-word collision)
     if (
-      INDEXED_ARTIST_BY_NORM.has(normalizeText(cand.artist)) ||
-      artistTokens.some((tok) => INDEXED_ARTIST_BY_NORM.has(tok))
+      INDEXED_ARTIST_BY_NORM.has(artistNorm) ||
+      (primaryArtistNorm && INDEXED_ARTIST_BY_NORM.has(primaryArtistNorm))
     ) {
-      score += 36;
+      score += 58;
     }
   } else {
     if (rawLowerTitle.includes('live')) score += 10;
@@ -1683,6 +1798,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
     const trimmed = query.trim();
     const lowerQuery = trimmed.toLowerCase();
     const normQuery = normalizeText(trimmed);
+    const queryPrefersLatin = /[a-zA-Z]/.test(trimmed) && !isNonLatinScript(trimmed);
     const queryTokens = normQuery.split(' ').filter((tok) => tok.length >= 2);
     const country = detectSearchCountry(normQuery, trimmed);
 
@@ -1764,12 +1880,29 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       }
     ) => {
       const displayTitle = sanitizeCanonicalTrackTitle(entry.title, entry.artist) || entry.title;
+      if (isNonOriginalEntry(displayTitle, entry.artist, entry.album, trimmed)) return;
       const baseTitle = normalizeText(stripTitleModifiers(displayTitle));
       const primaryArtist = normalizeText((entry.artist || '').split(/[,&]|ft\.?|feat\.?/i)[0] || '');
       if (!baseTitle || !primaryArtist) return;
+      const entryDur = entry.duration >= 60 ? entry.duration : 210;
       const canonKey = `${baseTitle}::${primaryArtist}`;
 
-      const existing = bucket.get(canonKey);
+      let existing = bucket.get(canonKey);
+      // Cross-script canonical merge (e.g. Deezer "アイドル" + iTunes "Idol" by same artist & duration)
+      if (!existing) {
+        const incomingNonLatin = isNonLatinScript(displayTitle);
+        for (const cand of bucket.values()) {
+          const candPrimary = normalizeText((cand.artist || '').split(/[,&]|ft\.?|feat\.?/i)[0] || '');
+          if (
+            candPrimary === primaryArtist &&
+            isNonLatinScript(cand.title) !== incomingNonLatin &&
+            Math.abs(cand.duration - entryDur) <= 4
+          ) {
+            existing = cand;
+            break;
+          }
+        }
+      }
       if (!existing) {
         bucket.set(canonKey, {
           id: entry.id,
@@ -1777,7 +1910,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           artist: entry.artist,
           album: entry.album || 'Single',
           genre: entry.genre || 'Pop',
-          duration: entry.duration >= 60 ? entry.duration : 210,
+          duration: entryDur,
           coverUrl: entry.coverUrl || DEFAULT_FALLBACK_COVER,
           deezerRank: sourceMeta.deezerRank || 0,
           fromArtistTop: Boolean(sourceMeta.fromArtistTop),
@@ -1807,16 +1940,24 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       }
       const candCleanStudio = !UNREQUESTED_VARIANT_REGEX.test(displayTitle);
       const existHasVariant = UNREQUESTED_VARIANT_REGEX.test(existing.title);
+      const scriptPrefUpgrade =
+        queryPrefersLatin && isNonLatinScript(existing.title) && !isNonLatinScript(displayTitle);
+      const scriptPrefKeepExisting =
+        queryPrefersLatin && !isNonLatinScript(existing.title) && isNonLatinScript(displayTitle);
       if (
-        (candCleanStudio && existHasVariant) ||
-        (candCleanStudio && !existHasVariant && displayTitle.length < existing.title.length)
+        scriptPrefUpgrade ||
+        (!scriptPrefKeepExisting &&
+          ((candCleanStudio && existHasVariant) ||
+            (candCleanStudio && !existHasVariant && displayTitle.length < existing.title.length)))
       ) {
         existing.title = displayTitle;
         existing.artist = entry.artist;
         existing.album = entry.album || existing.album;
-        existing.duration = entry.duration >= 60 ? entry.duration : existing.duration;
+        existing.duration = entryDur;
         if (entry.coverUrl) existing.coverUrl = entry.coverUrl;
       }
+      // Register upgraded canonical key alias so subsequent sources merge into the same entry
+      bucket.set(canonKey, existing);
       if ((!existing.coverUrl || existing.coverUrl === DEFAULT_FALLBACK_COVER) && entry.coverUrl) {
         existing.coverUrl = entry.coverUrl;
       }
@@ -1897,7 +2038,8 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       );
     });
 
-    const scoredAll = Array.from(bucket.values())
+    const uniqueCandidates = Array.from(new Set(bucket.values()));
+    const scoredAll = uniqueCandidates
       .map((cand) => ({
         cand,
         score: scoreUnifiedCandidate(
@@ -1907,7 +2049,8 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           queryTokens,
           isPureArtistQuery,
           targetArtistNorm,
-          cleanTargetSong
+          cleanTargetSong,
+          queryPrefersLatin
         )
       }))
       .filter((entry) => entry.score > -200);
@@ -1917,6 +2060,75 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       .sort((a, b) => b.score - a.score);
 
     const ranked = (strictRanked.length >= 2 ? strictRanked : scoredAll.sort((a, b) => b.score - a.score)).slice(0, 36);
+
+    // MusicBrainz external CORS fallback for rare/indie/regional recordings absent from Deezer & iTunes
+    if (ranked.length < 3 && normQuery.length >= 3) {
+      try {
+        const mbRes = await fetch(
+          `https://musicbrainz.org/ws/2/recording?query=${encodeURIComponent(trimmed)}&fmt=json&limit=8`,
+          { signal: AbortSignal.timeout(2600) }
+        );
+        if (mbRes.ok) {
+          const mbJson = (await mbRes.json()) as {
+            recordings?: Array<{
+              id?: string;
+              title?: string;
+              length?: number;
+              'artist-credit'?: Array<{ name?: string; artist?: { name?: string } }>;
+              releases?: Array<{ title?: string }>;
+            }>;
+          };
+          for (const rec of mbJson.recordings || []) {
+            const artistName = (rec['artist-credit'] || [])
+              .map((ac) => ac.name || ac.artist?.name || '')
+              .filter(Boolean)
+              .join(', ');
+            const rawTitle = String(rec.title || '').trim();
+            const albumTitle = String(rec.releases?.[0]?.title || 'Single').trim();
+            if (!rawTitle || !artistName) continue;
+            if (isNonOriginalEntry(rawTitle, artistName, albumTitle, trimmed)) continue;
+            const secs = rec.length ? Math.round(rec.length / 1000) : 210;
+            if (secs < 40 || secs > 2400) continue;
+            upsert(
+              {
+                id: `mb-${rec.id || normalizeText(rawTitle)}`,
+                title: rawTitle,
+                artist: artistName,
+                album: albumTitle,
+                genre: 'Recording',
+                duration: secs,
+                coverUrl: ''
+              },
+              { itunesSearchIdx: 24 }
+            );
+          }
+        }
+      } catch {
+        // MusicBrainz optional fallback
+      }
+      if (new Set(bucket.values()).size > ranked.length) {
+        const rescored = Array.from(new Set(bucket.values()))
+          .map((cand) => ({
+            cand,
+            score: scoreUnifiedCandidate(
+              cand,
+              normQuery,
+              lowerQuery,
+              queryTokens,
+              isPureArtistQuery,
+              targetArtistNorm,
+              cleanTargetSong,
+              queryPrefersLatin
+            )
+          }))
+          .filter((entry) => entry.score > -200)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 36);
+        if (rescored.length > ranked.length) {
+          ranked.splice(0, ranked.length, ...rescored);
+        }
+      }
+    }
 
     const streamCandidates =
       ranked.length >= 6 || rawStreamCandidates.length > 0
@@ -1934,7 +2146,10 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
 
     if (tracks.length < 10 && audiusTracks.length > 0) {
       for (const aTrack of audiusTracks) {
-        if (isNonOriginalTitle(aTrack.title, trimmed) || UNREQUESTED_VARIANT_REGEX.test(aTrack.title)) {
+        if (
+          isNonOriginalEntry(aTrack.title, aTrack.artist, aTrack.album || '', trimmed) ||
+          UNREQUESTED_VARIANT_REGEX.test(aTrack.title)
+        ) {
           continue;
         }
         const parsed = parseArtistAndTitleFromVideo(aTrack.title, aTrack.artist);
@@ -1954,7 +2169,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
     if (tracks.length < 8 && streamCandidates.length > 0) {
       for (const c of streamCandidates) {
         if (usedStreamIds.has(c.videoId) || c.duration < 40) continue;
-        if (isNonOriginalTitle(c.title, trimmed)) continue;
+        if (isNonOriginalEntry(c.title, c.author, '', trimmed)) continue;
         const parsed = parseArtistAndTitleFromVideo(c.title, c.author);
         const cleanTitle = parsed.title;
         const cleanArtist = parsed.artist;
@@ -2039,7 +2254,7 @@ async function fetchDirectAppleRssFallback(country: 'us' | 'id', limit: number):
           };
         }
       )
-      .filter((x: CatalogApiItem) => Boolean(x.title && x.artist && !isNonOriginalTitle(x.title, '')));
+      .filter((x: CatalogApiItem) => Boolean(x.title && x.artist && !isNonOriginalEntry(x.title, x.artist, x.album || '', '')));
   } catch {
     return [];
   }
@@ -2049,7 +2264,7 @@ const DAILY_CHARTS_FEED_URLS = [
   'https://cdn.jsdelivr.net/gh/bryankwandou/sonacast@catalog-data/daily-charts.json',
   'https://raw.githubusercontent.com/bryankwandou/sonacast/catalog-data/daily-charts.json'
 ];
-const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v5';
+const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v6';
 const DAILY_CHARTS_TTL_MS = 12 * 60 * 60 * 1000;
 const NON_MUSIC_EXTRA_RE = /\b(sound\s*effects?|sfx|original\s+motion\s+picture|video\s+game|minecraft|bandai|asmr|karaoke|lullaby|white\s*noise|brown\s*noise|pink\s*noise|rain\s*sounds|sleep\s*sounds|sleeptherapy|deep\s+sleep|for\s+sleep|relaxation|meditation|gorguts|obscura|magical\s+strings|cynthoni|death\s+metal)\b/i;
 const RETRO_PL_RE = /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal|sleep|relaxation|meditation|calm\s+piano|study\s+lofi|chill\s+lofi|country)\b/i;
@@ -3016,9 +3231,9 @@ async function getHealthyRadioMirrors(): Promise<string[]> {
         const rows = (await res.json()) as Array<{ name?: string }>;
         const discovered = Array.isArray(rows)
           ? rows
-              .map((r) => String(r?.name || '').trim())
-              .filter((n) => /^[a-z0-9.-]+\.api\.radio-browser\.info$/i.test(n))
-              .map((n) => `https://${n}`)
+            .map((r) => String(r?.name || '').trim())
+            .filter((n) => /^[a-z0-9.-]+\.api\.radio-browser\.info$/i.test(n))
+            .map((n) => `https://${n}`)
           : [];
         return Array.from(new Set([...RADIO_BROWSER_MIRRORS, ...discovered])).slice(0, 6);
       } catch {
@@ -3099,8 +3314,8 @@ export async function fetchRadioDirectoryMeta(): Promise<RadioDirectoryMeta> {
             : [],
           countries: Array.isArray(countriesRaw)
             ? countriesRaw.filter(
-                (c: RadioFacetOption) => Boolean(c?.name && c?.iso_3166_1 && Number(c.stationcount) > 0)
-              )
+              (c: RadioFacetOption) => Boolean(c?.name && c?.iso_3166_1 && Number(c.stationcount) > 0)
+            )
             : []
         };
         try {
@@ -3130,8 +3345,19 @@ const HTTPS_UPGRADE_HOSTS = [
   'stream.radiojar.com',
   'playerservices.streamtheworld.com',
   'stream-node0.rri.co.id',
+  'stream-node1.rri.co.id',
+  'stream-node2.rri.co.id',
+  'stream-node0.rri.go.id',
   'as-hls-ww-live.akamaized.net',
-  'icecast.live.yle.fi'
+  'icecast.live.yle.fi',
+  'icecast.radiofrance.fr',
+  'i.klikhost.com',
+  'c4.siar.us',
+  'stream.zeno.fm',
+  'listen.zeno.fm',
+  'streaming.radio.co',
+  's2.radio.co',
+  'stream.laut.fm'
 ];
 
 const RADIO_PALETTE = [
@@ -3155,6 +3381,25 @@ function inferRadioCategory(
   return 'Global';
 }
 
+let cachedNativeHlsSupport: boolean | null = null;
+function supportsNativeHlsAudio(): boolean {
+  if (cachedNativeHlsSupport !== null) return cachedNativeHlsSupport;
+  if (typeof document === 'undefined') {
+    cachedNativeHlsSupport = false;
+    return false;
+  }
+  try {
+    const audio = document.createElement('audio');
+    cachedNativeHlsSupport = Boolean(
+      audio.canPlayType('application/vnd.apple.mpegurl') ||
+      audio.canPlayType('application/x-mpegurl')
+    );
+  } catch {
+    cachedNativeHlsSupport = false;
+  }
+  return cachedNativeHlsSupport;
+}
+
 function isPlayableLiveHttpsStream(rawUrl: unknown, hlsFlag?: unknown): string | null {
   if (typeof rawUrl !== 'string') return null;
   let trimmed = rawUrl.trim();
@@ -3170,8 +3415,653 @@ function isPlayableLiveHttpsStream(rawUrl: unknown, hlsFlag?: unknown): string |
     }
   }
   if (!/^https:\/\//i.test(trimmed)) return null;
-  if (Number(hlsFlag) === 1 || /\.(m3u8|pls|m3u|asx|xspf)(\?.*)?$/i.test(trimmed)) return null;
+  if (/\.(pls|m3u|asx|xspf)(\?.*)?$/i.test(trimmed)) return null;
+  const isHls = Number(hlsFlag) === 1 || /\.m3u8(\?.*)?$/i.test(trimmed);
+  if (isHls && !supportsNativeHlsAudio()) return null;
   return trimmed;
+}
+
+interface VerifiedRegionalPublicStation {
+  id: string;
+  name: string;
+  city: string;
+  genre: string;
+  tagline: string;
+  streamUrl: string;
+  keywords: string;
+}
+
+/**
+ * Live-verified official HTTPS regional & cultural public radio broadcasts across Nusantara
+ * (every endpoint verified live HTTP 200 audio/aacp) complementing federated directories.
+ */
+const VERIFIED_NUSANTARA_PUBLIC_STATIONS: VerifiedRegionalPublicStation[] = [
+  {
+    id: 'rri-jayapura-pro1',
+    name: 'RRI Jayapura Pro 1',
+    city: 'Jayapura, Papua, ID',
+    genre: 'Papua Regional',
+    tagline: 'Papua · Bahasa Daerah & Informasi Jayapura · Live RRI Nusantara',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/23/9023/rrijayapurapro1.mp3',
+    keywords: 'papua jayapura irian timur indonesia rri pro 1 regional'
+  },
+  {
+    id: 'rri-jayapura-pro4',
+    name: 'RRI Jayapura Pro 4 Budaya Papua',
+    city: 'Jayapura, Papua, ID',
+    genre: 'Budaya Papua',
+    tagline: 'Suara Budaya Papua · Musik & Bahasa Daerah Papua · RRI Pro 4',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/23/9023/rrijayapurapro4.mp3',
+    keywords: 'papua jayapura budaya daerah irian timur indigenous indonesia rri pro 4'
+  },
+  {
+    id: 'rri-merauke-pro1',
+    name: 'RRI Merauke Pro 1',
+    city: 'Merauke, Papua Selatan, ID',
+    genre: 'Papua Selatan',
+    tagline: 'Papua Selatan · Siaran Daerah Merauke & Perbatasan · RRI Pro 1',
+    streamUrl: 'https://stream-node1.rri.co.id/streaming/36/9136/rrimeraukepro1.mp3',
+    keywords: 'papua merauke selatan timur indonesia rri pro 1'
+  },
+  {
+    id: 'rri-merauke-pro2',
+    name: 'RRI Merauke Pro 2',
+    city: 'Merauke, Papua Selatan, ID',
+    genre: 'Papua Youth & Music',
+    tagline: 'Musik Kreatif & Hits Papua Selatan · RRI Merauke Pro 2',
+    streamUrl: 'https://stream-node1.rri.co.id/streaming/36/9136/rrimeraukepro2.mp3',
+    keywords: 'papua merauke selatan musik indonesia rri pro 2'
+  },
+  {
+    id: 'rri-bandaaceh-pro1',
+    name: 'RRI Banda Aceh Pro 1',
+    city: 'Banda Aceh, Aceh, ID',
+    genre: 'Aceh Regional',
+    tagline: 'Serambi Mekkah · Informasi & Siaran Daerah Aceh · RRI Pro 1',
+    streamUrl: 'https://stream-node2.rri.co.id/streaming/14/9214/rribandaacehpro1.mp3',
+    keywords: 'aceh banda aceh gayo sumatera indonesia rri pro 1'
+  },
+  {
+    id: 'rri-bandaaceh-pro4',
+    name: 'RRI Banda Aceh Pro 4 Budaya Aceh',
+    city: 'Banda Aceh, Aceh, ID',
+    genre: 'Budaya Aceh',
+    tagline: 'Suara Budaya Aceh & Gayo · Bahasa Daerah · RRI Pro 4',
+    streamUrl: 'https://stream-node2.rri.co.id/streaming/14/9214/rribandaacehpro4.mp3',
+    keywords: 'aceh banda aceh gayo budaya bahasa daerah indonesia rri pro 4'
+  },
+  {
+    id: 'rri-medan-pro1',
+    name: 'RRI Medan Pro 1',
+    city: 'Medan, Sumatera Utara, ID',
+    genre: 'Sumut Regional',
+    tagline: 'Sumatera Utara · Informasi & Siaran Daerah Medan · RRI Pro 1',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/11/9011/rrimedanpro1.mp3',
+    keywords: 'medan batak toba karo mandailing nias sumut sumatera utara indonesia rri pro 1'
+  },
+  {
+    id: 'rri-medan-pro4',
+    name: 'RRI Medan Pro 4 Budaya Sumut & Batak',
+    city: 'Medan, Sumatera Utara, ID',
+    genre: 'Budaya Batak & Melayu',
+    tagline: 'Suara Budaya Batak, Karo, Mandailing, Nias & Melayu · RRI Pro 4',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/11/9011/rrimedanpro4.mp3',
+    keywords: 'medan batak toba karo mandailing nias melayu sumut sumatera utara budaya indonesia rri pro 4'
+  },
+  {
+    id: 'rri-ambon-pro1',
+    name: 'RRI Ambon Pro 1',
+    city: 'Ambon, Maluku, ID',
+    genre: 'Maluku Regional',
+    tagline: 'Ambon & Kepulauan Maluku · Informasi Daerah · RRI Pro 1',
+    streamUrl: 'https://stream-node2.rri.co.id/streaming/15/9315/rriambonpro1.mp3',
+    keywords: 'ambon maluku timur indonesia rri pro 1'
+  },
+  {
+    id: 'rri-ambon-pro4',
+    name: 'RRI Ambon Pro 4 Budaya Maluku',
+    city: 'Ambon, Maluku, ID',
+    genre: 'Budaya Maluku',
+    tagline: 'Musik & Budaya Kepulauan Maluku · RRI Ambon Pro 4',
+    streamUrl: 'https://stream-node2.rri.co.id/streaming/15/9315/rriambonpro4.mp3',
+    keywords: 'ambon maluku budaya timur indonesia rri pro 4'
+  },
+  {
+    id: 'rri-kupang-pro1',
+    name: 'RRI Kupang Pro 1',
+    city: 'Kupang, NTT, ID',
+    genre: 'NTT / Timor',
+    tagline: 'Nusa Tenggara Timur · Kupang, Timor & Flores · RRI Pro 1',
+    streamUrl: 'https://stream-node2.rri.co.id/streaming/13/9213/rrikupangpro1.mp3',
+    keywords: 'kupang ntt timor flores sasando timur indonesia rri pro 1'
+  },
+  {
+    id: 'rri-alor-pro1',
+    name: 'RRI Alor Pro 1',
+    city: 'Kalabahi, Alor, NTT, ID',
+    genre: 'Alor / NTT',
+    tagline: 'Kepulauan Alor & Nusa Tenggara Timur · Siaran Komunitas · RRI Pro 1',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/41/9041/rrialorpro1.mp3',
+    keywords: 'alor kalabahi kupang ntt flores timur indonesia rri pro 1'
+  },
+  {
+    id: 'rri-banjarmasin-pro1',
+    name: 'RRI Banjarmasin Pro 1',
+    city: 'Banjarmasin, Kalimantan Selatan, ID',
+    genre: 'Banjar / Kalimantan',
+    tagline: 'Kalimantan Selatan · Bahasa Banjar & Informasi Daerah · RRI Pro 1',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/19/9019/rribanjarmasinpro1.mp3',
+    keywords: 'banjar banjarmasin kalimantan borneo dayak kalsel indonesia rri pro 1'
+  },
+  {
+    id: 'rri-banjarmasin-pro4',
+    name: 'RRI Banjarmasin Pro 4 Budaya Banjar & Dayak',
+    city: 'Banjarmasin, Kalimantan Selatan, ID',
+    genre: 'Budaya Kalimantan',
+    tagline: 'Suara Budaya Banjar & Dayak Kalimantan · RRI Pro 4',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/19/9019/rribanjarmasinpro4.mp3',
+    keywords: 'banjar banjarmasin dayak kalimantan borneo kalsel budaya indonesia rri pro 4'
+  },
+  {
+    id: 'rri-makassar-pro1',
+    name: 'RRI Makassar Pro 1',
+    city: 'Makassar, Sulawesi Selatan, ID',
+    genre: 'Bugis / Makassar',
+    tagline: 'Sulawesi Selatan · Bugis, Makassar & Toraja · RRI Pro 1',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/22/9022/rrimakasarpro1.mp3',
+    keywords: 'makassar bugis toraja sulawesi sulsel indonesia rri pro 1'
+  },
+  {
+    id: 'rri-makassar-pro4',
+    name: 'RRI Makassar Pro 4 Budaya Bugis & Makassar',
+    city: 'Makassar, Sulawesi Selatan, ID',
+    genre: 'Budaya Bugis-Makassar',
+    tagline: 'Suara Budaya Bugis, Makassar, Mandar & Toraja · RRI Pro 4',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/22/9022/rrimakasarpro4.mp3',
+    keywords: 'makassar bugis toraja mandar sulawesi sulsel budaya indonesia rri pro 4'
+  },
+  {
+    id: 'rri-manado-pro1',
+    name: 'RRI Manado Pro 1',
+    city: 'Manado, Sulawesi Utara, ID',
+    genre: 'Minahasa / Manado',
+    tagline: 'Sulawesi Utara · Pop Manado & Informasi Daerah · RRI Pro 1',
+    streamUrl: 'https://stream-node1.rri.co.id/streaming/40/9040/rrimanadopro1.mp3',
+    keywords: 'manado minahasa sulut sulawesi utara indonesia rri pro 1'
+  },
+  {
+    id: 'rri-manado-pro4',
+    name: 'RRI Manado Pro 4 Budaya Minahasa',
+    city: 'Manado, Sulawesi Utara, ID',
+    genre: 'Budaya Minahasa',
+    tagline: 'Suara Budaya Minahasa, Sangihe & Bolaang Mongondow · RRI Pro 4',
+    streamUrl: 'https://stream-node1.rri.co.id/streaming/40/9040/rrimanadopro4.mp3',
+    keywords: 'manado minahasa sangihe sulut sulawesi utara budaya indonesia rri pro 4'
+  },
+  {
+    id: 'rri-denpasar-pro1',
+    name: 'RRI Denpasar Pro 1',
+    city: 'Denpasar, Bali, ID',
+    genre: 'Bali Regional',
+    tagline: 'Denpasar & Pulau Bali · Informasi Daerah · RRI Pro 1',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/21/9021/rridenpasarpro1.mp3',
+    keywords: 'bali balinese denpasar ubud singaraja indonesia rri pro 1'
+  },
+  {
+    id: 'rri-denpasar-pro4',
+    name: 'RRI Denpasar Pro 4 Budaya Bali',
+    city: 'Denpasar, Bali, ID',
+    genre: 'Budaya Bali',
+    tagline: 'Suara Budaya & Gamelan Bali · Bahasa Bali · RRI Pro 4',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/21/9021/rridenpasarpro4.mp3',
+    keywords: 'bali balinese denpasar ubud gamelan budaya indonesia rri pro 4'
+  },
+  {
+    id: 'rri-palembang-pro1',
+    name: 'RRI Palembang Pro 1',
+    city: 'Palembang, Sumatera Selatan, ID',
+    genre: 'Sumsel Regional',
+    tagline: 'Palembang & Sumatera Selatan · Informasi Daerah · RRI Pro 1',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/13/9013/rripalembangpro1.mp3',
+    keywords: 'palembang sumsel sumatera selatan sriwijaya indonesia rri pro 1'
+  },
+  {
+    id: 'rri-palembang-pro4',
+    name: 'RRI Palembang Pro 4 Budaya Sumsel',
+    city: 'Palembang, Sumatera Selatan, ID',
+    genre: 'Budaya Palembang',
+    tagline: 'Suara Budaya Palembang & Sumatera Selatan · RRI Pro 4',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/13/9013/rripalembangpro4.mp3',
+    keywords: 'palembang sumsel sumatera selatan budaya indonesia rri pro 4'
+  },
+  {
+    id: 'rri-bengkulu-pro1',
+    name: 'RRI Bengkulu Pro 1',
+    city: 'Bengkulu, ID',
+    genre: 'Bengkulu Regional',
+    tagline: 'Bumi Rafflesia · Bahasa Rejang, Serawai & Informasi Bengkulu · RRI Pro 1',
+    streamUrl: 'https://stream-node2.rri.co.id/streaming/11/9311/rribengkulupro1.mp3',
+    keywords: 'bengkulu rejang serawai sumatera indonesia rri pro 1'
+  },
+  {
+    id: 'rri-tanjungpinang-pro4',
+    name: 'RRI Tanjungpinang Pro 4 Budaya Melayu',
+    city: 'Tanjungpinang, Kepulauan Riau, ID',
+    genre: 'Budaya Melayu',
+    tagline: 'Suara Budaya Melayu Kepulauan Riau · Gurindam & Zapin · RRI Pro 4',
+    streamUrl: 'https://stream-node2.rri.co.id/streaming/21/9221/rritjpinangpro4.mp3',
+    keywords: 'melayu riau kepri tanjungpinang bintan batam budaya indonesia rri pro 4'
+  },
+  {
+    id: 'rri-sungailiat-pro1',
+    name: 'RRI Sungailiat Pro 1',
+    city: 'Bangka Belitung, ID',
+    genre: 'Bangka Belitung',
+    tagline: 'Kepulauan Bangka Belitung · Bahasa & Informasi Daerah · RRI Pro 1',
+    streamUrl: 'https://stream-node2.rri.co.id/streaming/14/9314/rrisngliatpro1.mp3',
+    keywords: 'bangka belitung sungailiat pangkalpinang melayu indonesia rri pro 1'
+  },
+  {
+    id: 'rri-bandung-pro4',
+    name: 'RRI Bandung Pro 4 Budaya Sunda',
+    city: 'Bandung, Jawa Barat, ID',
+    genre: 'Budaya Sunda',
+    tagline: 'Suara Budaya Sunda · Wayang Golek, Degung & Pop Sunda · RRI Pro 4',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/15/9015/rribandungpro4.mp3',
+    keywords: 'sunda sundanese bandung jabar jawa barat priangan pasundan budaya indonesia rri pro 4'
+  },
+  {
+    id: 'rri-yogyakarta-pro4',
+    name: 'RRI Yogyakarta Pro 4 Budaya Jawa',
+    city: 'Yogyakarta, DI Yogyakarta, ID',
+    genre: 'Budaya Jawa',
+    tagline: 'Suara Budaya Jawa · Gamelan, Wayang & Campursari · RRI Pro 4',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/17/9017/rrijogjapro4.mp3',
+    keywords: 'jawa javanese jogja yogyakarta gamelan wayang budaya indonesia rri pro 4'
+  },
+  {
+    id: 'rri-semarang-pro4',
+    name: 'RRI Semarang Pro 4 Budaya Jawa Tengah',
+    city: 'Semarang, Jawa Tengah, ID',
+    genre: 'Budaya Jateng',
+    tagline: 'Suara Budaya Jawa Tengah · Keroncong, Wayang & Bahasa Jawa · RRI Pro 4',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/16/9016/rrisemarangpro4.mp3',
+    keywords: 'jawa javanese semarang jateng jawa tengah budaya indonesia rri pro 4'
+  },
+  {
+    id: 'rri-surakarta-pro1',
+    name: 'RRI Surakarta Pro 1',
+    city: 'Surakarta / Solo, Jawa Tengah, ID',
+    genre: 'Solo / Jawa',
+    tagline: 'Surakarta & Solo Raya · Siaran Daerah & Budaya Jawa · RRI Pro 1',
+    streamUrl: 'https://stream-node1.rri.co.id/streaming/19/9219/rrisurakartapro1.mp3',
+    keywords: 'jawa javanese solo surakarta jateng indonesia rri pro 1'
+  },
+  {
+    id: 'rri-purwokerto-pro1',
+    name: 'RRI Purwokerto Pro 1',
+    city: 'Purwokerto, Banyumas, ID',
+    genre: 'Banyumasan / Ngapak',
+    tagline: 'Banyumas & Purwokerto · Bahasa Ngapak & Informasi Daerah · RRI Pro 1',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/19/9119/rripurwokertopro1.mp3',
+    keywords: 'banyumas banyumasan ngapak purwokerto jawa javanese jateng indonesia rri pro 1'
+  },
+  {
+    id: 'rri-surabaya-pro1',
+    name: 'RRI Surabaya Pro 1',
+    city: 'Surabaya, Jawa Timur, ID',
+    genre: 'Jawa Timur',
+    tagline: 'Surabaya & Jawa Timur · Siaran Daerah · RRI Pro 1',
+    streamUrl: 'https://stream-node0.rri.co.id/streaming/18/9018/rrisurabayapro1.mp3',
+    keywords: 'surabaya jatim jawa timur madura jawa javanese indonesia rri pro 1'
+  }
+];
+
+function matchVerifiedRegionalStations(
+  queryLower: string,
+  countryCode?: string,
+  languageOpt?: string
+): RadioStation[] {
+  const tokens = normalizeText(`${queryLower} ${languageOpt || ''}`)
+    .split(' ')
+    .filter((w) => w.length >= 2);
+  const isIndonesiaOnly = countryCode === 'ID' && tokens.length === 0;
+  if (!isIndonesiaOnly && tokens.length === 0) return [];
+  if (countryCode && countryCode !== 'ID' && countryCode !== 'GLOBAL') return [];
+
+  const matched = isIndonesiaOnly
+    ? VERIFIED_NUSANTARA_PUBLIC_STATIONS
+    : VERIFIED_NUSANTARA_PUBLIC_STATIONS.filter((st) => {
+      const hay = `${st.name} ${st.city} ${st.genre} ${st.keywords}`.toLowerCase();
+      return tokens.some((tok) => {
+        if (tok === 'radio' || tok === 'live' || tok === 'fm' || tok === 'pro') return false;
+        const re = new RegExp(`\\b${tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+        return re.test(hay);
+      });
+    });
+
+  return matched.map((st, idx) => {
+    const palette = RADIO_PALETTE[idx % RADIO_PALETTE.length];
+    return {
+      id: st.id,
+      name: st.name,
+      tagline: st.tagline,
+      genre: st.genre,
+      city: st.city,
+      country: 'Indonesia',
+      category: 'Indonesia',
+      bitRate: 'LIVE AAC+ · RRI Nusantara',
+      listenersCount: 950 - idx * 15,
+      color: palette.color,
+      accentColor: palette.accent,
+      streamUrl: st.streamUrl,
+      isLiveBroadcast: true,
+      homepage: 'https://rri.co.id/streaming/',
+      currentTrack: {
+        id: `live-track-${st.id}`,
+        title: st.name,
+        artist: st.city,
+        album: st.genre,
+        duration: 0,
+        coverUrl: '',
+        audioUrl: st.streamUrl,
+        streamSource: 'official-stream',
+        sourceTag: 'live-radio',
+        genre: 'Live Radio',
+        lyrics: [{ time: 0, text: `${st.name} — Live 24/7 RRI Nusantara Broadcast` }],
+        artistSolanaAddress: '',
+        bpm: 118
+      }
+    };
+  });
+}
+
+let tuneInJsonpSeq = 0;
+async function fetchTuneInJsonp<T>(path: string, timeoutMs = 4200): Promise<T | null> {
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  const sep = normalized.includes('?') ? '&' : '?';
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    try {
+      const cb = 'scTuneCb';
+      const res = await fetch(
+        `https://opml.radiotime.com${normalized}${sep}render=json&callback=${cb}`,
+        { signal: AbortSignal.timeout(timeoutMs) }
+      );
+      if (!res.ok) return null;
+      const txt = await res.text();
+      const m = txt.match(/^scTuneCb\s*\(([\s\S]*)\)\s*;?\s*$/);
+      return m ? (JSON.parse(m[1]) as T) : null;
+    } catch {
+      return null;
+    }
+  }
+  return new Promise<T | null>((resolve) => {
+    tuneInJsonpSeq = (tuneInJsonpSeq + 1) % 100000;
+    const cbName = `__scTiCb_${Date.now()}_${tuneInJsonpSeq}`;
+    const src = `https://opml.radiotime.com${normalized}${sep}render=json&callback=${encodeURIComponent(cbName)}`;
+    const script = document.createElement('script');
+    let settled = false;
+    const win = window as unknown as Record<string, unknown>;
+    const finalize = (val: T | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      win[cbName] = () => { };
+      window.setTimeout(() => {
+        try {
+          delete win[cbName];
+        } catch {
+          win[cbName] = undefined;
+        }
+      }, 25000);
+      script.remove();
+      resolve(val);
+    };
+    const timer = window.setTimeout(() => finalize(null), timeoutMs);
+    win[cbName] = (payload: unknown) => finalize((payload as T) || null);
+    script.async = true;
+    script.src = src;
+    script.onerror = () => finalize(null);
+    document.head.appendChild(script);
+  });
+}
+
+function matchesRadioRelevance(haystack: string, query: string): boolean {
+  const tokens = normalizeText(query)
+    .split(' ')
+    .filter((w) => w.length >= 2 && !/^(?:radio|fm|am|live|station|pro|music)$/.test(w));
+  if (tokens.length === 0) return true;
+  const hayNorm = normalizeText(haystack);
+  return tokens.some((tok) => {
+    const escaped = tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Match exact word or unambiguous prefix for longer terms (prevents "sunda" -> "sunday")
+    if (tok.length <= 5) {
+      return new RegExp(`\\b${escaped}\\b`, 'i').test(hayNorm);
+    }
+    return new RegExp(`\\b${escaped}`, 'i').test(hayNorm);
+  });
+}
+
+async function searchRadioNetStations(
+  query: string,
+  countryCode?: string
+): Promise<RadioStation[]> {
+  const q = query.trim();
+  if (!q) return [];
+  try {
+    const res = await fetch(
+      `https://prod.radio-api.net/stations/search?query=${encodeURIComponent(q)}&count=28`,
+      { signal: AbortSignal.timeout(4200) }
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      playables?: Array<{
+        id?: string;
+        name?: string;
+        city?: string;
+        country?: string;
+        genres?: string[];
+        languages?: string[];
+        logo300x300?: string;
+        logo175x175?: string;
+        homepageUrl?: string;
+        rank?: number;
+        streams?: Array<{ url?: string; contentFormat?: string; status?: string }>;
+      }>;
+    };
+    const list = Array.isArray(data?.playables) ? data.playables : [];
+    const out: RadioStation[] = [];
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      const name = String(p?.name || '').trim();
+      if (!name) continue;
+      const city = String(p?.city || '').trim();
+      const country = String(p?.country || '').trim();
+      const genres = Array.isArray(p?.genres) ? p.genres.filter(Boolean) : [];
+      const langs = Array.isArray(p?.languages) ? p.languages.filter(Boolean) : [];
+      const hay = `${name} ${city} ${country} ${genres.join(' ')} ${langs.join(' ')}`;
+      if (!matchesRadioRelevance(hay, q)) continue;
+      if (countryCode && countryCode !== 'GLOBAL') {
+        if (countryCode === 'ID' && !/indonesia/i.test(country)) continue;
+      }
+      const streams = Array.isArray(p?.streams) ? p.streams : [];
+      let bestUrl: string | null = null;
+      let fmtLabel = 'LIVE STREAM';
+      for (const st of streams) {
+        const playable = isPlayableLiveHttpsStream(st?.url, /mpegurl|m3u8/i.test(String(st?.contentFormat || '')) ? 1 : 0);
+        if (playable) {
+          bestUrl = playable;
+          fmtLabel = /aac/i.test(String(st?.contentFormat || '')) ? 'LIVE AAC · radio.net' : 'LIVE MP3 · radio.net';
+          break;
+        }
+      }
+      if (!bestUrl) continue;
+      const palette = RADIO_PALETTE[out.length % RADIO_PALETTE.length];
+      const stationId = `rnet-${String(p.id || i)}`;
+      const cover = String(p.logo300x300 || p.logo175x175 || '').trim();
+      const faviconUrl = /^https:\/\//i.test(cover) ? cover : undefined;
+      const cityLabel = [city, country].filter(Boolean).join(', ') || country || undefined;
+      const genreLabel = (genres[0] || langs[0] || 'Live Radio').slice(0, 26);
+      out.push({
+        id: stationId,
+        name,
+        tagline: [genres.slice(0, 2).join(', '), langs.slice(0, 2).join(', '), country, 'radio.net']
+          .filter(Boolean)
+          .join(' · ')
+          .slice(0, 120),
+        genre: genreLabel,
+        city: cityLabel,
+        country: country || undefined,
+        category: inferRadioCategory(`${genres.join(' ')} ${country}`, /indonesia/i.test(country) ? 'ID' : ''),
+        bitRate: fmtLabel,
+        listenersCount: Math.max(120, Math.round(Number(p.rank) || 320)),
+        color: palette.color,
+        accentColor: palette.accent,
+        streamUrl: bestUrl,
+        isLiveBroadcast: true,
+        faviconUrl,
+        homepage: /^https?:\/\//i.test(String(p.homepageUrl || '')) ? p.homepageUrl : undefined,
+        currentTrack: {
+          id: `live-track-${stationId}`,
+          title: name,
+          artist: cityLabel || 'Live FM Broadcast',
+          album: genreLabel,
+          duration: 0,
+          coverUrl: faviconUrl || '',
+          audioUrl: bestUrl,
+          streamSource: 'official-stream',
+          sourceTag: 'live-radio',
+          genre: 'Live Radio',
+          lyrics: [{ time: 0, text: `${name} — Live Broadcast via radio.net` }],
+          artistSolanaAddress: '',
+          bpm: 118
+        }
+      });
+      if (out.length >= 16) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+interface TuneInOutlineNode {
+  type?: string;
+  item?: string;
+  text?: string;
+  subtext?: string;
+  guide_id?: string;
+  image?: string;
+  bitrate?: string | number;
+  formats?: string;
+  children?: TuneInOutlineNode[];
+}
+
+async function searchTuneInStations(
+  query: string,
+  countryCode?: string
+): Promise<RadioStation[]> {
+  const q = query.trim();
+  if (!q) return [];
+  try {
+    const searchData = await fetchTuneInJsonp<{ body?: TuneInOutlineNode[] }>(
+      `/Search.ashx?query=${encodeURIComponent(q)}`,
+      3800
+    );
+    if (!searchData || !Array.isArray(searchData.body)) return [];
+
+    const nodes: TuneInOutlineNode[] = [];
+    const collect = (arr: TuneInOutlineNode[]) => {
+      for (const item of arr) {
+        if (item?.type === 'audio' && item?.item === 'station' && item?.guide_id) {
+          nodes.push(item);
+        }
+        if (Array.isArray(item?.children)) collect(item.children);
+      }
+    };
+    collect(searchData.body);
+
+    const candidates = nodes
+      .filter((n) => {
+        const title = String(n.text || '');
+        const sub = String(n.subtext || '');
+        if (/not supported|does not stream|no compatible stream|not available in your country/i.test(`${title} ${sub}`)) {
+          return false;
+        }
+        if (countryCode === 'ID' && !/indonesia|rri|papua|asiki|sunda|bandung|minang|manado|lombok|jambi|jakarta|surabaya|bali|medan|aceh|ambon|makassar|solo|jogja|padang|banjar/i.test(`${title} ${sub}`)) {
+          return false;
+        }
+        return (
+          matchesRadioRelevance(`${title} ${sub}`, q) ||
+          (/^hmong$/i.test(q) && /\b(?:hmong|blue\s*mong)\b/i.test(`${title} ${sub}`))
+        );
+      })
+      .slice(0, 7);
+
+    if (candidates.length === 0) return [];
+
+    const resolved = await Promise.all(
+      candidates.map(async (node, idx): Promise<RadioStation | null> => {
+        const gid = String(node.guide_id || '');
+        const tune = await fetchTuneInJsonp<{
+          body?: Array<{ url?: string; media_type?: string; bitrate?: number }>;
+        }>(`/Tune.ashx?id=${encodeURIComponent(gid)}&formats=mp3,aac,ogg,hls`, 3200);
+        const streams = Array.isArray(tune?.body) ? tune.body : [];
+        let bestUrl: string | null = null;
+        let codec = 'MP3';
+        let bitrate = Number(node.bitrate) || 0;
+        for (const st of streams) {
+          const playable = isPlayableLiveHttpsStream(st?.url, /hls/i.test(String(st?.media_type || '')) ? 1 : 0);
+          if (playable) {
+            bestUrl = playable;
+            codec = String(st?.media_type || 'MP3').toUpperCase();
+            bitrate = Number(st?.bitrate) || bitrate;
+            break;
+          }
+        }
+        if (!bestUrl) return null;
+        const name = String(node.text || '').trim();
+        const sub = String(node.subtext || '').trim();
+        const palette = RADIO_PALETTE[idx % RADIO_PALETTE.length];
+        const cover = String(node.image || '').replace(/^http:\/\//i, 'https://');
+        const faviconUrl = /^https:\/\//i.test(cover) ? cover : undefined;
+        const stationId = `ti-${gid}`;
+        return {
+          id: stationId,
+          name,
+          tagline: [sub, 'TuneIn Directory'].filter(Boolean).join(' · ').slice(0, 120),
+          genre: (q.length <= 22 ? q : 'Community Radio').slice(0, 26),
+          city: sub && sub.length <= 42 ? sub : undefined,
+          category: inferRadioCategory(`${name} ${sub}`, /indonesia|papua|asiki|minang|manado|lombok|jambi|bandung|rri/i.test(`${name} ${sub}`) ? 'ID' : ''),
+          bitRate: bitrate > 0 ? `LIVE ${bitrate} kbps ${codec} · TuneIn` : `LIVE ${codec} · TuneIn`,
+          listenersCount: 280 - idx * 12,
+          color: palette.color,
+          accentColor: palette.accent,
+          streamUrl: bestUrl,
+          isLiveBroadcast: true,
+          faviconUrl,
+          currentTrack: {
+            id: `live-track-${stationId}`,
+            title: name,
+            artist: sub || 'TuneIn Live Broadcast',
+            album: 'TuneIn Radio',
+            duration: 0,
+            coverUrl: faviconUrl || '',
+            audioUrl: bestUrl,
+            streamSource: 'official-stream',
+            sourceTag: 'live-radio',
+            genre: 'Live Radio',
+            lyrics: [{ time: 0, text: `${name} — Live Broadcast via TuneIn` }],
+            artistSolanaAddress: '',
+            bpm: 118
+          }
+        };
+      })
+    );
+    return resolved.filter((x): x is RadioStation => Boolean(x));
+  } catch {
+    return [];
+  }
 }
 
 const MINORITY_RADIO_EXPANSIONS: Array<{
@@ -3182,74 +4072,154 @@ const MINORITY_RADIO_EXPANSIONS: Array<{
   tags?: string[];
   preferCountryCode?: string;
 }> = [
-  {
-    pattern: /\b(sunda|sundanese|jabar|jawa\s*barat|bandung|tasik|priangan|pasundan)\b/i,
-    states: ['Jawa Barat', 'West Java'],
-    names: ['Bandung', 'Tasikmalaya', 'Bogor', 'Cirebon', 'Sunda'],
-    langs: ['sundanese'],
-    preferCountryCode: 'ID'
-  },
-  {
-    pattern: /\b(minang|minangkabau|padang|sumbar|sumatera\s*barat|bukittinggi)\b/i,
-    states: ['Sumatera Barat', 'West Sumatra'],
-    names: ['Padang', 'Bukittinggi', 'Minang', 'Sumbar'],
-    preferCountryCode: 'ID'
-  },
-  {
-    pattern: /\b(batak|toba|karo|mandailing|medan|sumut|sumatera\s*utara)\b/i,
-    states: ['Sumatera Utara', 'North Sumatra'],
-    names: ['Medan', 'Toba', 'Siantar', 'Batak'],
-    preferCountryCode: 'ID'
-  },
-  {
-    pattern: /\b(dayak|kalimantan|borneo|pontianak|palangkaraya|samarinda|banjar|banjarmasin)\b/i,
-    states: ['Kalimantan Barat', 'Kalimantan Selatan', 'Kalimantan Timur', 'Kalimantan Tengah'],
-    names: ['Pontianak', 'Palangkaraya', 'Samarinda', 'Banjarmasin', 'Banjarbaru', 'Kalimantan'],
-    preferCountryCode: 'ID'
-  },
-  {
-    pattern: /\b(bugis|makassar|toraja|manado|minahasa|gorontalo|sulawesi)\b/i,
-    states: ['Sulawesi Selatan', 'Sulawesi Utara', 'Makassar'],
-    names: ['Makassar', 'Manado', 'Kendari', 'Palu', 'Gorontalo'],
-    preferCountryCode: 'ID'
-  },
-  {
-    pattern: /\b(papua|jayapura|sorong|biak|merauke|maluku|ambon|ternate)\b/i,
-    states: ['Papua', 'Maluku'],
-    names: ['Jayapura', 'Papua', 'Ambon', 'Maluku', 'Sorong', 'RRI'],
-    preferCountryCode: 'ID'
-  },
-  {
-    pattern: /\b(bali|balinese|denpasar|ubud|lombok|sasak)\b/i,
-    states: ['Bali'],
-    names: ['Bali', 'Denpasar', 'Lombok'],
-    langs: ['balinese'],
-    preferCountryCode: 'ID'
-  },
-  {
-    pattern: /\b(aceh|gayo|banda\s*aceh)\b/i,
-    states: ['Aceh'],
-    names: ['Aceh', 'Banda Aceh'],
-    preferCountryCode: 'ID'
-  },
-  {
-    pattern: /\b(jawa|javanese|jogja|yogyakarta|solo|surakarta|semarang|surabaya|jateng|jatim)\b/i,
-    states: ['Jawa Tengah', 'Jawa Timur', 'Yogyakarta'],
-    names: ['Jogja', 'Solo', 'Semarang', 'Surabaya', 'Malang'],
-    langs: ['javanese'],
-    preferCountryCode: 'ID'
-  },
-  {
-    pattern: /\b(indigenous|native|first\s*nations|aboriginal)\b/i,
-    tags: ['indigenous', 'native american', 'first nations', 'aboriginal', 'native'],
-    langs: ['navajo', 'cree', 'maori', 'quechua', 'hawaiian']
-  },
-  {
-    pattern: /\b(maori|māori|pacific|polynesian)\b/i,
-    langs: ['maori', 'samoan', 'tongan', 'hawaiian'],
-    tags: ['maori', 'pacific']
-  }
-];
+    {
+      pattern: /\b(sunda|sundanese|jabar|jawa\s*barat|bandung|tasik|priangan|pasundan)\b/i,
+      states: ['Jawa Barat', 'West Java'],
+      names: ['Bandung', 'Tasikmalaya', 'Bogor', 'Cirebon', 'Sunda'],
+      langs: ['sundanese'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(minang|minangkabau|padang|sumbar|sumatera\s*barat|bukittinggi)\b/i,
+      states: ['Sumatera Barat', 'West Sumatra'],
+      names: ['Padang', 'Bukittinggi', 'Minang', 'Sumbar'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(batak|toba|karo|mandailing|nias|medan|sumut|sumatera\s*utara)\b/i,
+      states: ['Sumatera Utara', 'North Sumatra'],
+      names: ['Medan', 'Toba', 'Siantar', 'Batak'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(dayak|kalimantan|borneo|pontianak|palangkaraya|samarinda|balikpapan|tarakan|banjar|banjarmasin)\b/i,
+      states: ['Kalimantan Barat', 'Kalimantan Selatan', 'Kalimantan Timur', 'Kalimantan Tengah'],
+      names: ['Banjarmasin', 'Banjarbaru', 'Balikpapan', 'Tarakan', 'Pontianak', 'Samarinda'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(bugis|makassar|toraja|manado|minahasa|gorontalo|sulawesi)\b/i,
+      states: ['Sulawesi Selatan', 'Sulawesi Utara', 'Makassar'],
+      names: ['Makassar', 'Manado', 'Gorontalo', 'Kendari', 'Palu'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(papua|jayapura|sorong|biak|merauke|wamena|nabire|maluku|ambon|ternate)\b/i,
+      states: ['Papua', 'Maluku'],
+      names: ['Jayapura', 'Papua', 'Ambon', 'Maluku', 'Sorong', 'Ternate'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(bali|balinese|denpasar|ubud)\b/i,
+      states: ['Bali'],
+      names: ['Bali', 'Denpasar'],
+      langs: ['balinese'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(lombok|sasak|mataram|ntb|sumbawa)\b/i,
+      states: ['Nusa Tenggara Barat', 'Mataram'],
+      names: ['Lombok', 'Mataram'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(ntt|kupang|alor|flores|ende|timor)\b/i,
+      states: ['Nusa Tenggara Timur', 'Kupang'],
+      names: ['Kupang', 'Alor', 'Flores', 'Ende'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(aceh|gayo|banda\s*aceh)\b/i,
+      states: ['Aceh'],
+      names: ['Aceh', 'Banda Aceh'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(palembang|sumsel|bengkulu|lampung|jambi|melayu|riau|pekanbaru|tanjungpinang|bangka|belitung)\b/i,
+      states: ['Sumatera Selatan', 'Kepulauan Riau', 'Kepulauan Bangka-Belitung'],
+      names: ['Palembang', 'Tanjungpinang', 'Sungailiat', 'Lampung', 'Jambi', 'Bengkulu'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(jawa|javanese|jogja|yogyakarta|solo|surakarta|semarang|surabaya|purwokerto|banyumas|madura|jateng|jatim)\b/i,
+      states: ['Jawa Tengah', 'Jawa Timur', 'Yogyakarta'],
+      names: ['Jogja', 'Solo', 'Semarang', 'Surabaya', 'Malang', 'Purwokerto'],
+      langs: ['javanese'],
+      preferCountryCode: 'ID'
+    },
+    {
+      pattern: /\b(indigenous|native|first\s*nations|aboriginal)\b/i,
+      tags: ['indigenous', 'native american', 'first nations', 'aboriginal', 'native'],
+      langs: ['navajo', 'cree', 'maori', 'quechua', 'hawaiian']
+    },
+    {
+      pattern: /\b(maori|māori|pacific|polynesian)\b/i,
+      langs: ['maori', 'samoan', 'tongan', 'hawaiian'],
+      tags: ['maori', 'pacific']
+    },
+    {
+      pattern: /\b(sami|sámi|sapmi)\b/i,
+      names: ['Sami', 'Sámi'],
+      langs: ['sami', 'northern sami'],
+      tags: ['sami']
+    },
+    {
+      pattern: /\b(frisian|fryslan|friesland)\b/i,
+      names: ['Fryslan', 'Friesland', 'Frisian'],
+      langs: ['frisian', 'west frisian'],
+      tags: ['frisian']
+    },
+    {
+      pattern: /\b(occitan|occitanie)\b/i,
+      langs: ['occitan'],
+      names: ['Occitan', 'Occitanie', 'Lenga']
+    },
+    {
+      pattern: /\b(sardinian|sardegna)\b/i,
+      langs: ['sardinian'],
+      names: ['Sardegna', 'Sardinian', 'Radiolina']
+    },
+    {
+      pattern: /\b(corsican|corsica|corse)\b/i,
+      langs: ['corsican'],
+      names: ['Corsica', 'Corse', 'Alta Frequenza']
+    },
+    {
+      pattern: /\b(hmong|mong)\b/i,
+      names: ['Hmong', 'Blue Mong'],
+      langs: ['hmong']
+    },
+    {
+      pattern: /\b(quechua|andean)\b/i,
+      langs: ['quechua'],
+      names: ['Quechua']
+    },
+    {
+      pattern: /\b(tamazight|amazigh|berber)\b/i,
+      langs: ['tamazight', 'berber'],
+      names: ['Tamazight', 'Amazigh']
+    },
+    {
+      pattern: /\b(uyghur|uighur)\b/i,
+      langs: ['uyghur'],
+      names: ['Uyghur']
+    },
+    {
+      pattern: /\b(tibetan|tibet)\b/i,
+      langs: ['tibetan'],
+      names: ['Tibetan', 'Tibet']
+    },
+    {
+      pattern: /\b(yoruba)\b/i,
+      langs: ['yoruba'],
+      names: ['Yoruba']
+    },
+    {
+      pattern: /\b(amharic)\b/i,
+      langs: ['amharic'],
+      names: ['Amharic']
+    }
+  ];
 
 function buildSomaFmRadioStations(queryLower: string): Promise<RadioStation[]> {
   return (async () => {
@@ -3336,62 +4306,64 @@ export async function searchLiveRadioStations(
     ? MINORITY_RADIO_EXPANSIONS.find((rule) => rule.pattern.test(trimmedQuery))
     : undefined;
 
+  // Enforce Country + Query / Language intersection when a specific 2-letter country code is selected
+  const effectiveCountryCode =
+    normalizedCountry && /^[A-Z]{2}$/.test(normalizedCountry) ? normalizedCountry : '';
+  const countryParam = effectiveCountryCode ? `&countrycode=${encodeURIComponent(effectiveCountryCode)}` : '';
+
   const buildSearchPaths = (httpsOnly: boolean): string[] => {
     const httpsParam = httpsOnly ? '&is_https=true' : '';
     const out: string[] = [];
     if (languageOpt) {
       out.push(
-        `/json/stations/search?language=${encodeURIComponent(languageOpt)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
+        `/json/stations/search?language=${encodeURIComponent(languageOpt)}${countryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
       );
     }
     if (tagOpt) {
       out.push(
-        `/json/stations/search?tag=${encodeURIComponent(tagOpt)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
+        `/json/stations/search?tag=${encodeURIComponent(tagOpt)}${countryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
       );
     }
     if (expansion) {
+      const expCountryParam = countryParam || (expansion.preferCountryCode ? `&countrycode=${expansion.preferCountryCode}` : '');
       for (const st of expansion.states || []) {
         out.push(
-          `/json/stations/search?state=${encodeURIComponent(st)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=32`
+          `/json/stations/search?state=${encodeURIComponent(st)}${expCountryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=32`
         );
       }
       for (const nm of expansion.names || []) {
         out.push(
-          `/json/stations/search?name=${encodeURIComponent(nm)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=28`
+          `/json/stations/search?name=${encodeURIComponent(nm)}${expCountryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=28`
         );
       }
       for (const lg of expansion.langs || []) {
         out.push(
-          `/json/stations/search?language=${encodeURIComponent(lg)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=32`
+          `/json/stations/search?language=${encodeURIComponent(lg)}${countryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=32`
         );
       }
       for (const tg of expansion.tags || []) {
         out.push(
-          `/json/stations/search?tag=${encodeURIComponent(tg)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=32`
+          `/json/stations/search?tag=${encodeURIComponent(tg)}${countryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=32`
         );
       }
     }
     if (trimmedQuery && !expansion) {
       out.push(
-        `/json/stations/search?name=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=45`,
-        `/json/stations/search?language=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=35`,
-        `/json/stations/search?tag=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=35`,
-        `/json/stations/search?state=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=30`,
+        `/json/stations/search?name=${encodeURIComponent(trimmedQuery)}${countryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=45`,
+        `/json/stations/search?language=${encodeURIComponent(trimmedQuery)}${countryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=35`,
+        `/json/stations/search?tag=${encodeURIComponent(trimmedQuery)}${countryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=35`,
+        `/json/stations/search?state=${encodeURIComponent(trimmedQuery)}${countryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=30`,
         `/json/stations/search?country=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=25`
       );
     } else if (trimmedQuery && expansion) {
       out.push(
-        `/json/stations/search?name=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=24`,
-        `/json/stations/search?tag=${encodeURIComponent(trimmedQuery)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=24`
+        `/json/stations/search?name=${encodeURIComponent(trimmedQuery)}${countryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=24`,
+        `/json/stations/search?tag=${encodeURIComponent(trimmedQuery)}${countryParam}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=24`
       );
     }
-    if (normalizedCountry === 'GLOBAL' && out.length === 0) {
+    if (out.length === 0 && effectiveCountryCode) {
       out.push(
-        `/json/stations/search?hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
-      );
-    } else if (normalizedCountry && normalizedCountry !== 'GLOBAL') {
-      out.push(
-        `/json/stations/search?countrycode=${encodeURIComponent(normalizedCountry)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
+        `/json/stations/search?countrycode=${encodeURIComponent(effectiveCountryCode)}&hidebroken=true${httpsParam}&order=clickcount&reverse=true&offset=${offset}&limit=${limit}`
       );
     }
     if (out.length === 0) {
@@ -3427,10 +4399,28 @@ export async function searchLiveRadioStations(
     return [];
   };
 
+  // Federated external browser-direct search across 4 independent directories (0 Vercel compute):
+  // 1) Radio-Browser (55k+ stations, 595 languages)
+  // 2) radio.net (prod.radio-api.net, 60k+ global/European/minority stations, direct CORS)
+  // 3) TuneIn OPML (100k+ AM/FM/local/indigenous stations via browser JSONP)
+  // 4) Verified Nusantara Public RRI Network + SomaFM
+  const externalTerm = trimmedQuery || languageOpt || tagOpt;
   const somaPromise =
-    offset === 0 && !normalizedCountry?.match(/^[A-Z]{2}$/) && !expansion?.preferCountryCode && !languageOpt
+    offset === 0 && !effectiveCountryCode && !expansion?.preferCountryCode && !languageOpt
       ? buildSomaFmRadioStations(tagOpt || lowerQuery || (normalizedCountry === 'GLOBAL' ? 'global' : ''))
       : Promise.resolve([]);
+  const radioNetPromise =
+    offset === 0 && externalTerm
+      ? searchRadioNetStations(externalTerm, effectiveCountryCode || expansion?.preferCountryCode)
+      : Promise.resolve([]);
+  const tuneInPromise =
+    offset === 0 && externalTerm
+      ? searchTuneInStations(externalTerm, effectiveCountryCode || expansion?.preferCountryCode)
+      : Promise.resolve([]);
+  const verifiedNusantara =
+    offset === 0
+      ? matchVerifiedRegionalStations(lowerQuery, effectiveCountryCode || normalizedCountry, languageOpt)
+      : [];
 
   rawItems = await runMirrorBatch(buildSearchPaths(true));
   if (rawItems.length < 8) {
@@ -3439,10 +4429,21 @@ export async function searchLiveRadioStations(
       rawItems = [...rawItems, ...extraNonStrict];
     }
   }
-  const somaStations = await somaPromise;
+  const [somaStations, radioNetStations, tuneInStations] = await Promise.all([
+    somaPromise,
+    radioNetPromise,
+    tuneInPromise
+  ]);
 
   const dedup = new Set<string>();
   const stations: RadioStation[] = [];
+
+  for (const st of verifiedNusantara) {
+    if (st.streamUrl && !dedup.has(st.streamUrl)) {
+      dedup.add(st.streamUrl);
+      stations.push(st);
+    }
+  }
 
   for (let i = 0; i < rawItems.length; i++) {
     const item = rawItems[i];
@@ -3511,7 +4512,7 @@ export async function searchLiveRadioStations(
     });
   }
 
-  for (const s of somaStations) {
+  for (const s of [...tuneInStations, ...radioNetStations, ...somaStations]) {
     if (s.streamUrl && !dedup.has(s.streamUrl)) {
       dedup.add(s.streamUrl);
       stations.push(s);
@@ -3524,8 +4525,9 @@ export async function searchLiveRadioStations(
     const scoreStation = (st: RadioStation): number => {
       let s = Math.min(40, Math.log10(Math.max(10, st.listenersCount)) * 10);
       const hay = `${st.name} ${st.city || ''} ${st.tagline} ${st.genre} ${st.country || ''}`;
-      if (wholeWordRe && wholeWordRe.test(hay)) s += 80;
+      if (wholeWordRe && wholeWordRe.test(hay)) s += 90;
       else if (trimmedQuery && !expansion && !hay.toLowerCase().includes(lowerQuery)) s -= 40;
+      if (st.id.startsWith('rri-')) s += 45;
       if (expansion?.preferCountryCode) {
         const isPref =
           st.category === 'Indonesia' ||
@@ -3866,11 +4868,11 @@ export async function searchTracksByLyricsOnline(lyricQuery: string): Promise<Ly
         c.preScore && c.preScore >= 90 && c.track
           ? Promise.resolve({ found: true, synced: true, source: 'catalog', lyrics: c.track.lyrics })
           : fetchLyricsWithMeta(c.title, c.artist, c.duration).catch(() => ({
-              found: false,
-              synced: false,
-              source: 'none',
-              lyrics: [] as LyricLine[]
-            })),
+            found: false,
+            synced: false,
+            source: 'none',
+            lyrics: [] as LyricLine[]
+          })),
         needsEnrich && idx < 5
           ? fetchItunesSongSearch(`${c.title} ${c.artist}`, primaryCountry).catch(() => [])
           : Promise.resolve([] as ITunesItem[])
@@ -3896,18 +4898,18 @@ export async function searchTracksByLyricsOnline(lyricQuery: string): Promise<Ly
       const trackObj: Track = c.track
         ? c.track
         : buildTrackFromUnified(
-            {
-              id: `lyr-${idx}-${normalizeText(finalTitle).slice(0, 18)}-${normalizeText(finalArtist).slice(0, 14)}`,
-              title: finalTitle,
-              artist: finalArtist,
-              album: finalAlbum,
-              genre: firstHit?.primaryGenreName || c.genre,
-              duration: finalDur,
-              coverUrl: finalCover
-            },
-            [],
-            emptyIds
-          );
+          {
+            id: `lyr-${idx}-${normalizeText(finalTitle).slice(0, 18)}-${normalizeText(finalArtist).slice(0, 14)}`,
+            title: finalTitle,
+            artist: finalArtist,
+            album: finalAlbum,
+            genre: firstHit?.primaryGenreName || c.genre,
+            duration: finalDur,
+            coverUrl: finalCover
+          },
+          [],
+          emptyIds
+        );
       if (!c.track && lyricRes.lyrics.length > 0) {
         trackObj.lyrics = lyricRes.lyrics;
       }
