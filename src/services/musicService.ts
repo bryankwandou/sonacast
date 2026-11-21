@@ -4817,13 +4817,26 @@ export async function searchTracksByLyricsOnline(lyricQuery: string): Promise<Ly
     const baseKey = normalizeText(stripTitleModifiers(cleanTitle));
     const artistKey = normalizeText((cand.artist || '').split(/[,&]|ft\.?|feat\.?/i)[0] || '');
     if (!baseKey || !artistKey) return;
-    if (isNonOriginalTitle(cand.title, trimmed) || UNREQUESTED_VARIANT_REGEX.test(cand.title)) return;
+    if (
+      isNonOriginalEntry(cand.title, cand.artist, cand.album || '', trimmed) ||
+      UNREQUESTED_VARIANT_REGEX.test(cand.title)
+    ) {
+      return;
+    }
+    const artistBonus = INDEXED_ARTIST_BY_NORM.has(artistKey) ? 45 : 0;
+    const unrequestedDangdutPenalty =
+      /\bdangdut\b|\bkoplo\b/i.test(cand.genre || '') &&
+      !/\bdangdut\b|\bkoplo\b/i.test(trimmed) &&
+      !INDEXED_ARTIST_BY_NORM.has(artistKey)
+        ? -45
+        : 0;
+    const adjustedSeedRank = cand.seedRank + artistBonus + unrequestedDangdutPenalty;
     const key = `${baseKey}::${artistKey}`;
     const prev = candMap.get(key);
     if (!prev) {
-      candMap.set(key, { ...cand, title: cleanTitle });
+      candMap.set(key, { ...cand, title: cleanTitle, seedRank: adjustedSeedRank });
     } else {
-      prev.seedRank = Math.max(prev.seedRank, cand.seedRank);
+      prev.seedRank = Math.max(prev.seedRank, adjustedSeedRank);
       if ((!prev.coverUrl || prev.coverUrl === DEFAULT_FALLBACK_COVER) && cand.coverUrl) {
         prev.coverUrl = cand.coverUrl;
       }
@@ -5025,12 +5038,19 @@ export async function searchTracksByLyricsOnline(lyricQuery: string): Promise<Ly
         trackObj.lyrics = lyricRes.lyrics;
       }
 
-      const verifiedLyrics = lyricMatch.score >= 50 || Boolean(c.preMatchedLine);
-      const totalScore = c.seedRank + (verifiedLyrics ? 180 + lyricMatch.score : 0);
+      const bestLyricScore = Math.max(lyricMatch.score, c.preScore || 0);
+      const verifiedLyrics = bestLyricScore >= 50 || Boolean(c.preMatchedLine);
+      const artistNormFinal = normalizeText((finalArtist || '').split(/[,&]|ft\.?|feat\.?/i)[0] || '');
+      const originalArtistBoost = INDEXED_ARTIST_BY_NORM.has(artistNormFinal) ? 55 : 0;
+      const totalScore =
+        c.seedRank + originalArtistBoost + (verifiedLyrics ? 180 + bestLyricScore * 2 : 0);
       return {
         match: {
           track: trackObj,
-          matchedLine: lyricMatch.line || c.preMatchedLine || '',
+          matchedLine:
+            lyricMatch.score >= (c.preScore || 0)
+              ? lyricMatch.line || c.preMatchedLine || ''
+              : c.preMatchedLine || lyricMatch.line || '',
           verifiedLyrics
         } satisfies LyricsSearchMatch,
         totalScore
