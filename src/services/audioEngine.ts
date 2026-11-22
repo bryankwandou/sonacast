@@ -150,16 +150,28 @@ export class AudioEngine {
   private ytHostElement: HTMLElement | null = null;
   private ytPlayer: YTPlayerInstance | null = null;
   private ytReady = false;
+  private ytPrewarmInFlight = false;
+  private ytPendingPrewarmLoad: { gen: number; videoId: string; startSeconds: number } | null = null;
   private ytApiPromise: Promise<void> | null = null;
   private ytApiStartedAt = 0;
   private ytPollInterval: number | null = null;
-  private ytBgWorker: Worker | null = null;
-  private ytBgWorkerUrl: string | null = null;
+  private ytPollGen = -1;
+  private bgWorker: Worker | null = null;
+  private bgWorkerUrl: string | null = null;
+  private bgWorkerRunning = false;
+  private bgWorkerTickCount = 0;
+  private bgWorkerTimerSeq = 1;
+  private bgWorkerTimers = new Map<
+    number,
+    { dueAt: number; fn: () => void; fallbackId: number | null; fired: boolean }
+  >();
   private ytMidStallSince = 0;
   private ytMidStallLastPos = -1;
   private ytMidStallRecoveries = 0;
   private html5PollInterval: number | null = null;
+  private html5PollGen = -1;
   private ytWatchdogTimer: number | null = null;
+  private ytWatchdogKickedOnce = false;
   private ytResumeCheckTimer: number | null = null;
   private ytFadeTimer: number | null = null;
   private wakeRecoverTimer: number | null = null;
@@ -219,6 +231,8 @@ export class AudioEngine {
   private keepaliveWavUrl: string | null = null;
   private pendingYtSeekSeconds: number | null = null;
   private ytBgPauseRecoverCount = 0;
+  private ytLastBgKickAt = 0;
+  private ytLastObservedPos = -1;
   private ytWallAnchorMs = 0;
   private ytWallAnchorPos = 0;
 
@@ -235,6 +249,10 @@ export class AudioEngine {
         if (this.isDocumentHidden) {
           if (this.isPlaying) {
             this.wasPlayingBeforeSleep = true;
+            if (this.activeBackend === 'youtube' && this.currentTime >= 0) {
+              this.ytWallAnchorMs = Date.now();
+              this.ytWallAnchorPos = this.currentTime;
+            }
             this.startTransitionKeepalive(0);
           }
           if (this.activeBackend === 'youtube' && this.isPlaying) {
@@ -242,8 +260,10 @@ export class AudioEngine {
           } else if (this.activeBackend === 'html5' && this.isPlaying) {
             this.startHtml5Poll();
           }
+          this.syncBgWorkerState();
           return;
         }
+        this.syncBgWorkerState();
         this.scheduleWakeRecovery();
       });
 
@@ -276,6 +296,24 @@ export class AudioEngine {
       });
       window.addEventListener('online', () => {
         this.scheduleWakeRecovery();
+      });
+      window.addEventListener('beforeunload', () => {
+        if (this.bgWorker) {
+          try {
+            this.bgWorker.terminate();
+          } catch {
+            // Ignore terminate error
+          }
+          this.bgWorker = null;
+        }
+        if (this.bgWorkerUrl) {
+          try {
+            URL.revokeObjectURL(this.bgWorkerUrl);
+          } catch {
+            // Ignore revoke error
+          }
+          this.bgWorkerUrl = null;
+        }
       });
     }
   }
@@ -437,6 +475,165 @@ export class AudioEngine {
     this.startTransitionKeepalive(0);
     if (this.ctx && this.ctx.state !== 'running') {
       this.ctx.resume().catch(() => {});
+    }
+    this.prewarmYouTubePlayer();
+  }
+
+  public prewarmYouTubePlayer() {
+    if (
+      typeof window === 'undefined' ||
+      this.isDocumentHidden ||
+      this.ytPlayer ||
+      this.ytPrewarmInFlight ||
+      !this.ytHostElement
+    ) {
+      return;
+    }
+    this.ytPrewarmInFlight = true;
+    void this.loadYouTubeApi()
+      .then(() => {
+        if (this.ytPlayer || !this.ytHostElement || !window.YT?.Player) {
+          this.ytPrewarmInFlight = false;
+          return;
+        }
+        this.mountYouTubePlayerInstance(undefined, 0, -1);
+      })
+      .catch(() => {
+        this.ytPrewarmInFlight = false;
+      });
+  }
+
+  public scheduleBackgroundTask(fn: () => void, delayMs: number): () => void {
+    const timerId = this.scheduleWorkerTimer(fn, delayMs);
+    return () => this.cancelWorkerTimer(timerId);
+  }
+
+  private ensureBgWorker(): Worker | null {
+    if (this.bgWorker) return this.bgWorker;
+    if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') {
+      return null;
+    }
+    try {
+      // Dedicated Web Worker timer is immune to Chrome's 60-second background window timer throttling
+      const src = [
+        'var t=null;',
+        'onmessage=function(e){',
+        '  if(e.data==="start"){ if(t===null) t=setInterval(function(){ postMessage(1); }, 250); }',
+        '  else if(e.data==="stop"){ if(t!==null){ clearInterval(t); t=null; } }',
+        '};'
+      ].join('');
+      const blob = new Blob([src], { type: 'application/javascript' });
+      const url = URL.createObjectURL(blob);
+      const worker = new Worker(url);
+      worker.onmessage = () => this.handleBgWorkerTick();
+      this.bgWorker = worker;
+      this.bgWorkerUrl = url;
+      return worker;
+    } catch {
+      return null;
+    }
+  }
+
+  private syncBgWorkerState() {
+    const needsTick =
+      this.bgWorkerTimers.size > 0 ||
+      (this.isDocumentHidden &&
+        (this.isPlaying ||
+          this.html5PlayPending ||
+          this.ytPollGen === this.playGeneration ||
+          this.html5PollGen === this.playGeneration));
+    if (needsTick) {
+      const worker = this.ensureBgWorker();
+      if (worker && !this.bgWorkerRunning) {
+        this.bgWorkerRunning = true;
+        try {
+          worker.postMessage('start');
+        } catch {
+          this.bgWorkerRunning = false;
+        }
+      }
+    } else if (this.bgWorker && this.bgWorkerRunning) {
+      this.bgWorkerRunning = false;
+      try {
+        this.bgWorker.postMessage('stop');
+      } catch {
+        // Ignore stop error
+      }
+    }
+  }
+
+  private handleBgWorkerTick() {
+    this.bgWorkerTickCount += 1;
+    const now = Date.now();
+    if (this.bgWorkerTimers.size > 0) {
+      const dueEntries: Array<{ id: number; fn: () => void; fallbackId: number | null }> = [];
+      for (const [id, entry] of this.bgWorkerTimers.entries()) {
+        if (!entry.fired && now >= entry.dueAt) {
+          entry.fired = true;
+          dueEntries.push({ id, fn: entry.fn, fallbackId: entry.fallbackId });
+        }
+      }
+      for (const item of dueEntries) {
+        this.bgWorkerTimers.delete(item.id);
+        if (item.fallbackId !== null) {
+          clearTimeout(item.fallbackId);
+        }
+        try {
+          item.fn();
+        } catch {
+          // Safe worker timer callback
+        }
+      }
+    }
+
+    if (this.isDocumentHidden && this.bgWorkerTickCount % 2 === 0) {
+      if (this.activeBackend === 'youtube' && this.ytPollGen === this.playGeneration) {
+        this.runYouTubePollTick(this.ytPollGen);
+      } else if (this.activeBackend === 'html5' && this.html5PollGen === this.playGeneration) {
+        this.runHtml5PollTick(this.html5PollGen);
+      }
+    }
+
+    this.syncBgWorkerState();
+  }
+
+  private scheduleWorkerTimer(fn: () => void, delayMs: number): number {
+    const id = this.bgWorkerTimerSeq++;
+    const safeDelay = Math.max(0, delayMs);
+    const entry = {
+      dueAt: Date.now() + safeDelay,
+      fn,
+      fallbackId: null as number | null,
+      fired: false
+    };
+    this.bgWorkerTimers.set(id, entry);
+    if (typeof window !== 'undefined') {
+      entry.fallbackId = window.setTimeout(() => {
+        if (entry.fired) return;
+        entry.fired = true;
+        this.bgWorkerTimers.delete(id);
+        this.syncBgWorkerState();
+        try {
+          fn();
+        } catch {
+          // Safe timer callback
+        }
+      }, safeDelay);
+    }
+    this.syncBgWorkerState();
+    return id;
+  }
+
+  private cancelWorkerTimer(id: number | null) {
+    if (id === null) return;
+    const entry = this.bgWorkerTimers.get(id);
+    if (entry) {
+      entry.fired = true;
+      if (entry.fallbackId !== null) {
+        clearTimeout(entry.fallbackId);
+      }
+      this.bgWorkerTimers.delete(id);
+      this.syncBgWorkerState();
     }
   }
 
@@ -834,14 +1031,15 @@ export class AudioEngine {
 
   private clearYouTubeWatchdog() {
     if (this.ytWatchdogTimer !== null) {
-      clearTimeout(this.ytWatchdogTimer);
+      this.cancelWorkerTimer(this.ytWatchdogTimer);
       this.ytWatchdogTimer = null;
     }
+    this.ytWatchdogKickedOnce = false;
   }
 
   private clearYouTubeResumeCheck() {
     if (this.ytResumeCheckTimer !== null) {
-      clearTimeout(this.ytResumeCheckTimer);
+      this.cancelWorkerTimer(this.ytResumeCheckTimer);
       this.ytResumeCheckTimer = null;
     }
   }
@@ -849,7 +1047,7 @@ export class AudioEngine {
   private armYouTubeResumeCheck(gen: number, expectedPos: number, allowRebuild = true) {
     this.clearYouTubeResumeCheck();
     const checkDelayMs = this.isDocumentHidden ? 3800 : 1800;
-    this.ytResumeCheckTimer = window.setTimeout(() => {
+    this.ytResumeCheckTimer = this.scheduleWorkerTimer(() => {
       this.ytResumeCheckTimer = null;
       if (gen !== this.playGeneration || this.activeBackend !== 'youtube' || !this.isPlaying) {
         return;
@@ -887,23 +1085,52 @@ export class AudioEngine {
     }, checkDelayMs);
   }
 
-  private armYouTubeWatchdog(gen: number) {
-    this.clearYouTubeWatchdog();
-    this.ytWatchdogTimer = window.setTimeout(() => {
+  private armYouTubeWatchdog(gen: number, delayOverrideMs?: number) {
+    if (this.ytWatchdogTimer !== null) {
+      this.cancelWorkerTimer(this.ytWatchdogTimer);
+      this.ytWatchdogTimer = null;
+    }
+    const waitMs = delayOverrideMs ?? (this.isDocumentHidden ? 5200 : 3600);
+    this.ytWatchdogTimer = this.scheduleWorkerTimer(() => {
+      this.ytWatchdogTimer = null;
       if (gen !== this.playGeneration || this.activeBackend !== 'youtube' || !this.isPlaying) {
         return;
       }
       let pos = this.currentTime;
+      let ytState: number | undefined;
       try {
         if (this.ytPlayer && this.ytReady) {
           pos = this.ytPlayer.getCurrentTime();
+          ytState = this.ytPlayer.getPlayerState?.();
         }
       } catch {
         // Ignore
       }
-      if (typeof pos === 'number' && pos >= 0.3) return;
+      // If actively playing (1) or already progressed past 0.3s, do not disturb playback
+      if ((typeof pos === 'number' && pos >= 0.3) || ytState === 1) {
+        return;
+      }
+      // In background tabs, give YouTube one unMute+playVideo nudge if stuck in CUED/PAUSED/UNSTARTED before skipping candidate
+      if (
+        this.isDocumentHidden &&
+        !this.ytWatchdogKickedOnce &&
+        this.ytPlayer &&
+        this.ytReady &&
+        (ytState === -1 || ytState === 2 || ytState === 5 || ytState === 3)
+      ) {
+        this.ytWatchdogKickedOnce = true;
+        try {
+          this.ytPlayer.unMute?.();
+          this.ytPlayer.setVolume(this.getCalibratedYouTubeVolume());
+          this.ytPlayer.playVideo();
+        } catch {
+          // Ignore kick error
+        }
+        this.armYouTubeWatchdog(gen, 3200);
+        return;
+      }
       this.advanceToNextCandidate(gen);
-    }, 3600);
+    }, waitMs);
   }
 
   private advanceToNextCandidate(gen: number): boolean {
@@ -916,13 +1143,16 @@ export class AudioEngine {
         : 0;
       try {
         this.ytPlayerGen = gen;
-        this.ytTrackTransitionUntil = performance.now() + 4000;
+        this.ytWatchdogKickedOnce = false;
+        this.ytTrackTransitionUntil = performance.now() + (this.isDocumentHidden ? 8000 : 4000);
         this.setYtVisualReady(false);
         this.armYtVisualGraceTimer(gen);
         this.notifyVideoId(nextId);
         this.ytPlayer.loadVideoById(
           resumeSec > 0 ? { videoId: nextId, startSeconds: resumeSec } : nextId
         );
+        this.ytPlayer.unMute?.();
+        this.ytPlayer.setVolume(this.getCalibratedYouTubeVolume());
         this.ytPlayer.playVideo();
         this.armYouTubeWatchdog(gen);
         return true;
@@ -997,7 +1227,8 @@ export class AudioEngine {
     this.clearYouTubeFade();
     const targetVol = this.getCalibratedYouTubeVolume();
     if (!this.ytPlayer || !this.ytReady) return;
-    if (this.crossfadeSeconds <= 0 || targetVol <= 5) {
+    // Never ramp volume with window.setInterval while tab is hidden (Chrome throttles intervals up to 60s)
+    if (this.isDocumentHidden || this.crossfadeSeconds <= 0 || targetVol <= 5) {
       try {
         this.ytPlayer.setVolume(targetVol);
       } catch {
@@ -1037,7 +1268,8 @@ export class AudioEngine {
     if (this.keepaliveWavUrl) return this.keepaliveWavUrl;
     if (typeof Blob === 'undefined' || typeof URL === 'undefined') return null;
     try {
-      const sampleCount = 80000;
+      const sampleRate = 8000;
+      const sampleCount = 80000; // 10 seconds looping
       const dataSize = sampleCount * 2;
       const buf = new ArrayBuffer(44 + dataSize);
       const view = new DataView(buf);
@@ -1051,12 +1283,18 @@ export class AudioEngine {
       view.setUint32(16, 16, true);
       view.setUint16(20, 1, true);
       view.setUint16(22, 1, true);
-      view.setUint32(24, 8000, true);
-      view.setUint32(28, 16000, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
       view.setUint16(32, 2, true);
       view.setUint16(34, 16, true);
       writeStr(36, 'data');
       view.setUint32(40, dataSize, true);
+      // Inaudible ultra-low-level (-74 dBFS) continuous carrier so Chromium AudibilityDetector
+      // preserves active media session and prevents 60-second background timer clamping between tracks
+      for (let i = 0; i < sampleCount; i += 1) {
+        const sample = Math.round(Math.sin((2 * Math.PI * 140 * i) / sampleRate) * 6);
+        view.setInt16(44 + i * 2, sample, true);
+      }
       const blob = new Blob([buf], { type: 'audio/wav' });
       this.keepaliveWavUrl = URL.createObjectURL(blob);
       return this.keepaliveWavUrl;
@@ -1068,7 +1306,7 @@ export class AudioEngine {
   private startTransitionKeepalive(maxMs = 10000) {
     if (typeof window === 'undefined') return;
     if (this.transitionKeepaliveTimer !== null) {
-      clearTimeout(this.transitionKeepaliveTimer);
+      this.cancelWorkerTimer(this.transitionKeepaliveTimer);
       this.transitionKeepaliveTimer = null;
     }
     try {
@@ -1077,7 +1315,7 @@ export class AudioEngine {
         if (wavUrl) {
           const el = new Audio(wavUrl);
           el.loop = true;
-          el.volume = 0.01;
+          el.volume = 0.02;
           this.keepaliveAudioEl = el;
         }
       }
@@ -1101,8 +1339,8 @@ export class AudioEngine {
           }
           const osc = this.ctx.createOscillator();
           const gain = this.ctx.createGain();
-          osc.frequency.value = 1;
-          gain.gain.value = 0.00005;
+          osc.frequency.value = 180;
+          gain.gain.value = 0.0002;
           osc.connect(gain);
           gain.connect(this.ctx.destination);
           osc.start();
@@ -1114,7 +1352,8 @@ export class AudioEngine {
       }
     }
     if (maxMs > 0) {
-      this.transitionKeepaliveTimer = window.setTimeout(() => {
+      this.transitionKeepaliveTimer = this.scheduleWorkerTimer(() => {
+        this.transitionKeepaliveTimer = null;
         if (this.activeBackend !== 'youtube' || !this.isPlaying) {
           this.stopTransitionKeepalive();
         }
@@ -1124,7 +1363,7 @@ export class AudioEngine {
 
   private stopTransitionKeepalive() {
     if (this.transitionKeepaliveTimer !== null) {
-      clearTimeout(this.transitionKeepaliveTimer);
+      this.cancelWorkerTimer(this.transitionKeepaliveTimer);
       this.transitionKeepaliveTimer = null;
     }
     if (this.keepaliveAudioEl) {
@@ -1157,6 +1396,7 @@ export class AudioEngine {
     ++this.playGeneration;
     this.activeBackend = 'none';
     this.pendingYtSeekSeconds = null;
+    this.ytPendingPrewarmLoad = null;
     this.stopHtml5Poll();
     this.stopYouTubePoll();
     this.clearYouTubeWatchdog();
@@ -1169,7 +1409,9 @@ export class AudioEngine {
     this.currentTime = 0;
     this.ytWallAnchorMs = 0;
     this.ytWallAnchorPos = 0;
+    this.ytLastObservedPos = -1;
     this.ytBgPauseRecoverCount = 0;
+    this.ytLastBgKickAt = 0;
     this.wasPlayingBeforeSleep = true;
     this.isPlaying = true;
     this.startTransitionKeepalive(0);
@@ -1588,96 +1830,104 @@ export class AudioEngine {
     }
   }
 
-  private startHtml5Poll() {
-    this.stopHtml5Poll();
-    const intervalMs = this.isDocumentHidden ? 1000 : this.lowCpuMode ? 350 : 100;
-    const pollGen = this.playGeneration;
-    this.html5LastPos = this.getActiveHtml5Element()?.currentTime ?? -1;
-    this.html5StallSince = performance.now();
-    this.html5PollInterval = window.setInterval(() => {
-      const activeEl = this.getActiveHtml5Element();
-      if (this.activeBackend !== 'html5' || !activeEl || pollGen !== this.playGeneration) {
-        if (pollGen !== this.playGeneration) this.stopHtml5Poll();
-        return;
+  private runHtml5PollTick(pollGen: number) {
+    const activeEl = this.getActiveHtml5Element();
+    if (this.activeBackend !== 'html5' || !activeEl || pollGen !== this.playGeneration) {
+      if (pollGen !== this.playGeneration) this.stopHtml5Poll();
+      return;
+    }
+    if (!this.isLiveStream && activeEl.ended) {
+      this.completeCurrentTrack(pollGen);
+      return;
+    }
+    if (!this.isPlaying && !this.html5PlayPending) {
+      return;
+    }
+    const nowMs = performance.now();
+    if (activeEl.paused) {
+      const stalledMs = nowMs - this.html5StallSince;
+      if (
+        stalledMs >= 1800 &&
+        !this.blobRecoverInFlight &&
+        performance.now() - this.lastPauseCalledAt > 1200
+      ) {
+        this.html5StallSince = nowMs;
+        if (this.usingPassthroughStream) {
+          activeEl.play().catch(() => {
+            this.resume(true, true);
+          });
+        } else {
+          void this.recoverStalledHtml5Seek(pollGen, this.currentTime);
+        }
       }
-      if (!this.isLiveStream && activeEl.ended) {
+      return;
+    }
+    if (
+      !this.isLiveStream &&
+      activeEl.duration &&
+      isFinite(activeEl.duration) &&
+      activeEl.duration > 0 &&
+      activeEl.duration < 86400
+    ) {
+      const realDur = Math.floor(activeEl.duration);
+      if (realDur >= 10 && Math.abs(realDur - this.duration) >= 1) {
+        this.duration = realDur;
+        this.notifyDurationChange();
+      }
+      if (activeEl.duration >= 10 && activeEl.currentTime >= activeEl.duration - 0.25) {
         this.completeCurrentTrack(pollGen);
         return;
       }
-      if (!this.isPlaying && !this.html5PlayPending) {
-        return;
-      }
-      const nowMs = performance.now();
-      if (activeEl.paused) {
+      if (this.html5LastPos < 0 || Math.abs(activeEl.currentTime - this.html5LastPos) >= 0.08) {
+        this.html5LastPos = activeEl.currentTime;
+        this.html5StallSince = nowMs;
+      } else {
         const stalledMs = nowMs - this.html5StallSince;
-        if (
-          stalledMs >= 1800 &&
-          !this.blobRecoverInFlight &&
-          performance.now() - this.lastPauseCalledAt > 1200
-        ) {
-          this.html5StallSince = nowMs;
-          if (this.usingPassthroughStream) {
-            activeEl.play().catch(() => {
-              this.resume(true, true);
-            });
-          } else {
-            void this.recoverStalledHtml5Seek(pollGen, this.currentTime);
-          }
-        }
-        return;
-      }
-      if (
-        !this.isLiveStream &&
-        activeEl.duration &&
-        isFinite(activeEl.duration) &&
-        activeEl.duration > 0 &&
-        activeEl.duration < 86400
-      ) {
-        const realDur = Math.floor(activeEl.duration);
-        if (realDur >= 10 && Math.abs(realDur - this.duration) >= 1) {
-          this.duration = realDur;
-          this.notifyDurationChange();
-        }
-        if (activeEl.duration >= 10 && activeEl.currentTime >= activeEl.duration - 0.25) {
+        if (activeEl.duration >= 10 && activeEl.currentTime >= activeEl.duration - 4.5 && stalledMs >= 2000) {
           this.completeCurrentTrack(pollGen);
           return;
         }
-        if (this.html5LastPos < 0 || Math.abs(activeEl.currentTime - this.html5LastPos) >= 0.08) {
-          this.html5LastPos = activeEl.currentTime;
-          this.html5StallSince = nowMs;
-        } else {
-          const stalledMs = nowMs - this.html5StallSince;
-          if (activeEl.duration >= 10 && activeEl.currentTime >= activeEl.duration - 4.5 && stalledMs >= 2000) {
-            this.completeCurrentTrack(pollGen);
-            return;
-          }
-          const stallLimitMs = this.html5PlayPending ? 3600 : this.isDocumentHidden ? 2400 : 1400;
-          if (stalledMs >= stallLimitMs && !this.blobRecoverInFlight) {
-            void this.recoverStalledHtml5Seek(pollGen, activeEl.currentTime);
-          }
+        const stallLimitMs = this.html5PlayPending ? 3600 : this.isDocumentHidden ? 2400 : 1400;
+        if (stalledMs >= stallLimitMs && !this.blobRecoverInFlight) {
+          void this.recoverStalledHtml5Seek(pollGen, activeEl.currentTime);
         }
       }
-      if (!this.isPlaying || this.pendingHtml5SeekSeconds !== null) {
-        return;
-      }
-      this.currentTime =
-        !this.isLiveStream && this.duration > 0
-          ? Math.min(activeEl.currentTime, this.duration)
-          : activeEl.currentTime;
-      if (!this.isLiveStream && this.duration >= 30 && this.currentTime >= this.duration - 0.35 && activeEl.ended) {
-        this.completeCurrentTrack(pollGen);
-        return;
-      }
-      this.lastHtml5NotifyAt = nowMs;
-      this.notifyTime();
+    }
+    if (!this.isPlaying || this.pendingHtml5SeekSeconds !== null) {
+      return;
+    }
+    this.currentTime =
+      !this.isLiveStream && this.duration > 0
+        ? Math.min(activeEl.currentTime, this.duration)
+        : activeEl.currentTime;
+    if (!this.isLiveStream && this.duration >= 30 && this.currentTime >= this.duration - 0.35 && activeEl.ended) {
+      this.completeCurrentTrack(pollGen);
+      return;
+    }
+    this.lastHtml5NotifyAt = nowMs;
+    this.notifyTime();
+  }
+
+  private startHtml5Poll() {
+    this.stopHtml5Poll();
+    const intervalMs = this.isDocumentHidden ? 800 : this.lowCpuMode ? 350 : 100;
+    const pollGen = this.playGeneration;
+    this.html5PollGen = pollGen;
+    this.html5LastPos = this.getActiveHtml5Element()?.currentTime ?? -1;
+    this.html5StallSince = performance.now();
+    this.html5PollInterval = window.setInterval(() => {
+      this.runHtml5PollTick(pollGen);
     }, intervalMs);
+    this.syncBgWorkerState();
   }
 
   private stopHtml5Poll() {
+    this.html5PollGen = -1;
     if (this.html5PollInterval !== null) {
       clearInterval(this.html5PollInterval);
       this.html5PollInterval = null;
     }
+    this.syncBgWorkerState();
   }
 
   private runYouTubePollTick(pollGen: number) {
@@ -1689,6 +1939,7 @@ export class AudioEngine {
       return;
     }
     try {
+      const nowMs = performance.now();
       const ytState = this.ytPlayer.getPlayerState?.();
       if (ytState === 0) {
         this.completeCurrentTrack(pollGen);
@@ -1698,13 +1949,16 @@ export class AudioEngine {
         this.isDocumentHidden &&
         this.isPlaying &&
         this.wasPlayingBeforeSleep &&
-        performance.now() - this.lastPauseCalledAt > 1500 &&
+        nowMs - this.lastPauseCalledAt > 1500 &&
+        nowMs - this.ytLastBgKickAt >= 650 &&
         (ytState === 2 || ytState === 5 || ytState === -1) &&
-        this.ytBgPauseRecoverCount < 4
+        this.ytBgPauseRecoverCount < 12
       ) {
         this.ytBgPauseRecoverCount += 1;
+        this.ytLastBgKickAt = nowMs;
         try {
           this.ytPlayer.unMute?.();
+          this.ytPlayer.setVolume(this.getCalibratedYouTubeVolume());
           this.ytPlayer.playVideo();
         } catch {
           // Ignore blocked background kick
@@ -1720,25 +1974,47 @@ export class AudioEngine {
       }
       const pos = this.ytPlayer.getCurrentTime();
       if (typeof pos === 'number' && isFinite(pos) && pos >= 0) {
-        if (pos > 0.4 && this.ytWallAnchorMs === 0) {
+        // If actively buffering (3), keep wall anchor pinned so buffering time never causes early skip
+        if (ytState === 3) {
           this.ytWallAnchorMs = Date.now();
-          this.ytWallAnchorPos = pos;
-        } else if (pos > this.ytMaxPosSeen + 0.5) {
-          this.ytWallAnchorMs = Date.now();
-          this.ytWallAnchorPos = pos;
+          this.ytWallAnchorPos = Math.max(pos, this.ytMaxPosSeen);
+        } else if (
+          this.ytWallAnchorMs === 0 ||
+          this.ytLastObservedPos < 0 ||
+          Math.abs(pos - this.ytLastObservedPos) >= 0.15
+        ) {
+          if (pos > 0.2 || ytState === 1) {
+            this.ytWallAnchorMs = Date.now();
+            this.ytWallAnchorPos = pos;
+          }
+          this.ytLastObservedPos = pos;
         }
         this.ytMaxPosSeen = Math.max(this.ytMaxPosSeen, pos);
-        const effectivePos = Math.max(pos, this.ytMaxPosSeen >= this.duration - 3.5 && pos < 1 ? this.ytMaxPosSeen : pos);
-        this.currentTime = this.duration > 0 ? Math.min(effectivePos, this.duration) : effectivePos;
+        const effectivePos = Math.max(
+          pos,
+          this.ytMaxPosSeen >= this.duration - 3.5 && pos < 1 ? this.ytMaxPosSeen : pos
+        );
+
+        const wallEstimatedPos =
+          this.isDocumentHidden && this.ytWallAnchorMs > 0 && ytState !== 3
+            ? this.ytWallAnchorPos + ((Date.now() - this.ytWallAnchorMs) / 1000) * this.playbackRate
+            : 0;
+        const displayPos =
+          this.isDocumentHidden && ytState === 1 && wallEstimatedPos > effectivePos + 1.0
+            ? wallEstimatedPos
+            : effectivePos;
+        this.currentTime = this.duration > 0 ? Math.min(displayPos, this.duration) : displayPos;
         this.notifyTime();
-        if (pos >= 0.3) {
+        if (pos >= 0.3 || ytState === 1) {
           this.clearYouTubeWatchdog();
           this.startTransitionKeepalive(0);
         }
 
-        // Mid-track silence/buffering stall self-recovery (prevents sudden silent hang mid-song)
-        const nowMs = performance.now();
+        // Mid-track silence/buffering stall self-recovery ONLY while tab is visible:
+        // In hidden tabs Chromium throttles cross-origin YouTube infoDelivery even while audio plays smoothly,
+        // so running mid-track seekTo/reload while hidden would rewind or interrupt live background audio.
         if (
+          !this.isDocumentHidden &&
           this.isPlaying &&
           effectivePos > 1.0 &&
           (this.duration <= 0 || effectivePos < this.duration - 4.5) &&
@@ -1772,21 +2048,30 @@ export class AudioEngine {
           this.ytMidStallRecoveries = 0;
         }
 
-        const wallEstimatedPos =
-          this.isDocumentHidden && this.ytWallAnchorMs > 0
-            ? this.ytWallAnchorPos + ((Date.now() - this.ytWallAnchorMs) / 1000) * this.playbackRate
-            : 0;
         const ytEndedNearRealDur =
           typeof realDur === 'number' &&
           isFinite(realDur) &&
           realDur >= 30 &&
           pos >= realDur - 0.6;
+        // Reliable background end detection even when Chromium throttles YouTube iframe infoDelivery up to 60s
+        const wallEndReached =
+          this.isDocumentHidden &&
+          this.ytWallAnchorMs > 0 &&
+          ytState !== 3 &&
+          ((wallEstimatedPos >= this.duration + 0.6 &&
+            (ytState === 0 ||
+              ytState === 2 ||
+              ytState === 5 ||
+              ytState === -1 ||
+              pos <= 1 ||
+              pos >= this.duration - 3.5)) ||
+            wallEstimatedPos >= this.duration + 1.8);
         if (
           this.isPlaying &&
           this.duration >= 30 &&
           (effectivePos >= this.duration - 0.6 ||
             ytEndedNearRealDur ||
-            (wallEstimatedPos >= this.duration + 0.5 && (pos <= 1 || pos >= this.duration - 3.5)) ||
+            wallEndReached ||
             ((ytState === 2 || ytState === 3 || ytState === 5 || ytState === -1) &&
               effectivePos >= this.duration - 2.5))
         ) {
@@ -1814,69 +2099,333 @@ export class AudioEngine {
     }
   }
 
-  private startBgWorkerTicker(pollGen: number) {
-    this.stopBgWorkerTicker();
-    if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') {
-      return;
-    }
-    try {
-      // Dedicated Web Worker timer is immune to Chrome's 60-second background window timer throttling
-      const blob = new Blob(
-        ['setInterval(function(){ postMessage(1); }, 850);'],
-        { type: 'application/javascript' }
-      );
-      const url = URL.createObjectURL(blob);
-      const worker = new Worker(url);
-      worker.onmessage = () => {
-        if (this.isDocumentHidden) {
-          this.runYouTubePollTick(pollGen);
-        }
-      };
-      this.ytBgWorker = worker;
-      this.ytBgWorkerUrl = url;
-    } catch {
-      // Fall back silently to window interval if CSP/environment blocks blob Worker
-    }
-  }
-
-  private stopBgWorkerTicker() {
-    if (this.ytBgWorker) {
-      try {
-        this.ytBgWorker.terminate();
-      } catch {
-        // Ignore terminate error
-      }
-      this.ytBgWorker = null;
-    }
-    if (this.ytBgWorkerUrl) {
-      try {
-        URL.revokeObjectURL(this.ytBgWorkerUrl);
-      } catch {
-        // Ignore revoke error
-      }
-      this.ytBgWorkerUrl = null;
-    }
-  }
-
   private startYouTubePoll() {
     this.stopYouTubePoll();
     this.ytMidStallSince = 0;
     this.ytMidStallLastPos = -1;
     this.ytMidStallRecoveries = 0;
-    const intervalMs = this.isDocumentHidden ? 850 : this.lowCpuMode ? 350 : 100;
+    const intervalMs = this.isDocumentHidden ? 800 : this.lowCpuMode ? 350 : 100;
     const pollGen = this.playGeneration;
+    this.ytPollGen = pollGen;
     this.ytPollInterval = window.setInterval(() => {
       this.runYouTubePollTick(pollGen);
     }, intervalMs);
-    this.startBgWorkerTicker(pollGen);
+    this.syncBgWorkerState();
   }
 
   private stopYouTubePoll() {
+    this.ytPollGen = -1;
     if (this.ytPollInterval !== null) {
       clearInterval(this.ytPollInterval);
       this.ytPollInterval = null;
     }
-    this.stopBgWorkerTicker();
+    this.syncBgWorkerState();
+  }
+
+  private mountYouTubePlayerInstance(
+    initialVideoId: string | undefined,
+    clampedStart: number,
+    gen: number
+  ) {
+    if (!this.ytHostElement) {
+      this.ytPrewarmInFlight = false;
+      if (gen >= 0) {
+        this.isPlaying = false;
+        this.wasPlayingBeforeSleep = false;
+        this.notifyState();
+        this.notifyError('Stream host container not mounted.');
+      }
+      return;
+    }
+
+    const YT = window.YT;
+    if (!YT || !YT.Player) {
+      this.ytPrewarmInFlight = false;
+      if (gen >= 0) {
+        this.isPlaying = false;
+        this.notifyState();
+      }
+      return;
+    }
+
+    if (this.ytPlayer) {
+      try {
+        this.ytPlayer.destroy?.();
+      } catch {
+        // Ignore stale iframe destroy error
+      }
+      this.ytPlayer = null;
+    }
+
+    this.ytHostElement.innerHTML = '';
+    const targetNode = document.createElement('div');
+    targetNode.id = 'sonacast-yt-player-frame';
+    this.ytHostElement.appendChild(targetNode);
+
+    const playerVars: Record<string, string | number> = {
+      autoplay: initialVideoId ? 1 : 0,
+      controls: 1,
+      modestbranding: 1,
+      rel: 0,
+      playsinline: 1,
+      iv_load_policy: 3,
+      origin: window.location.origin
+    };
+    if (this.audioDataSaverEnabled && !this.videoStageActive) {
+      playerVars.vq = 'small';
+    }
+    if (initialVideoId && clampedStart > 0) {
+      playerVars.start = clampedStart;
+    }
+
+    this.ytReady = false;
+    this.ytPlayerGen = gen;
+    this.ytTrackTransitionUntil =
+      initialVideoId ? performance.now() + (this.isDocumentHidden ? 8000 : 3200) : 0;
+
+    this.ytPlayer = new YT.Player(targetNode, {
+      width: '100%',
+      height: '100%',
+      ...(initialVideoId ? { videoId: initialVideoId } : {}),
+      playerVars,
+      events: {
+        onReady: (event) => {
+          this.ytReady = true;
+          this.ytPrewarmInFlight = false;
+
+          // If a real track request arrived while idle prewarm iframe was initializing, start it immediately
+          const pending = this.ytPendingPrewarmLoad;
+          this.ytPendingPrewarmLoad = null;
+          if (pending && pending.gen === this.playGeneration && this.activeBackend === 'youtube') {
+            this.ytPlayerGen = pending.gen;
+            this.ytTrackTransitionUntil = performance.now() + (this.isDocumentHidden ? 8000 : 3200);
+            event.target.unMute?.();
+            this.applyYouTubeBandwidthMode(event.target);
+            this.applyYouTubeFadeIn(pending.gen);
+            try {
+              event.target.setPlaybackRate?.(this.playbackRate);
+            } catch {
+              // Ignore unsupported YT rate
+            }
+            const seekTarget =
+              this.pendingYtSeekSeconds !== null ? this.pendingYtSeekSeconds : pending.startSeconds;
+            this.pendingYtSeekSeconds = null;
+            try {
+              event.target.loadVideoById(
+                seekTarget > 0
+                  ? {
+                    videoId: pending.videoId,
+                    startSeconds: seekTarget,
+                    ...(this.audioDataSaverEnabled && !this.videoStageActive ? { suggestedQuality: 'small' } : {})
+                  }
+                  : this.audioDataSaverEnabled && !this.videoStageActive
+                    ? { videoId: pending.videoId, suggestedQuality: 'small' }
+                    : pending.videoId
+              );
+              if (this.isPlaying) {
+                event.target.playVideo();
+                this.startYouTubePoll();
+                this.armYouTubeWatchdog(pending.gen);
+                this.armYtVisualGraceTimer(pending.gen);
+              }
+            } catch {
+              // Ignore load error
+            }
+            return;
+          }
+
+          const activeGen = this.ytPlayerGen;
+          if (activeGen < 0 || activeGen !== this.playGeneration || this.activeBackend !== 'youtube') {
+            // Pure silent prewarm finished while playing HTML5 or idle
+            return;
+          }
+          event.target.unMute?.();
+          this.applyYouTubeBandwidthMode(event.target);
+          this.applyYouTubeFadeIn(activeGen);
+          try {
+            event.target.setPlaybackRate?.(this.playbackRate);
+          } catch {
+            // Ignore unsupported YT rate
+          }
+          const ytSeekTarget =
+            this.pendingYtSeekSeconds !== null ? this.pendingYtSeekSeconds : clampedStart;
+          this.pendingYtSeekSeconds = null;
+          if (ytSeekTarget > 0) {
+            try {
+              event.target.seekTo(ytSeekTarget, true);
+            } catch {
+              // Ignore pre-start seek error
+            }
+          }
+          if (!this.isPlaying) {
+            try {
+              event.target.pauseVideo();
+            } catch {
+              // Ignore
+            }
+            return;
+          }
+          event.target.playVideo();
+          this.startYouTubePoll();
+          this.armYouTubeWatchdog(activeGen);
+          this.armYtVisualGraceTimer(activeGen);
+        },
+        onStateChange: (event) => {
+          const activeGen = this.ytPlayerGen;
+          if (this.activeBackend !== 'youtube' || activeGen !== this.playGeneration) return;
+          const state = event.data;
+          // 1 = PLAYING, 2 = PAUSED, 3 = BUFFERING, 0 = ENDED, 5 = CUED
+          if (state === 1) {
+            if (!this.isPlaying && this.lastPauseCalledAt > 0 && performance.now() - this.lastPauseCalledAt < 3500) {
+              try {
+                event.target.pauseVideo();
+              } catch {
+                // Ignore
+              }
+              return;
+            }
+            this.isPlaying = true;
+            this.wasPlayingBeforeSleep = true;
+            this.ytTrackTransitionUntil = 0;
+            this.ytBgPauseRecoverCount = 0;
+            this.ytWatchdogKickedOnce = false;
+            this.applyYouTubeBandwidthMode(event.target);
+            if (this.pendingYtSeekSeconds !== null) {
+              const deferredSeek = this.pendingYtSeekSeconds;
+              this.pendingYtSeekSeconds = null;
+              if (this.duration >= 30 && deferredSeek >= this.duration - 0.8) {
+                this.completeCurrentTrack(activeGen);
+                return;
+              }
+              try {
+                event.target.seekTo(deferredSeek, true);
+              } catch {
+                // Ignore deferred seek error
+              }
+            }
+            this.startTransitionKeepalive(0);
+            this.setYtVisualReady(true);
+            this.clearYouTubeResumeCheck();
+            this.clearYouTubeWatchdog();
+            this.notifyState();
+            this.startYouTubePoll();
+            try {
+              const cur = event.target.getCurrentTime();
+              if (typeof cur === 'number' && cur >= 0) {
+                this.ytWallAnchorMs = Date.now();
+                this.ytWallAnchorPos = cur;
+                this.ytLastObservedPos = cur;
+              }
+              const realDur = event.target.getDuration();
+              if (realDur && isFinite(realDur) && realDur >= 30) {
+                const rounded = Math.floor(realDur);
+                if (Math.abs(rounded - this.duration) >= 1) {
+                  this.duration = rounded;
+                  this.notifyDurationChange();
+                }
+              }
+            } catch {
+              // Ignore
+            }
+          } else if (state === 3) {
+            try {
+              const curBuf = event.target.getCurrentTime();
+              if (typeof curBuf === 'number' && isFinite(curBuf) && curBuf >= 0) {
+                this.ytWallAnchorMs = Date.now();
+                this.ytWallAnchorPos = Math.max(curBuf, this.ytMaxPosSeen);
+              }
+            } catch {
+              // Ignore
+            }
+          } else if (state === 5 || state === -1) {
+            if (
+              this.isPlaying &&
+              this.duration >= 30 &&
+              (this.ytMaxPosSeen >= this.duration - 3.5 || this.currentTime >= this.duration - 2.5)
+            ) {
+              this.completeCurrentTrack(activeGen);
+              return;
+            }
+            if (this.isPlaying) {
+              try {
+                event.target.unMute?.();
+                event.target.playVideo();
+              } catch {
+                // Ignore
+              }
+            }
+          } else if (state === 2) {
+            // Ignore transient teardown pause emitted immediately after loadVideoById
+            if (this.isPlaying && performance.now() < this.ytTrackTransitionUntil) {
+              try {
+                event.target.unMute?.();
+                event.target.playVideo();
+              } catch {
+                // Ignore
+              }
+              return;
+            }
+            try {
+              const curAtPause = event.target.getCurrentTime();
+              if (typeof curAtPause === 'number' && isFinite(curAtPause) && curAtPause >= 0) {
+                this.ytMaxPosSeen = Math.max(this.ytMaxPosSeen, curAtPause);
+              }
+              const nearEndReached =
+                (typeof curAtPause === 'number' && curAtPause >= this.duration - 2.5) ||
+                (this.ytMaxPosSeen >= this.duration - 3.5 &&
+                  (typeof curAtPause !== 'number' || curAtPause <= 1.0 || curAtPause >= this.duration - 3.5));
+              if (this.isPlaying && this.duration >= 30 && nearEndReached) {
+                this.completeCurrentTrack(activeGen);
+                return;
+              }
+            } catch {
+              if (this.isPlaying && this.duration >= 30 && this.ytMaxPosSeen >= this.duration - 3.5) {
+                this.completeCurrentTrack(activeGen);
+                return;
+              }
+            }
+            // In background tabs Chromium may temporarily pause cross-origin YT iframes across track transitions
+            const nowMs = performance.now();
+            if (
+              this.isDocumentHidden &&
+              this.isPlaying &&
+              this.wasPlayingBeforeSleep &&
+              nowMs - this.lastPauseCalledAt > 1200 &&
+              this.ytBgPauseRecoverCount < 12
+            ) {
+              if (nowMs - this.ytLastBgKickAt >= 600) {
+                this.ytBgPauseRecoverCount += 1;
+                this.ytLastBgKickAt = nowMs;
+                try {
+                  event.target.unMute?.();
+                  event.target.setVolume(this.getCalibratedYouTubeVolume());
+                  event.target.playVideo();
+                } catch {
+                  // Fall through if iframe rejects play
+                }
+              }
+              return;
+            }
+            this.clearYouTubeWatchdog();
+            this.clearYouTubeResumeCheck();
+            this.clearYouTubeFade();
+            this.stopTransitionKeepalive();
+            this.setYtVisualReady(true);
+            this.isPlaying = false;
+            this.stopYouTubePoll();
+            this.notifyState();
+          } else if (state === 0) {
+            this.completeCurrentTrack(activeGen);
+          }
+        },
+        onError: () => {
+          const activeGen = this.ytPlayerGen;
+          if (this.activeBackend !== 'youtube' || activeGen !== this.playGeneration) return;
+          this.clearYouTubeResumeCheck();
+          this.advanceToNextCandidate(activeGen);
+        }
+      }
+    });
   }
 
   public async playYouTubeTrack(
@@ -1899,6 +2448,7 @@ export class AudioEngine {
     this.usingPassthroughStream = false;
     this.isLiveStream = false;
     this.fallbackStreamUrl = undefined;
+    this.ytPendingPrewarmLoad = null;
     this.stopHtml5Backend();
     this.clearYouTubeWatchdog();
     this.clearYouTubeResumeCheck();
@@ -1910,9 +2460,11 @@ export class AudioEngine {
     this.currentTrackBpm = bpm;
     this.currentTime = clampedStart;
     this.ytMaxPosSeen = clampedStart;
+    this.ytLastObservedPos = -1;
     this.ytWallAnchorMs = Date.now();
     this.ytWallAnchorPos = clampedStart;
     this.ytBgPauseRecoverCount = 0;
+    this.ytLastBgKickAt = 0;
     this.lastPauseCalledAt = 0;
     this.ytNearEndLastPos = -1;
     this.ytNearEndStallSince = 0;
@@ -1953,7 +2505,7 @@ export class AudioEngine {
           return;
         }
         this.ytPlayerGen = gen;
-        this.ytTrackTransitionUntil = performance.now() + 2600;
+        this.ytTrackTransitionUntil = performance.now() + (this.isDocumentHidden ? 8000 : 3200);
         this.applyYouTubeFadeIn(gen);
         this.ytPlayer.loadVideoById(
           immediateSeek > 0
@@ -1978,234 +2530,15 @@ export class AudioEngine {
       }
     }
 
-    if (!this.ytHostElement) {
-      this.isPlaying = false;
-      this.wasPlayingBeforeSleep = false;
-      this.notifyState();
-      this.notifyError('Stream host container not mounted.');
+    // If silent prewarm iframe is currently booting, attach to it rather than tearing it down mid-init
+    if (this.ytPlayer && this.ytPrewarmInFlight && !this.ytReady) {
+      this.ytPlayerGen = gen;
+      this.ytPendingPrewarmLoad = { gen, videoId: firstVideoId, startSeconds: clampedStart };
+      this.armYouTubeWatchdog(gen, 6500);
       return;
     }
 
-    if (this.ytPlayer) {
-      try {
-        this.ytPlayer.destroy?.();
-      } catch {
-        // Ignore stale iframe destroy error
-      }
-      this.ytPlayer = null;
-    }
-
-    this.ytHostElement.innerHTML = '';
-    const targetNode = document.createElement('div');
-    targetNode.id = 'sonacast-yt-player-frame';
-    this.ytHostElement.appendChild(targetNode);
-
-    const YT = window.YT;
-    if (!YT || !YT.Player) {
-      this.isPlaying = false;
-      this.notifyState();
-      return;
-    }
-
-    const playerVars: Record<string, string | number> = {
-      autoplay: 1,
-      controls: 1,
-      modestbranding: 1,
-      rel: 0,
-      playsinline: 1,
-      iv_load_policy: 3,
-      origin: window.location.origin
-    };
-    if (this.audioDataSaverEnabled && !this.videoStageActive) {
-      playerVars.vq = 'small';
-    }
-    if (clampedStart > 0) {
-      playerVars.start = clampedStart;
-    }
-
-    this.ytReady = false;
-    this.ytPlayerGen = gen;
-    this.ytTrackTransitionUntil = performance.now() + 2600;
-    this.ytPlayer = new YT.Player(targetNode, {
-      width: '100%',
-      height: '100%',
-      videoId: firstVideoId,
-      playerVars,
-      events: {
-        onReady: (event) => {
-          const activeGen = this.ytPlayerGen;
-          if (activeGen !== this.playGeneration || this.activeBackend !== 'youtube') return;
-          this.ytReady = true;
-          event.target.unMute?.();
-          this.applyYouTubeBandwidthMode(event.target);
-          this.applyYouTubeFadeIn(activeGen);
-          try {
-            event.target.setPlaybackRate?.(this.playbackRate);
-          } catch {
-            // Ignore unsupported YT rate
-          }
-          const ytSeekTarget =
-            this.pendingYtSeekSeconds !== null ? this.pendingYtSeekSeconds : clampedStart;
-          this.pendingYtSeekSeconds = null;
-          if (ytSeekTarget > 0) {
-            try {
-              event.target.seekTo(ytSeekTarget, true);
-            } catch {
-              // Ignore pre-start seek error
-            }
-          }
-          if (!this.isPlaying) {
-            try {
-              event.target.pauseVideo();
-            } catch {
-              // Ignore
-            }
-            return;
-          }
-          event.target.playVideo();
-          this.startYouTubePoll();
-          this.armYouTubeWatchdog(activeGen);
-          this.armYtVisualGraceTimer(activeGen);
-        },
-        onStateChange: (event) => {
-          const activeGen = this.ytPlayerGen;
-          if (this.activeBackend !== 'youtube' || activeGen !== this.playGeneration) return;
-          const state = event.data;
-          // 1 = PLAYING, 2 = PAUSED, 0 = ENDED, 5 = CUED
-          if (state === 1) {
-            if (!this.isPlaying && this.lastPauseCalledAt > 0 && performance.now() - this.lastPauseCalledAt < 3500) {
-              try {
-                event.target.pauseVideo();
-              } catch {
-                // Ignore
-              }
-              return;
-            }
-            this.isPlaying = true;
-            this.wasPlayingBeforeSleep = true;
-            this.ytTrackTransitionUntil = 0;
-            this.ytBgPauseRecoverCount = 0;
-            this.applyYouTubeBandwidthMode(event.target);
-            if (this.pendingYtSeekSeconds !== null) {
-              const deferredSeek = this.pendingYtSeekSeconds;
-              this.pendingYtSeekSeconds = null;
-              if (this.duration >= 30 && deferredSeek >= this.duration - 0.8) {
-                this.completeCurrentTrack(activeGen);
-                return;
-              }
-              try {
-                event.target.seekTo(deferredSeek, true);
-              } catch {
-                // Ignore deferred seek error
-              }
-            }
-            this.startTransitionKeepalive(0);
-            this.setYtVisualReady(true);
-            this.clearYouTubeResumeCheck();
-            this.notifyState();
-            this.startYouTubePoll();
-            try {
-              const cur = event.target.getCurrentTime();
-              if (typeof cur === 'number' && cur >= 0) {
-                this.ytWallAnchorMs = Date.now();
-                this.ytWallAnchorPos = cur;
-                if (cur >= 0.3) {
-                  this.clearYouTubeWatchdog();
-                }
-              }
-              const realDur = event.target.getDuration();
-              if (realDur && isFinite(realDur) && realDur >= 30) {
-                const rounded = Math.floor(realDur);
-                if (Math.abs(rounded - this.duration) >= 1) {
-                  this.duration = rounded;
-                  this.notifyDurationChange();
-                }
-              }
-            } catch {
-              // Ignore
-            }
-          } else if (state === 5 || state === -1) {
-            if (
-              this.isPlaying &&
-              this.duration >= 30 &&
-              (this.ytMaxPosSeen >= this.duration - 3.5 || this.currentTime >= this.duration - 2.5)
-            ) {
-              this.completeCurrentTrack(activeGen);
-              return;
-            }
-            if (this.isPlaying) {
-              try {
-                event.target.playVideo();
-              } catch {
-                // Ignore
-              }
-            }
-          } else if (state === 2) {
-            // Ignore transient teardown pause emitted immediately after loadVideoById
-            if (this.isPlaying && performance.now() < this.ytTrackTransitionUntil) {
-              try {
-                event.target.playVideo();
-              } catch {
-                // Ignore
-              }
-              return;
-            }
-            try {
-              const curAtPause = event.target.getCurrentTime();
-              if (typeof curAtPause === 'number' && isFinite(curAtPause) && curAtPause >= 0) {
-                this.ytMaxPosSeen = Math.max(this.ytMaxPosSeen, curAtPause);
-              }
-              const nearEndReached =
-                (typeof curAtPause === 'number' && curAtPause >= this.duration - 2.5) ||
-                (this.ytMaxPosSeen >= this.duration - 3.5 &&
-                  (typeof curAtPause !== 'number' || curAtPause <= 1.0 || curAtPause >= this.duration - 3.5));
-              if (this.isPlaying && this.duration >= 30 && nearEndReached) {
-                this.completeCurrentTrack(activeGen);
-                return;
-              }
-            } catch {
-              if (this.isPlaying && this.duration >= 30 && this.ytMaxPosSeen >= this.duration - 3.5) {
-                this.completeCurrentTrack(activeGen);
-                return;
-              }
-            }
-            // In background tabs Chromium may temporarily pause cross-origin YT iframes across track transitions
-            if (
-              this.isDocumentHidden &&
-              this.isPlaying &&
-              this.wasPlayingBeforeSleep &&
-              performance.now() - this.lastPauseCalledAt > 1200 &&
-              this.ytBgPauseRecoverCount < 4
-            ) {
-              this.ytBgPauseRecoverCount += 1;
-              try {
-                event.target.unMute?.();
-                event.target.playVideo();
-              } catch {
-                // Fall through if iframe rejects play
-              }
-              return;
-            }
-            this.clearYouTubeWatchdog();
-            this.clearYouTubeResumeCheck();
-            this.clearYouTubeFade();
-            this.stopTransitionKeepalive();
-            this.setYtVisualReady(true);
-            this.isPlaying = false;
-            this.stopYouTubePoll();
-            this.notifyState();
-          } else if (state === 0) {
-            this.completeCurrentTrack(activeGen);
-          }
-        },
-        onError: () => {
-          const activeGen = this.ytPlayerGen;
-          if (this.activeBackend !== 'youtube' || activeGen !== this.playGeneration) return;
-          this.clearYouTubeResumeCheck();
-          this.advanceToNextCandidate(activeGen);
-        }
-      }
-    });
+    this.mountYouTubePlayerInstance(firstVideoId, clampedStart, gen);
   }
 
   public playTrack(
@@ -2366,9 +2699,12 @@ export class AudioEngine {
     this.suppressPauseUntilMs = 0;
     this.html5PlayPending = false;
     this.pendingHtml5SeekSeconds = null;
+    this.ytPendingPrewarmLoad = null;
     this.stopTransitionKeepalive();
     this.clearHtml5BlobPrefetch();
     this.ytTrackTransitionUntil = 0;
+    this.ytWallAnchorMs = 0;
+    this.ytLastObservedPos = -1;
     this.ytNearEndLastPos = -1;
     this.ytNearEndStallSince = 0;
     this.isPlaying = false;
@@ -2377,6 +2713,7 @@ export class AudioEngine {
     this.clearYouTubeResumeCheck();
     this.stopYouTubePoll();
     this.stopHtml5Poll();
+    this.syncBgWorkerState();
     const activeEl = this.getActiveHtml5Element();
     if (this.activeBackend === 'html5' && activeEl) {
       try {
@@ -2595,6 +2932,9 @@ export class AudioEngine {
     this.html5LastPos = clamped;
     this.html5StallSince = performance.now();
     this.ytMaxPosSeen = clamped;
+    this.ytLastObservedPos = clamped;
+    this.ytWallAnchorMs = Date.now();
+    this.ytWallAnchorPos = clamped;
     this.ytNearEndLastPos = clamped >= this.duration - 3.5 ? clamped : -1;
     this.ytNearEndStallSince = clamped >= this.duration - 3.5 ? performance.now() : 0;
     if (clamped < Math.max(1, this.duration - 2)) {
@@ -3062,7 +3402,7 @@ export class AudioEngine {
 
   private clearYtVisualGraceTimer() {
     if (this.ytVisualGraceTimer !== null) {
-      clearTimeout(this.ytVisualGraceTimer);
+      this.cancelWorkerTimer(this.ytVisualGraceTimer);
       this.ytVisualGraceTimer = null;
     }
   }
@@ -3077,7 +3417,7 @@ export class AudioEngine {
   private armYtVisualGraceTimer(gen: number) {
     this.clearYtVisualGraceTimer();
     // Reveal iframe promptly once YT player loads so users are never trapped behind an opaque curtain or unable to click Play
-    this.ytVisualGraceTimer = window.setTimeout(() => {
+    this.ytVisualGraceTimer = this.scheduleWorkerTimer(() => {
       this.ytVisualGraceTimer = null;
       if (
         gen === this.playGeneration &&

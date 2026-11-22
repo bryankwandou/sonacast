@@ -862,7 +862,7 @@ export default function App() {
       ) {
         lastErrAutoSkipAtRef.current = now;
         autoRetryCountRef.current += 1;
-        window.setTimeout(() => handleNextRef.current(true), 420);
+        sharedAudioEngine.scheduleBackgroundTask(() => handleNextRef.current(true), 420);
       }
     });
 
@@ -1643,15 +1643,6 @@ export default function App() {
         });
         if (isVideoStageActive && track.sourceTag !== 'live-radio') {
           void activateMusicVideoForTrack(track, 0);
-        } else if (
-          track.genre !== 'Podcast' &&
-          track.sourceTag !== 'live-radio' &&
-          !(track.musicVideoCandidates && track.musicVideoCandidates.length > 0)
-        ) {
-          window.setTimeout(() => {
-            if (selectionSeq !== selectionCounterRef.current) return;
-            void resolveMusicVideoStream(track.title, track.artist, track.duration).catch(() => { });
-          }, 650);
         }
         return;
       }
@@ -1678,17 +1669,6 @@ export default function App() {
         );
         if (isVideoStageActive) {
           void activateMusicVideoForTrack(updatedTrack, 0);
-        } else if (
-          !(updatedTrack.musicVideoCandidates && updatedTrack.musicVideoCandidates.length > 0)
-        ) {
-          window.setTimeout(() => {
-            if (selectionSeq !== selectionCounterRef.current) return;
-            void resolveMusicVideoStream(
-              updatedTrack.title,
-              updatedTrack.artist,
-              updatedTrack.duration
-            ).catch(() => { });
-          }, 650);
         }
         return;
       }
@@ -1837,7 +1817,7 @@ export default function App() {
           sharedAudioEngine.pause();
           if (canAutoSkipError && autoRetryCountRef.current < 4) {
             autoRetryCountRef.current += 1;
-            window.setTimeout(() => handleNextRef.current(true), 350);
+            sharedAudioEngine.scheduleBackgroundTask(() => handleNextRef.current(true), 350);
           }
         }
       } catch {
@@ -1849,7 +1829,7 @@ export default function App() {
         sharedAudioEngine.pause();
         if (canAutoSkipError && autoRetryCountRef.current < 4) {
           autoRetryCountRef.current += 1;
-          window.setTimeout(() => handleNextRef.current(true), 350);
+          sharedAudioEngine.scheduleBackgroundTask(() => handleNextRef.current(true), 350);
         }
       } finally {
         if (selectionSeq === selectionCounterRef.current) {
@@ -3213,19 +3193,24 @@ export default function App() {
       const fetcher = isVideoActive ? resolveMusicVideoStream : resolveFullTrackStream;
       fetcher(candidate.title, candidate.artist, candidate.duration)
         .then((resolved) => {
-          if (!resolved || resolved.candidateIds.length === 0) return;
+          if (!resolved || resolved.candidateIds.length === 0) {
+            preResolvedIdsRef.current.delete(candidate.id);
+            return;
+          }
           hydrateTrackStreamInQueues(candidate.id, resolved, isVideoActive);
         })
-        .catch(() => { });
+        .catch(() => {
+          preResolvedIdsRef.current.delete(candidate.id);
+        });
     },
     [hydrateTrackStreamInQueues]
   );
 
-  // Pre-warm ONLY the immediate next upcoming track while active playback is underway (avoids saturating origin HTTP sockets on boot)
+  // Pre-warm the next 2 upcoming tracks using unthrottled Worker timers so background tab switches are instant (<1s)
   useEffect(() => {
     if (!isPlaying) return;
-    const timer = window.setTimeout(() => {
-      const nextDecision = pickNextTrackPure({
+    const cancelFirst = sharedAudioEngine.scheduleBackgroundTask(() => {
+      const firstDecision = pickNextTrackPure({
         currentTrack,
         queue,
         manualQueue,
@@ -3233,9 +3218,24 @@ export default function App() {
         state: recState,
         mood: activeMood
       }).nextTrack;
-      prewarmTrackStream(nextDecision);
-    }, 1200);
-    return () => window.clearTimeout(timer);
+      prewarmTrackStream(firstDecision);
+    }, 120);
+    const cancelSecond = sharedAudioEngine.scheduleBackgroundTask(() => {
+      const idx = queueRef.current.findIndex((item) => item.id === currentTrack.id);
+      const secondCandidate =
+        manualQueueRef.current.length >= 2
+          ? manualQueueRef.current[1]
+          : idx >= 0 && queueRef.current[idx + 2]
+            ? queueRef.current[idx + 2]
+            : null;
+      if (secondCandidate) {
+        prewarmTrackStream(secondCandidate);
+      }
+    }, 1400);
+    return () => {
+      cancelFirst();
+      cancelSecond();
+    };
   }, [isPlaying, currentTrack, queue, manualQueue, recState, activeMood, prewarmTrackStream]);
 
   // Background pre-resolve next upcoming track mid-playback in case queue changed dynamically

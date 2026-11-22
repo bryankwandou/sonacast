@@ -746,7 +746,7 @@ async function searchSinglePipedMirror(
   filter: 'music_songs' | 'videos' = 'music_songs'
 ): Promise<StreamCandidate[]> {
   if (parentSignal?.aborted) return [];
-  const { signal, cleanup } = createLinkedAbortSignal(7000, parentSignal);
+  const { signal, cleanup } = createLinkedAbortSignal(4200, parentSignal);
   try {
     const url = `${baseUrl}/search?q=${encodeURIComponent(query)}&filter=${filter}`;
     const res = await fetch(url, { signal });
@@ -1295,6 +1295,8 @@ function writeStreamCache(key: string, value: ResolvedFullStream) {
   }
 }
 
+const inFlightStreamResolutions = new Map<string, Promise<ResolvedFullStream | null>>();
+
 export async function resolveFullTrackStream(
   title: string,
   artist: string,
@@ -1307,59 +1309,144 @@ export async function resolveFullTrackStream(
   if (cacheKey) {
     const cached = readStreamCache(cacheKey);
     if (cached) return cached;
+    const inFlight = inFlightStreamResolutions.get(cacheKey);
+    if (inFlight) {
+      if (!parentSignal) return inFlight;
+      return Promise.race([
+        inFlight,
+        new Promise<null>((resolve) => {
+          if (parentSignal.aborted) {
+            resolve(null);
+            return;
+          }
+          parentSignal.addEventListener('abort', () => resolve(null), { once: true });
+        })
+      ]);
+    }
   }
 
-  const { signal: linkedSignal, cleanup } = createLinkedAbortSignal(7500, parentSignal);
+  const runResolution = async (): Promise<ResolvedFullStream | null> => {
+    const { signal: linkedSignal, cleanup } = createLinkedAbortSignal(4800);
+    try {
+      const songsPromise = searchPipedMusic(query, linkedSignal, 'music_songs').catch(
+        () => [] as StreamCandidate[]
+      );
+      const videosPromise = searchPipedMusic(`${query} official audio`, linkedSignal, 'videos').catch(
+        () => [] as StreamCandidate[]
+      );
 
-  try {
-    const abortFallback = new Promise<[StreamCandidate[], StreamCandidate[]]>((resolve) => {
-      if (linkedSignal.aborted) {
-        resolve([[], []]);
+      let songsDone = false;
+      let videosDone = false;
+      let songsItems: StreamCandidate[] = [];
+      let videosItems: StreamCandidate[] = [];
+
+      const hasHighConfidenceMatch = (items: StreamCandidate[]) =>
+        items.some((c) => scoreCandidate(c, title, artist, expectedDuration) >= 70);
+
+      const fastRace = new Promise<void>((resolve) => {
+        let settled = false;
+        let graceTimer: ReturnType<typeof setTimeout> | null = null;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (graceTimer !== null) {
+            clearTimeout(graceTimer);
+            graceTimer = null;
+          }
+          resolve();
+        };
+
+        const onBranchDone = (items: StreamCandidate[]) => {
+          if (songsDone && videosDone) {
+            finish();
+            return;
+          }
+          // As soon as one branch delivers a verified official match, give the second branch at most 380ms
+          if (!settled && graceTimer === null && hasHighConfidenceMatch(items)) {
+            graceTimer = setTimeout(finish, 380);
+          }
+        };
+
+        songsPromise.then((items) => {
+          songsDone = true;
+          songsItems = items;
+          onBranchDone(items);
+        });
+        videosPromise.then((items) => {
+          videosDone = true;
+          videosItems = items;
+          onBranchDone(items);
+        });
+
+        if (linkedSignal.aborted) {
+          finish();
+        } else {
+          linkedSignal.addEventListener('abort', finish, { once: true });
+        }
+      });
+
+      await fastRace;
+
+      const seenIds = new Set<string>();
+      const combined: StreamCandidate[] = [];
+      for (const item of [...songsItems, ...videosItems]) {
+        if (!seenIds.has(item.videoId)) {
+          seenIds.add(item.videoId);
+          combined.push(item);
+        }
+      }
+
+      if (combined.length === 0) return null;
+
+      const ranked = [...combined].sort(
+        (a, b) =>
+          scoreCandidate(b, title, artist, expectedDuration) -
+          scoreCandidate(a, title, artist, expectedDuration)
+      );
+
+      const candidateIds = ranked.slice(0, 8).map((c) => c.videoId);
+      const best = ranked[0];
+
+      const resolved: ResolvedFullStream = {
+        youtubeId: candidateIds[0],
+        candidateIds,
+        duration:
+          best.duration >= 60
+            ? best.duration
+            : expectedDuration && expectedDuration >= 60
+              ? expectedDuration
+              : 210
+      };
+      if (cacheKey) {
+        writeStreamCache(cacheKey, resolved);
+      }
+      return resolved;
+    } finally {
+      cleanup();
+    }
+  };
+
+  const promise = runResolution();
+  if (cacheKey) {
+    inFlightStreamResolutions.set(cacheKey, promise);
+    void promise.finally(() => {
+      if (inFlightStreamResolutions.get(cacheKey) === promise) {
+        inFlightStreamResolutions.delete(cacheKey);
+      }
+    });
+  }
+
+  if (!parentSignal) return promise;
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => {
+      if (parentSignal.aborted) {
+        resolve(null);
         return;
       }
-      linkedSignal.addEventListener('abort', () => resolve([[], []]), { once: true });
-    });
-
-    const [pipedSongs, pipedVideos] = await Promise.race([
-      Promise.all([
-        searchPipedMusic(query, linkedSignal, 'music_songs'),
-        searchPipedMusic(`${query} official audio`, linkedSignal, 'videos')
-      ]),
-      abortFallback
-    ]);
-
-    if (parentSignal?.aborted) return null;
-
-    const seenIds = new Set<string>();
-    const combined: StreamCandidate[] = [];
-    for (const item of [...pipedSongs, ...pipedVideos]) {
-      if (!seenIds.has(item.videoId)) {
-        seenIds.add(item.videoId);
-        combined.push(item);
-      }
-    }
-
-    if (combined.length === 0) return null;
-
-    const ranked = [...combined].sort(
-      (a, b) => scoreCandidate(b, title, artist, expectedDuration) - scoreCandidate(a, title, artist, expectedDuration)
-    );
-
-    const candidateIds = ranked.slice(0, 8).map((c) => c.videoId);
-    const best = ranked[0];
-
-    const resolved: ResolvedFullStream = {
-      youtubeId: candidateIds[0],
-      candidateIds,
-      duration: best.duration >= 60 ? best.duration : expectedDuration && expectedDuration >= 60 ? expectedDuration : 210
-    };
-    if (cacheKey) {
-      writeStreamCache(cacheKey, resolved);
-    }
-    return resolved;
-  } finally {
-    cleanup();
-  }
+      parentSignal.addEventListener('abort', () => resolve(null), { once: true });
+    })
+  ]);
 }
 
 interface ITunesItem {
