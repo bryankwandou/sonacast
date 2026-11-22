@@ -1253,7 +1253,7 @@ export function scoreCandidateTrack(
   const seedBaseTitle = normalizeBaseTitle(seedTrack.title);
   const candBaseTitle = normalizeBaseTitle(candidate.title);
   if ((seedBaseTitle && candBaseTitle && seedBaseTitle === candBaseTitle) || (candBaseTitle && usedBaseTitles?.has(candBaseTitle))) {
-    score -= 320;
+    score -= 720;
   }
 
   // 1. Genre continuity
@@ -1438,6 +1438,10 @@ export function buildSmartQueueFromPool(
         bestScore = combinedScore;
         bestIdx = i;
       }
+    }
+    // Hard-stop guard: never pad the queue with hard-rejected cross-language (e.g. Indian/Arabic/foreign) or duplicate-cover tracks
+    if (bestScore < -220 && ordered.length > 0) {
+      break;
     }
     const chosen = remaining.splice(bestIdx, 1)[0];
     ordered.push(chosen);
