@@ -3582,6 +3582,12 @@ export default function App() {
     if (tab === 'pitch') {
       setIsPitchModalOpen(true);
     } else {
+      if (tab === 'search') {
+        setExternalSearchQuery('');
+        setExternalSearchMode('songs');
+        setExternalSelectedAlbum(null);
+        setExternalSelectedPlaylist(null);
+      }
       setCurrentTab(tab);
       if (tab === 'visualizer') {
         if (stageModeRef.current === 'video-only' || stageModeRef.current === 'video-lyric') {
@@ -3669,12 +3675,10 @@ export default function App() {
     setExternalSearchMode(mode);
     setExternalSelectedAlbum(selection?.album || null);
     setExternalSelectedPlaylist(selection?.playlist || null);
+    setExternalSearchQuery(trimmed);
+    setExternalSearchTrigger((n) => n + 1);
     if (trimmed) {
-      setExternalSearchQuery(trimmed);
-      setExternalSearchTrigger((n) => n + 1);
       handleRecordSearch(trimmed, mode);
-    } else if (mode !== externalSearchMode || selection?.album || selection?.playlist) {
-      setExternalSearchTrigger((n) => n + 1);
     }
     setIsTopSearchFocused(false);
     topSearchInputRef.current?.blur();
@@ -3705,9 +3709,7 @@ export default function App() {
     if (trimmed) {
       navigateToSearch(trimmed);
     } else {
-      setIsTopSearchFocused(false);
-      topSearchInputRef.current?.blur();
-      setCurrentTab('search');
+      navigateToSearch('', 'songs');
     }
   };
 
@@ -4134,7 +4136,7 @@ export default function App() {
                           <div className="flex flex-wrap items-center gap-1.5">
                             <button
                               type="button"
-                              onClick={() => navigateToSearch(topSearchInput.trim() || 'Queen', 'songs')}
+                              onClick={() => navigateToSearch(topSearchInput.trim(), 'songs')}
                               className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
                             >
                               <Search size={11} />
@@ -4142,7 +4144,7 @@ export default function App() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => navigateToSearch(topSearchInput.trim() || 'is this the real life', 'lyrics')}
+                              onClick={() => navigateToSearch(topSearchInput.trim(), 'lyrics')}
                               className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
                             >
                               <Mic2 size={11} />
@@ -4150,7 +4152,7 @@ export default function App() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => navigateToSearch(topSearchInput.trim() || 'Queen', 'albums')}
+                              onClick={() => navigateToSearch(topSearchInput.trim(), 'albums')}
                               className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
                             >
                               <Disc3 size={11} />
@@ -4158,7 +4160,7 @@ export default function App() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => navigateToSearch(topSearchInput.trim() || 'Top Hits', 'playlists')}
+                              onClick={() => navigateToSearch(topSearchInput.trim(), 'playlists')}
                               className="h-7 px-2.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[11px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1 cursor-pointer"
                             >
                               <ListMusic size={11} />

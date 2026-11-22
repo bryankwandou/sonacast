@@ -96,7 +96,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const { t } = useAppPreferences();
   const { popularCharts } = usePopularCharts();
   const [searchQuery, setSearchQuery] = useState(
-    externalTrigger > 0 && externalQuery?.trim() ? externalQuery.trim() : 'Queen'
+    externalTrigger > 0 && externalQuery?.trim() ? externalQuery.trim() : ''
+  );
+  const [submittedQuery, setSubmittedQuery] = useState(
+    externalTrigger > 0 && externalQuery?.trim() ? externalQuery.trim() : ''
   );
   const [searchMode, setSearchMode] = useState<'songs' | 'albums' | 'playlists' | 'lyrics'>(
     externalMode || 'songs'
@@ -122,7 +125,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   }>({ query: '', tracks: [], albums: [], playlists: [], lyricMatches: [] });
   const [isLoadingInstant, setIsLoadingInstant] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const [activeArtistFilter, setActiveArtistFilter] = useState('Queen');
+  const [activeArtistFilter, setActiveArtistFilter] = useState('');
   const [selectedGenre, setSelectedGenre] = useState('All Genres');
   const [showAllArtists, setShowAllArtists] = useState(false);
   const searchRequestIdRef = useRef(0);
@@ -186,11 +189,53 @@ export const SearchView: React.FC<SearchViewProps> = ({
     ? filteredArtists
     : filteredArtists.slice(0, INITIAL_ARTIST_CHIP_LIMIT);
 
+  const neutralBrowseTracks = useMemo(() => {
+    const merged: Track[] = [];
+    const seen = new Set<string>();
+    const addTrack = (tr: Track) => {
+      const key = `${tr.title.toLowerCase().trim()}::${tr.artist.toLowerCase().trim()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(tr);
+      }
+    };
+    const maxLen = Math.max(popularCharts.indonesia.length, popularCharts.global.length);
+    for (let i = 0; i < maxLen && merged.length < 18; i++) {
+      if (popularCharts.indonesia[i]) addTrack(popularCharts.indonesia[i]);
+      if (merged.length < 18 && popularCharts.global[i]) addTrack(popularCharts.global[i]);
+    }
+    if (merged.length < 12) {
+      const diverseCurated = [...curatedTracks.slice(1), ...curatedTracks.slice(0, 1)];
+      for (const tr of diverseCurated) {
+        if (merged.length >= 18) break;
+        addTrack(tr);
+      }
+    }
+    return merged;
+  }, [popularCharts.indonesia, popularCharts.global, curatedTracks]);
+
+  const displayedTracks = useMemo(() => {
+    if (submittedQuery.trim()) return results;
+    if (searchMode === 'lyrics') return [];
+    return neutralBrowseTracks;
+  }, [submittedQuery, results, searchMode, neutralBrowseTracks]);
+
+  const displayedAlbums = useMemo(() => {
+    if (submittedQuery.trim()) return albumResults;
+    return popularCharts.albums.slice(0, 12);
+  }, [submittedQuery, albumResults, popularCharts.albums]);
+
+  const displayedPlaylists = useMemo(() => {
+    if (submittedQuery.trim()) return playlistResults;
+    return popularCharts.playlists.slice(0, 12);
+  }, [submittedQuery, playlistResults, popularCharts.playlists]);
+
   const executeSearch = async (term: string, modeOverride?: 'songs' | 'albums' | 'playlists' | 'lyrics') => {
     const requestId = ++searchRequestIdRef.current;
     const trimmed = term.trim();
     if (!trimmed) return;
     const activeMode = modeOverride || searchMode;
+    setSubmittedQuery(trimmed);
     setSelectedAlbum(null);
     setSelectedAlbumTracks([]);
     setSelectedPlaylist(null);
@@ -371,13 +416,33 @@ export const SearchView: React.FC<SearchViewProps> = ({
     if (externalTrigger > 0 && externalMode && externalMode !== searchMode) {
       setSearchMode(externalMode);
     }
-    const q = externalTrigger > 0 && externalQuery?.trim() ? externalQuery.trim() : 'Queen';
+    const q = externalTrigger > 0 && externalQuery?.trim() ? externalQuery.trim() : '';
     setSearchQuery(q);
-    const matchedArtist = ARTISTS_DIRECTORY.find(
-      (a) => a.name.toLowerCase() === q.toLowerCase()
-    );
-    setActiveArtistFilter(matchedArtist ? matchedArtist.name : '');
-    executeSearch(q, nextMode);
+    if (q) {
+      setSubmittedQuery(q);
+      const matchedArtist = ARTISTS_DIRECTORY.find(
+        (a) => a.name.toLowerCase() === q.toLowerCase()
+      );
+      setActiveArtistFilter(matchedArtist ? matchedArtist.name : '');
+      executeSearch(q, nextMode);
+    } else {
+      searchRequestIdRef.current += 1;
+      setSubmittedQuery('');
+      setActiveArtistFilter('');
+      setResults([]);
+      setAlbumResults([]);
+      setPlaylistResults([]);
+      setLyricSnippetMap({});
+      setIsLoading(false);
+      if (!externalSelectedAlbum) {
+        setSelectedAlbum(null);
+        setSelectedAlbumTracks([]);
+      }
+      if (!externalSelectedPlaylist) {
+        setSelectedPlaylist(null);
+        setSelectedPlaylistTracks([]);
+      }
+    }
     if (externalTrigger > 0 && externalSelectedAlbum) {
       void handleOpenSearchAlbum(externalSelectedAlbum);
     }
@@ -458,14 +523,36 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     e.currentTarget.blur();
                   }
                 }}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  const nextVal = e.target.value;
+                  setSearchQuery(nextVal);
+                  if (!nextVal.trim()) {
+                    searchRequestIdRef.current += 1;
+                    setSubmittedQuery('');
+                    setActiveArtistFilter('');
+                    setLyricSnippetMap({});
+                    setIsLoading(false);
+                  }
+                }}
                 className="w-full pl-11 pr-9 min-h-[44px] py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-medium)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] transition-colors"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => {
+                    searchRequestIdRef.current += 1;
                     setSearchQuery('');
+                    setSubmittedQuery('');
+                    setActiveArtistFilter('');
+                    setResults([]);
+                    setAlbumResults([]);
+                    setPlaylistResults([]);
+                    setLyricSnippetMap({});
+                    setSelectedAlbum(null);
+                    setSelectedAlbumTracks([]);
+                    setSelectedPlaylist(null);
+                    setSelectedPlaylistTracks([]);
+                    setIsLoading(false);
                     searchInputRef.current?.focus();
                   }}
                   aria-label="Clear search"
@@ -603,6 +690,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                 setIsSearchInputFocused(false);
                                 setSearchMode('albums');
                                 setSearchQuery(alb.title);
+                                setSubmittedQuery(alb.title);
+                                setAlbumResults(instantMatches.albums);
                                 void handleOpenSearchAlbum(alb);
                               }}
                               className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[var(--bg-elevated)] text-left transition-colors cursor-pointer"
@@ -640,6 +729,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                 setIsSearchInputFocused(false);
                                 setSearchMode('playlists');
                                 setSearchQuery(pl.title);
+                                setSubmittedQuery(pl.title);
+                                setPlaylistResults(instantMatches.playlists);
                                 void handleOpenSearchPlaylist(pl);
                               }}
                               className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[var(--bg-elevated)] text-left transition-colors cursor-pointer"
@@ -692,6 +783,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                   setIsSearchInputFocused(false);
                                   setSearchMode('albums');
                                   setSearchQuery(alb.title);
+                                  setSubmittedQuery(alb.title);
+                                  setAlbumResults(popularCharts.albums.slice(0, 12));
                                   void handleOpenSearchAlbum(alb);
                                 }}
                                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl bg-[var(--bg-elevated)]/60 hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-left cursor-pointer"
@@ -729,6 +822,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                   setIsSearchInputFocused(false);
                                   setSearchMode('playlists');
                                   setSearchQuery(pl.title);
+                                  setSubmittedQuery(pl.title);
+                                  setPlaylistResults(popularCharts.playlists.slice(0, 12));
                                   void handleOpenSearchPlaylist(pl);
                                 }}
                                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl bg-[var(--bg-elevated)]/60 hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-left cursor-pointer"
@@ -821,7 +916,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
               data-testid="search-mode-songs"
               onClick={() => {
                 setSearchMode('songs');
-                if (searchQuery.trim()) executeSearch(searchQuery, 'songs');
+                if (searchQuery.trim()) {
+                  executeSearch(searchQuery, 'songs');
+                } else {
+                  setSubmittedQuery('');
+                  setSelectedAlbum(null);
+                  setSelectedPlaylist(null);
+                  setLyricSnippetMap({});
+                }
               }}
               className={`h-8 px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
                 searchMode === 'songs'
@@ -838,7 +940,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
               data-testid="search-mode-lyrics"
               onClick={() => {
                 setSearchMode('lyrics');
-                if (searchQuery.trim()) executeSearch(searchQuery, 'lyrics');
+                if (searchQuery.trim()) {
+                  executeSearch(searchQuery, 'lyrics');
+                } else {
+                  setSubmittedQuery('');
+                  setSelectedAlbum(null);
+                  setSelectedPlaylist(null);
+                  setLyricSnippetMap({});
+                }
               }}
               className={`h-8 px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
                 searchMode === 'lyrics'
@@ -855,7 +964,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
               data-testid="search-mode-albums"
               onClick={() => {
                 setSearchMode('albums');
-                if (searchQuery.trim()) executeSearch(searchQuery, 'albums');
+                if (searchQuery.trim()) {
+                  executeSearch(searchQuery, 'albums');
+                } else {
+                  setSubmittedQuery('');
+                  setSelectedAlbum(null);
+                  setSelectedPlaylist(null);
+                  setLyricSnippetMap({});
+                }
               }}
               className={`h-8 px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
                 searchMode === 'albums'
@@ -872,7 +988,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
               data-testid="search-mode-playlists"
               onClick={() => {
                 setSearchMode('playlists');
-                if (searchQuery.trim()) executeSearch(searchQuery, 'playlists');
+                if (searchQuery.trim()) {
+                  executeSearch(searchQuery, 'playlists');
+                } else {
+                  setSubmittedQuery('');
+                  setSelectedAlbum(null);
+                  setSelectedPlaylist(null);
+                  setLyricSnippetMap({});
+                }
               }}
               className={`h-8 px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
                 searchMode === 'playlists'
@@ -1005,20 +1128,39 @@ export const SearchView: React.FC<SearchViewProps> = ({
               <Globe size={15} className="text-[var(--accent-text)]" />
             )}
             <span>
-              {searchMode === 'albums' ? 'Album' : 'Search'} Results for &ldquo;{searchQuery}&rdquo;
+              {submittedQuery ? (
+                <>
+                  {searchMode === 'albums'
+                    ? 'Album'
+                    : searchMode === 'playlists'
+                      ? 'Playlist'
+                      : searchMode === 'lyrics'
+                        ? 'Lyric'
+                        : 'Search'}{' '}
+                  Results for &ldquo;{submittedQuery}&rdquo;
+                </>
+              ) : searchMode === 'albums' ? (
+                'Browse Albums'
+              ) : searchMode === 'playlists' ? (
+                'Browse Playlists'
+              ) : searchMode === 'lyrics' ? (
+                'Search by Lyrics'
+              ) : (
+                'Trending & Popular Tracks'
+              )}
             </span>
           </h3>
           <div className="flex flex-wrap items-center gap-2">
-            {(searchMode === 'songs' || searchMode === 'lyrics') && results.length > 0 && onPlayTrackList && (
+            {(searchMode === 'songs' || searchMode === 'lyrics') && displayedTracks.length > 0 && onPlayTrackList && (
               <button
                 type="button"
                 data-testid="search-play-ordered"
                 onClick={() =>
-                  onPlayTrackList(results, false, {
-                    id: `search-${searchQuery}`,
+                  onPlayTrackList(displayedTracks, false, {
+                    id: submittedQuery ? `search-${submittedQuery}` : 'search-trending-browse',
                     type: 'search',
-                    title: `Search: ${searchQuery}`,
-                    coverUrl: results[0]?.coverUrl,
+                    title: submittedQuery ? `Search: ${submittedQuery}` : 'Trending & Popular Tracks',
+                    coverUrl: displayedTracks[0]?.coverUrl,
                     ordered: true
                   })
                 }
@@ -1030,8 +1172,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
             )}
             <span className="text-xs text-[var(--text-secondary)]">
               {searchMode === 'albums'
-                ? `${albumResults.length} albums found`
-                : `${results.length} tracks`}
+                ? `${displayedAlbums.length} ${submittedQuery ? 'albums found' : 'albums'}`
+                : searchMode === 'playlists'
+                  ? `${displayedPlaylists.length} ${submittedQuery ? 'playlists found' : 'playlists'}`
+                  : `${displayedTracks.length} tracks`}
             </span>
           </div>
         </div>
@@ -1047,13 +1191,19 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
         ) : searchMode === 'playlists' ? (
           <div className="space-y-5">
-            {playlistResults.length === 0 ? (
+            {displayedPlaylists.length === 0 ? (
               <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-tint)]">
-                <p>No playlists found for &ldquo;{searchQuery}&rdquo;. Pick a mood above or explore Top Daily Playlists below.</p>
+                <p>
+                  {submittedQuery ? (
+                    <>No playlists found for &ldquo;{submittedQuery}&rdquo;. Pick a mood above or explore Top Daily Playlists below.</>
+                  ) : (
+                    <>Pick a mood above or type a keyword to find playlists.</>
+                  )}
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-                {playlistResults.map((pl) => {
+                {displayedPlaylists.map((pl) => {
                   const isActive = selectedPlaylist?.id === pl.id;
                   const isBusy = loadingPlaylistId === pl.id;
                   return (
@@ -1128,13 +1278,19 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
         ) : searchMode === 'albums' ? (
           <div className="space-y-5">
-            {albumResults.length === 0 ? (
+            {displayedAlbums.length === 0 ? (
               <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-tint)]">
-                <p>No albums found for &ldquo;{searchQuery}&rdquo;. Try another artist or album title.</p>
+                <p>
+                  {submittedQuery ? (
+                    <>No albums found for &ldquo;{submittedQuery}&rdquo;. Try another artist or album title.</>
+                  ) : (
+                    <>Type an album or artist name above to explore full tracklists.</>
+                  )}
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-                {albumResults.map((alb) => {
+                {displayedAlbums.map((alb) => {
                   const isActiveAlb = selectedAlbum?.id === alb.id;
                   const isBusy = loadingAlbumId === alb.id;
                   return (
@@ -1280,13 +1436,21 @@ export const SearchView: React.FC<SearchViewProps> = ({
               </div>
             )}
           </div>
-        ) : results.length === 0 ? (
+        ) : displayedTracks.length === 0 ? (
           <div className="p-12 text-center text-xs text-[var(--text-secondary)] rounded-2xl bg-[var(--bg-tint)]">
-            <p>No tracks found for &ldquo;{searchQuery}&rdquo;. Try another query or pick any artist below.</p>
+            <p>
+              {submittedQuery ? (
+                <>No tracks found for &ldquo;{submittedQuery}&rdquo;. Try another query or pick any artist below.</>
+              ) : searchMode === 'lyrics' ? (
+                <>Enter any lyric line or phrase above and press Search to find matching songs.</>
+              ) : (
+                <>Type a song, artist, album, or lyric phrase above to search the catalog.</>
+              )}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-            {results.map((track) => {
+            {displayedTracks.map((track) => {
               const snippetMatch = lyricSnippetMap[track.id];
               return (
                 <div key={track.id} className="flex flex-col gap-1.5 min-w-0">
@@ -1357,6 +1521,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     onClick={() => {
                       setSearchMode('albums');
                       setSearchQuery(alb.title);
+                      setSubmittedQuery(alb.title);
                       setAlbumResults(popularCharts.albums.slice(0, 12));
                       void handleOpenSearchAlbum(alb);
                     }}
@@ -1407,6 +1572,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     onClick={() => {
                       setSearchMode('playlists');
                       setSearchQuery(pl.title);
+                      setSubmittedQuery(pl.title);
                       setPlaylistResults(popularCharts.playlists.slice(0, 12));
                       void handleOpenSearchPlaylist(pl);
                     }}
