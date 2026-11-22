@@ -18,7 +18,7 @@
   },
   "headers": [
     {
-      "source": "/(music|library|discover|vibe|search|favorites|blend|radio|podcasts|visualizer|proof-of-stream)",
+      "source": "/(music|track|song|library|discover|vibe|search|favorites|blend|radio|podcasts|visualizer|proof-of-stream)",
       "headers": [
         {
           "key": "Cache-Control",

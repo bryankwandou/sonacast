@@ -1,4 +1,5 @@
 import type { TabType } from '../types';
+import { parseSharedTrackFromUrl } from './shareTrack';
 
 export const TAB_ROUTE_MAP: Record<TabType, string> = {
   landing: '/',
@@ -22,6 +23,8 @@ const ROUTE_ALIAS_TO_TAB: Record<string, TabType> = {
   '/discover': 'discover',
   '/music': 'music',
   '/musik': 'music',
+  '/track': 'music',
+  '/song': 'music',
   '/explore': 'music',
   '/albums': 'music',
   '/vibe': 'vibe',
@@ -64,6 +67,10 @@ export function getPageTitleForTab(tab: TabType): string {
 
 export function parseTabFromUrl(pathname: string, search: string): TabType {
   const cleanPath = String(pathname || '/').toLowerCase().replace(/\/+$/, '') || '/';
+  if (/^\/(?:track|song)(?:\/|$)/i.test(cleanPath) || parseSharedTrackFromUrl(pathname, search)) {
+    return 'music';
+  }
+
   const direct = ROUTE_ALIAS_TO_TAB[cleanPath];
   if (direct && direct !== 'landing') {
     return direct;
@@ -71,25 +78,42 @@ export function parseTabFromUrl(pathname: string, search: string): TabType {
 
   const params = new URLSearchParams(search || '');
   if (params.get('blend')?.trim()) return 'blend';
-  if (params.get('track')?.trim()) return 'discover';
+  if (params.get('album')?.trim()) return 'favorites';
   return direct || 'landing';
 }
 
 export function syncUrlForTab(tab: TabType, mode: 'push' | 'replace' = 'push'): void {
   if (typeof window === 'undefined' || tab === 'pitch') return;
-  const targetPath = getRoutePathForTab(tab);
   const currentPath = window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
-  const params = new URLSearchParams(window.location.search);
+  const rawSearch = window.location.search || '';
+  const params = new URLSearchParams(rawSearch);
 
+  // Preserve shared track deep-links intact on initial mount / replace so query parameters
+  // (id, title, artist, album, dur, yt, cover, legacy track) are never stripped before hydration.
+  if (mode === 'replace' && parseSharedTrackFromUrl(window.location.pathname, rawSearch)) {
+    const sharedPath = /^\/(?:track|song)(?:\/|$)/i.test(currentPath) ? window.location.pathname : '/track';
+    const nextFullUrl = `${sharedPath}${rawSearch}`;
+    const currentFullUrl = `${window.location.pathname}${rawSearch}`;
+    if (nextFullUrl !== currentFullUrl) {
+      try {
+        window.history.replaceState({ tab }, '', nextFullUrl);
+      } catch {
+        // Ignore history API restrictions in sandboxed origins
+      }
+    }
+    return;
+  }
+
+  const targetPath = getRoutePathForTab(tab);
   let nextSearch = '';
   if (tab === 'blend' && params.get('blend')) {
     nextSearch = `?blend=${encodeURIComponent(params.get('blend') || '')}`;
-  } else if ((tab === 'discover' || tab === 'music') && mode === 'replace' && params.get('track')) {
-    nextSearch = `?track=${encodeURIComponent(params.get('track') || '')}`;
+  } else if (tab === 'favorites' && mode === 'replace' && params.get('album')) {
+    nextSearch = `?album=${encodeURIComponent(params.get('album') || '')}`;
   }
 
   const nextFullUrl = `${targetPath}${nextSearch}`;
-  const currentFullUrl = `${currentPath}${window.location.search}`;
+  const currentFullUrl = `${currentPath}${rawSearch}`;
   if (nextFullUrl !== currentFullUrl) {
     try {
       if (mode === 'replace') {

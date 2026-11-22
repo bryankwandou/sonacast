@@ -7,6 +7,7 @@ import {
   renderLyricCardCanvas,
   type LyricCardTheme
 } from '../../services/recommendationEngine';
+import { buildTrackShareUrl, copyTextToClipboard } from '../../utils/shareTrack';
 
 interface LyricCardModalProps {
   isOpen: boolean;
@@ -111,28 +112,27 @@ const LyricCardStudioContent: React.FC<Omit<LyricCardModalProps, 'isOpen'>> = ({
       selectedLines.length > 0
         ? selectedLines.map((l) => `"${l.text.trim()}"`).join('\n')
         : `"${track.title}"`;
-    const shareUrl =
-      typeof window !== 'undefined' ? window.location.origin : 'https://sonacast-ten.vercel.app';
+    const shareUrl = buildTrackShareUrl(track);
     return `${excerpt}\n— ${track.title}, ${track.artist}\n${shareUrl}`;
   };
 
   const handleCopyQuote = async () => {
-    try {
-      await navigator.clipboard.writeText(buildSharePayload());
+    const ok = await copyTextToClipboard(buildSharePayload());
+    if (ok) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2200);
-    } catch {
-      // Clipboard blocked in non-HTTPS contexts
     }
   };
 
   const handleShareNative = async () => {
     const text = buildSharePayload();
+    const url = buildTrackShareUrl(track);
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       try {
         await navigator.share({
           title: `${track.title} — ${track.artist}`,
-          text
+          text,
+          url
         });
         return;
       } catch {

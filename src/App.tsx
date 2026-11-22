@@ -35,6 +35,7 @@ import {
   peekCachedTrackStream,
   resolveFullTrackStream,
   resolveMusicVideoStream,
+  resolveSharedTrackOnline,
   searchAlbumsOnline,
   searchLiveRadioStations,
   searchPlaylistsOnline,
@@ -127,6 +128,13 @@ import { getPrimaryArtistName } from './utils/coverColor';
 import { applyCoverFallback, DEFAULT_COVER_DATA_URI } from './utils/coverFallback';
 import { parseTabFromUrl, syncUrlForTab } from './utils/routes';
 import {
+  buildImmediateSharedTrack,
+  buildTrackShareUrl,
+  copyTextToClipboard,
+  parseSharedTrackFromUrl,
+  type SharedTrackParams
+} from './utils/shareTrack';
+import {
   Activity,
   Clock,
   Disc,
@@ -177,19 +185,32 @@ export default function App() {
     syncUrlForTab(currentTab, 'push');
   }, [currentTab]);
 
-  const [currentTrack, setCurrentTrack] = useState<Track>(() => {
+  const [sharedTrackRequest, setSharedTrackRequest] = useState<SharedTrackParams | null>(() => {
     if (typeof window !== 'undefined') {
-      const trackParam = new URLSearchParams(window.location.search).get('track')?.trim();
-      if (trackParam) {
-        const match = TRACK_CATALOG.find(
-          (item) => item.id === trackParam || item.title.toLowerCase() === trackParam.toLowerCase()
-        );
-        if (match) return match;
-      }
+      return parseSharedTrackFromUrl(window.location.pathname, window.location.search);
     }
-    return TRACK_CATALOG[0];
+    return null;
   });
-  const [queue, setQueue] = useState<Track[]>(TRACK_CATALOG);
+  const initialImmediateSharedTrack = useMemo(
+    () => buildImmediateSharedTrack(sharedTrackRequest),
+    // Computed synchronously from the initial mount URL only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+  const [isResolvingSharedTrack, setIsResolvingSharedTrack] = useState<boolean>(
+    () => Boolean(sharedTrackRequest && !initialImmediateSharedTrack)
+  );
+  const [currentTrack, setCurrentTrack] = useState<Track>(
+    () => initialImmediateSharedTrack || TRACK_CATALOG[0]
+  );
+  const [queue, setQueue] = useState<Track[]>(() =>
+    initialImmediateSharedTrack
+      ? [
+          initialImmediateSharedTrack,
+          ...TRACK_CATALOG.filter((item) => item.id !== initialImmediateSharedTrack.id)
+        ]
+      : TRACK_CATALOG
+  );
   const [stageMode, setStageMode] = useState<StageExperienceMode>('orbwave-only');
   const [isStageOpen, setIsStageOpen] = useState(() => currentTab === 'visualizer');
 
@@ -197,9 +218,19 @@ export default function App() {
     if (typeof window === 'undefined') return;
     const onPopState = () => {
       const parsed = parseTabFromUrl(window.location.pathname, window.location.search);
+      const parsedShared = parseSharedTrackFromUrl(window.location.pathname, window.location.search);
       skipNextHistoryPushRef.current = true;
       setCurrentTab(parsed);
       setIsStageOpen(parsed === 'visualizer');
+      if (parsedShared) {
+        const immediate = buildImmediateSharedTrack(parsedShared);
+        if (immediate) {
+          setCurrentTrack(immediate);
+          setQueue((prev) => [immediate, ...prev.filter((item) => item.id !== immediate.id)]);
+        }
+        setIsExpandedPlayerOpen(true);
+        setSharedTrackRequest(parsedShared);
+      }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -324,7 +355,9 @@ export default function App() {
       return true;
     }
   });
-  const [isExpandedPlayerOpen, setIsExpandedPlayerOpen] = useState(false);
+  const [isExpandedPlayerOpen, setIsExpandedPlayerOpen] = useState<boolean>(() =>
+    Boolean(sharedTrackRequest)
+  );
   const [sleepEndAtMs, setSleepEndAtMs] = useState<number | null>(null);
   const [sleepMinutesRemaining, setSleepMinutesRemaining] = useState<number | null>(null);
 
@@ -735,23 +768,6 @@ export default function App() {
       if (!cancelled && blendParam) {
         setInitialBlendCode(blendParam);
         setCurrentTab('blend');
-      }
-
-      const trackParam = params?.get('track')?.trim() || '';
-      if (!cancelled && trackParam) {
-        const localMatch = TRACK_CATALOG.find(
-          (item) => item.id === trackParam || item.title.toLowerCase() === trackParam.toLowerCase()
-        );
-        if (!localMatch) {
-          const remoteMatches = await searchTracksOnline(trackParam).catch(() => []);
-          if (!cancelled && remoteMatches[0]) {
-            setCurrentTrack(remoteMatches[0]);
-            setQueue((prev) => [
-              remoteMatches[0],
-              ...prev.filter((item) => item.id !== remoteMatches[0].id)
-            ]);
-          }
-        }
       }
     };
 
@@ -1849,6 +1865,125 @@ export default function App() {
       }
     }, [activateMusicVideoForTrack, buildAutoSimilarContext, gatherLocalCandidatePool, refillRadioQueueIfNeeded, resolveLyricsForTrack]);
 
+  // Resolve shared track deep-links (/track?id=...&title=...&artist=... or legacy /?track=...)
+  // directly into the full Now Playing view with pre-warmed stream, lyrics, and cohesive queue.
+  useEffect(() => {
+    if (!sharedTrackRequest) return;
+    let cancelled = false;
+    const immediateHit = buildImmediateSharedTrack(sharedTrackRequest);
+    if (!immediateHit) {
+      setIsResolvingSharedTrack(true);
+    }
+    setCurrentTab((prev) => (prev === 'landing' ? 'music' : prev));
+    setIsExpandedPlayerOpen(true);
+
+    void (async () => {
+      try {
+        const resolved = await resolveSharedTrackOnline(sharedTrackRequest);
+        if (cancelled) return;
+        setIsResolvingSharedTrack(false);
+
+        if (!resolved) {
+          showToast('Shared song not found. Try searching by title or artist.', 'warning');
+          return;
+        }
+
+        const autoCtx = buildAutoSimilarContext(resolved);
+        playbackContextRef.current = autoCtx;
+        setPlaybackContext(autoCtx);
+
+        const cohesivePool = selectCohesiveCandidatePool(
+          resolved,
+          gatherLocalCandidatePool(resolved.id),
+          3
+        );
+        const smartNext = buildSmartQueueFromPool(
+          resolved,
+          cohesivePool,
+          recStateRef.current.recentTracks,
+          recStateRef.current,
+          activeMoodRef.current,
+          18
+        );
+        const nextQueue = [resolved, ...smartNext.filter((item) => item.id !== resolved.id)];
+        currentTrackRef.current = resolved;
+        queueRef.current = nextQueue;
+        setCurrentTrack((prev) =>
+          prev.id === resolved.id && prev.lyrics.length > resolved.lyrics.length
+            ? { ...resolved, lyrics: prev.lyrics }
+            : resolved
+        );
+        setQueue(nextQueue);
+        setIsExpandedPlayerOpen(true);
+
+        if (typeof window !== 'undefined') {
+          try {
+            const canonicalUrl = buildTrackShareUrl(resolved, window.location.origin);
+            const parsedCanonical = new URL(canonicalUrl);
+            window.history.replaceState(
+              { tab: 'music' },
+              '',
+              `${parsedCanonical.pathname}${parsedCanonical.search}`
+            );
+            document.title = `${resolved.title} — ${resolved.artist} · Sonacast`;
+          } catch {
+            // Ignore history API restrictions
+          }
+        }
+
+        resolveLyricsForTrack(resolved);
+        void refillRadioQueueIfNeeded(resolved, true);
+
+        if (!resolved.audioUrl && !resolved.youtubeId) {
+          void resolveFullTrackStream(resolved.title, resolved.artist, resolved.duration)
+            .then((stream) => {
+              if (cancelled || !stream || stream.candidateIds.length === 0) return;
+              const hydrated: Track = {
+                ...resolved,
+                youtubeId: stream.youtubeId,
+                candidateVideoIds: stream.candidateIds,
+                duration: stream.duration
+              };
+              setCurrentTrack((prev) =>
+                prev.id === resolved.id
+                  ? {
+                      ...hydrated,
+                      lyrics: prev.lyrics.length > hydrated.lyrics.length ? prev.lyrics : hydrated.lyrics
+                    }
+                  : prev
+              );
+              setQueue((prevQ) =>
+                prevQ.map((item) =>
+                  item.id === resolved.id
+                    ? {
+                        ...hydrated,
+                        lyrics: item.lyrics.length > hydrated.lyrics.length ? item.lyrics : hydrated.lyrics
+                      }
+                    : item
+                )
+              );
+            })
+            .catch(() => {});
+        }
+      } catch {
+        if (!cancelled) {
+          setIsResolvingSharedTrack(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    sharedTrackRequest,
+    buildAutoSimilarContext,
+    gatherLocalCandidatePool,
+    refillRadioQueueIfNeeded,
+    resolveLyricsForTrack,
+    showToast
+  ]);
+
   const handleSelectRadio = (station: RadioStation, mode?: 'live' | 'mix') => {
     const resolvedMode = mode || (station.streamUrl ? 'live' : 'mix');
     setActiveRadioStationId(station.id);
@@ -2702,16 +2837,14 @@ export default function App() {
 
   const handleShareTrack = useCallback(
     async (track: Track) => {
-      const url =
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/?track=${encodeURIComponent(track.id)}`
-          : `/?track=${encodeURIComponent(track.id)}`;
-      try {
-        await navigator.clipboard?.writeText(url);
-      } catch {
-        // Fallback when clipboard permission is denied
-      }
-      showToast(`${t.shareTrackLink}: ${track.title}`, 'success');
+      const url = buildTrackShareUrl(track);
+      const copied = await copyTextToClipboard(url);
+      showToast(
+        copied
+          ? `${t.shareTrackLink}: ${track.title} — ${track.artist}`
+          : `${track.title} — ${track.artist}`,
+        'success'
+      );
     },
     [showToast, t.shareTrackLink]
   );
@@ -4847,6 +4980,7 @@ export default function App() {
         onToggleSaveOffline={() => void handleToggleSaveOffline(currentTrack)}
         onShareTrack={() => void handleShareTrack(currentTrack)}
         onWatchVideo={() => handleSelectStageMode('video-lyric')}
+        isResolvingSharedTrack={isResolvingSharedTrack}
       />
 
       {/* Resso / Spotify Style Shareable Lyric Card Studio */}

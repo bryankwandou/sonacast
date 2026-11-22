@@ -25,6 +25,11 @@ import {
   inferTrackLanguageRegion,
   isRecognizedCatalogArtist
 } from './recommendationEngine';
+import {
+  buildImmediateSharedTrack,
+  findLocalSharedTrack,
+  type SharedTrackParams
+} from '../utils/shareTrack';
 
 export { FEATURED_DAILY_PLAYLISTS };
 
@@ -5604,6 +5609,224 @@ export async function fetchTrackCreditsOnline(
 
   trackCreditsCache.set(cacheKey, baseCredits);
   return baseCredits;
+}
+
+/**
+ * Resolves any shared song link — canonical `/track?id=...&title=...&artist=...` OR legacy
+ * ID-only links (`/?track=catalog-dz-...`, `/?track=catalog-1610772503`, `/?track=stream-...`) —
+ * directly in the browser via federated global catalogs (0 Vercel server compute).
+ */
+export async function resolveSharedTrackOnline(parsed: SharedTrackParams): Promise<Track | null> {
+  if (!parsed) return null;
+
+  const localHit = findLocalSharedTrack(parsed);
+  if (localHit) return localHit;
+
+  const emptyIds = new Set<string>();
+  const immediateFallback = buildImmediateSharedTrack(parsed);
+
+  // 1. Canonical share URL carrying title (+ optional artist) -> exact live federated match
+  if (parsed.title) {
+    const query = [parsed.title, parsed.artist].filter(Boolean).join(' ').trim();
+    const candidates = await searchTracksOnline(query).catch(() => []);
+    if (candidates.length > 0) {
+      const targetIdLower = parsed.id.toLowerCase();
+      const targetTitleNorm = normalizeText(stripTitleModifiers(parsed.title));
+      const targetArtistNorm = canonicalPrimaryArtistKey(parsed.artist);
+
+      const bestMatch =
+        candidates.find((c) => targetIdLower && c.id.toLowerCase() === targetIdLower) ||
+        candidates.find((c) => {
+          const ct = normalizeText(stripTitleModifiers(c.title));
+          const ca = canonicalPrimaryArtistKey(c.artist);
+          return (
+            ct === targetTitleNorm &&
+            (!targetArtistNorm || ca === targetArtistNorm || ca.includes(targetArtistNorm) || targetArtistNorm.includes(ca))
+          );
+        }) ||
+        candidates.find((c) => normalizeText(stripTitleModifiers(c.title)) === targetTitleNorm) ||
+        candidates[0];
+
+      if (bestMatch) {
+        const merged: Track = {
+          ...bestMatch,
+          youtubeId: bestMatch.youtubeId || parsed.youtubeId || undefined,
+          candidateVideoIds:
+            bestMatch.candidateVideoIds && bestMatch.candidateVideoIds.length > 0
+              ? bestMatch.candidateVideoIds
+              : parsed.youtubeId
+                ? [parsed.youtubeId]
+                : undefined,
+          coverUrl:
+            bestMatch.coverUrl && bestMatch.coverUrl !== DEFAULT_FALLBACK_COVER
+              ? bestMatch.coverUrl
+              : parsed.coverUrl || bestMatch.coverUrl
+        };
+        return {
+          ...merged,
+          musicFlags: computeTrackMusicFlags(merged)
+        };
+      }
+    }
+    return immediateFallback;
+  }
+
+  // 2. Legacy ID-only share links (e.g. /?track=catalog-dz-1635412822, /?track=catalog-1610772503, /?track=stream-...)
+  const rawId = parsed.id.trim();
+  const dzMatch = /(?:^|catalog-|master-)dz-(?:trk-)?(\d+)$/i.exec(rawId);
+  if (dzMatch) {
+    const dzTrack = await fetchDeezerJsonp<DeezerTrackRaw>(`/track/${dzMatch[1]}`, 4200);
+    if (dzTrack?.title && dzTrack?.artist?.name) {
+      const mapped = mapDeezerTrackRaw(dzTrack, false, 'Pop');
+      return buildTrackFromUnified(
+        {
+          id: mapped.id,
+          title: mapped.title,
+          artist: mapped.artist,
+          album: mapped.album || 'Single',
+          genre: mapped.genre || 'Pop',
+          duration: mapped.duration || 210,
+          coverUrl: mapped.coverUrl || DEFAULT_FALLBACK_COVER,
+          releaseYear: mapped.releaseYear,
+          explicit: mapped.explicit,
+          deezerRank: mapped.deezerRank
+        },
+        [],
+        emptyIds
+      );
+    }
+  }
+
+  const itMatch = /(?:^|catalog-|master-|it-trk-)(\d{6,})$/i.exec(rawId);
+  if (itMatch) {
+    try {
+      const res = await fetch(`https://itunes.apple.com/lookup?id=${itMatch[1]}`, {
+        signal: AbortSignal.timeout(4000)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const item = (Array.isArray(data?.results) ? data.results : []).find(
+          (r: ITunesItem & { wrapperType?: string }) => r?.wrapperType === 'track' && r?.trackName
+        ) as ITunesItem | undefined;
+        if (item) {
+          return buildTrackFromUnified(
+            {
+              id: String(item.trackId),
+              title: item.trackName,
+              artist: item.artistName || 'Unknown Artist',
+              album: item.collectionName || 'Single',
+              genre: item.primaryGenreName || 'Pop',
+              duration: item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210,
+              coverUrl: item.artworkUrl100 ? item.artworkUrl100.replace('100x100bb', '600x600bb') : DEFAULT_FALLBACK_COVER,
+              releaseYear: parseReleaseYear(item.releaseDate),
+              explicit: item.trackExplicitness === 'explicit'
+            },
+            [],
+            emptyIds
+          );
+        }
+      }
+    } catch {
+      // Fall through to next resolver
+    }
+  }
+
+  const ytIdFromRaw = /^(?:stream-|yt-|catalog-yt-)([A-Za-z0-9_-]{11})$/.exec(rawId)?.[1] || parsed.youtubeId;
+  if (ytIdFromRaw) {
+    for (const mirror of PIPED_MIRRORS) {
+      try {
+        const res = await fetch(`${mirror}/streams/${encodeURIComponent(ytIdFromRaw)}`, {
+          signal: AbortSignal.timeout(4200)
+        });
+        if (!res.ok) continue;
+        const info = (await res.json()) as {
+          title?: string;
+          uploader?: string;
+          duration?: number;
+          thumbnailUrl?: string;
+          views?: number;
+        };
+        if (info?.title) {
+          const parsedMeta = parseArtistAndTitleFromVideo(info.title, info.uploader || '');
+          const title = parsedMeta.title || info.title;
+          const artist = parsedMeta.artist || info.uploader || 'Official Artist';
+          const dur = Number(info.duration) >= 40 ? Number(info.duration) : 210;
+          const ytTrack: Track = {
+            id: `stream-${ytIdFromRaw}`,
+            title,
+            artist,
+            album: 'Official Release',
+            duration: dur,
+            coverUrl: safeYtThumbnail(info.thumbnailUrl, ytIdFromRaw),
+            youtubeId: ytIdFromRaw,
+            candidateVideoIds: [ytIdFromRaw],
+            streamSource: 'official-stream',
+            genre: 'Pop',
+            bpm: estimateTrackBpm({ title, artist, genre: 'Pop' }),
+            youtubeViews: Number(info.views) || undefined,
+            artistSolanaAddress: '',
+            lyrics: []
+          };
+          return {
+            ...ytTrack,
+            musicFlags: computeTrackMusicFlags(ytTrack)
+          };
+        }
+      } catch {
+        // Try next mirror
+      }
+    }
+    return immediateFallback;
+  }
+
+  const audiusMatch = /^audius-([A-Za-z0-9_-]+)$/i.exec(rawId);
+  if (audiusMatch) {
+    try {
+      const res = await fetch(
+        `https://discoveryprovider.audius.co/v1/tracks/${encodeURIComponent(audiusMatch[1])}?app_name=Sonacast`,
+        { signal: AbortSignal.timeout(3800) }
+      );
+      if (res.ok) {
+        const json = await res.json();
+        const item = json?.data as AudiusTrackItem | undefined;
+        if (item?.id && item?.title) {
+          const artistName = item.user?.name || 'Independent Artist';
+          const genre = item.genre || 'Electronic';
+          const auTrack: Track = {
+            id: `audius-${item.id}`,
+            title: item.title,
+            artist: artistName,
+            album: 'Audius Open Catalog',
+            duration: Number(item.duration) || 210,
+            coverUrl: item.artwork?.['480x480'] || item.artwork?.['1000x1000'] || DEFAULT_FALLBACK_COVER,
+            audioUrl: `https://discoveryprovider.audius.co/v1/tracks/${encodeURIComponent(String(item.id))}/stream?app_name=Sonacast`,
+            streamSource: 'studio-master',
+            sourceTag: 'Audius',
+            genre,
+            bpm: estimateTrackBpm({ title: item.title, artist: artistName, genre }),
+            releaseYear: parseReleaseYear(item.release_date),
+            youtubeViews: Number(item.play_count) || undefined,
+            artistSolanaAddress: '',
+            lyrics: []
+          };
+          return {
+            ...auTrack,
+            musicFlags: computeTrackMusicFlags(auTrack)
+          };
+        }
+      }
+    } catch {
+      // Ignore audius fallback error
+    }
+  }
+
+  // 3. Plain-text query share links (e.g. /?track=Hati-Hati+di+Jalan+Tulus)
+  if (rawId && !/^(?:catalog|master|dz|it|stream|mb|lyr)-/i.test(rawId)) {
+    const searchHits = await searchTracksOnline(rawId).catch(() => []);
+    if (searchHits[0]) return searchHits[0];
+  }
+
+  return immediateFallback;
 }
 
 

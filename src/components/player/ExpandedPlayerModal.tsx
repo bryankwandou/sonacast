@@ -87,6 +87,7 @@ interface ExpandedPlayerModalProps {
   onToggleSaveOffline?: () => void;
   onShareTrack?: () => void;
   lyricsOffset?: number;
+  isResolvingSharedTrack?: boolean;
 }
 
 const EQ_OPTIONS: { id: EqPreset; label: string }[] = [
@@ -147,7 +148,8 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   isSavedOffline = false,
   onToggleSaveOffline,
   onShareTrack,
-  lyricsOffset = 0
+  lyricsOffset = 0,
+  isResolvingSharedTrack = false
 }) => {
   const { t } = useAppPreferences();
   const [showDsp, setShowDsp] = useState(false);
@@ -267,6 +269,7 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
 
   return (
     <div
+      data-testid="expanded-player-modal"
       className="fixed inset-0 z-50 bg-[var(--bg-app)]/98 backdrop-blur-2xl flex flex-col overflow-hidden transition-colors"
       style={{
         backgroundImage: `radial-gradient(circle at 22% 20%, rgba(${accentRgb}, 0.25), transparent 56%), radial-gradient(circle at 82% 80%, rgba(${accentRgb}, 0.14), transparent 52%)`
@@ -360,20 +363,36 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
 
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="text-xl sm:text-2xl font-extrabold text-[var(--text-primary)] truncate">
-                  {track.title}
+                {isResolvingSharedTrack && (
+                  <div
+                    data-testid="shared-track-resolving"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 mb-2 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[11px] font-semibold text-[var(--accent-text)]"
+                  >
+                    <Loader2 size={12} className="animate-spin" />
+                    <span>Loading shared song...</span>
+                  </div>
+                )}
+                <h2
+                  data-testid="expanded-player-title"
+                  className="text-xl sm:text-2xl font-extrabold text-[var(--text-primary)] truncate"
+                >
+                  {isResolvingSharedTrack ? 'Loading shared track...' : track.title}
                 </h2>
                 {onOpenArtist ? (
                   <button
                     type="button"
+                    data-testid="expanded-player-artist"
                     onClick={() => onOpenArtist(track.artist)}
                     className="block max-w-full text-left text-sm text-[var(--text-secondary)] hover:text-[var(--accent-text)] hover:underline truncate mt-0.5 cursor-pointer"
                   >
-                    {track.artist}
+                    {isResolvingSharedTrack ? 'Resolving catalog metadata' : track.artist}
                   </button>
                 ) : (
-                  <p className="text-sm text-[var(--text-secondary)] truncate mt-0.5">
-                    {track.artist}
+                  <p
+                    data-testid="expanded-player-artist"
+                    className="text-sm text-[var(--text-secondary)] truncate mt-0.5"
+                  >
+                    {isResolvingSharedTrack ? 'Resolving catalog metadata' : track.artist}
                   </p>
                 )}
                 <div className="flex items-center gap-2 mt-2 text-[11px] text-[var(--text-dim)]">
@@ -432,6 +451,7 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
                 {onShareTrack && (
                   <button
                     type="button"
+                    data-testid="expanded-share-btn"
                     onClick={onShareTrack}
                     title={t.shareTrackLink}
                     aria-label={t.shareTrackLink}
