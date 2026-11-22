@@ -162,10 +162,16 @@ export const TrackCard: React.FC<TrackCardProps> = ({
         )}
 
         {/* Bottom Play/Pause/Resolving Badge */}
-        <div
+        <button
+          type="button"
           data-testid="track-card-play-badge"
           data-playing={isActivelyPlaying ? 'true' : 'false'}
-          className={`pointer-events-none z-10 absolute bottom-2 right-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 ${isActivelyPlaying
+          aria-label={isActivelyPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(track);
+          }}
+          className={`z-20 absolute bottom-2 right-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 cursor-pointer hover:scale-110 ${isActivelyPlaying
             ? 'opacity-100 translate-y-0 scale-105 bg-[var(--accent-emerald)] text-[var(--accent-fg)] ring-4 ring-[var(--accent-emerald)]/30'
             : isSelected || isResolving
               ? 'opacity-100 translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
@@ -179,7 +185,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           ) : (
             <Play size={16} className="fill-current ml-0.5" />
           )}
-        </div>
+        </button>
 
         {typeof rank === 'number' && (
           <div className="pointer-events-none z-10 absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/75 text-white text-[10px] font-mono font-bold transition-opacity group-hover:opacity-0">
