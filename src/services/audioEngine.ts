@@ -2054,6 +2054,14 @@ export class AudioEngine {
               // Ignore pre-start seek error
             }
           }
+          if (!this.isPlaying) {
+            try {
+              event.target.pauseVideo();
+            } catch {
+              // Ignore
+            }
+            return;
+          }
           event.target.playVideo();
           this.startYouTubePoll();
           this.armYouTubeWatchdog(activeGen);
@@ -2065,7 +2073,7 @@ export class AudioEngine {
           const state = event.data;
           // 1 = PLAYING, 2 = PAUSED, 0 = ENDED, 5 = CUED
           if (state === 1) {
-            if (!this.isPlaying && performance.now() - this.lastPauseCalledAt < 600) {
+            if (!this.isPlaying && this.lastPauseCalledAt > 0 && performance.now() - this.lastPauseCalledAt < 3500) {
               try {
                 event.target.pauseVideo();
               } catch {
