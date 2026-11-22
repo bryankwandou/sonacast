@@ -1806,16 +1806,8 @@ function scoreUnifiedCandidate(
     normQuery && (baseTitleNorm === normQuery || (normQueryNoConj && baseTitleNoConj === normQueryNoConj))
   );
 
-  if (targetArtistNorm) {
-    // Never discard an exact queried song title even if an obscure artist shares that name
-    if (role === 'none' && !songTitleExact && (isPureArtistQuery || hasPhraseWordBoundary(baseTitleNorm, targetArtistNorm))) {
-      return -999;
-    }
-    if (role === 'primary') score += isPureArtistQuery ? 150 : 135;
-    else if (role === 'co-lead') score += 110;
-    else if (role === 'featured') score += isPureArtistQuery ? -75 : 30;
-    else if (!songTitleExact) score -= 180;
-  }
+  let hasSongTitleMatch = songTitleExact;
+  let matchedCoLeadSong = false;
 
   if (!isPureArtistQuery || songTitleExact) {
     const songTarget = cleanTargetSong || normQuery;
@@ -1834,12 +1826,15 @@ function scoreUnifiedCandidate(
       (songTargetNoConj && baseTitleNoConj === songTargetNoConj)
     ) {
       score += 225;
+      hasSongTitleMatch = true;
     } else if (
       matchedExtraArtistToken &&
       effectiveSongTokens.length > 0 &&
       effectiveSongTokens.every((t) => hasWholeWordToken(titleWordSet, baseTitleNorm, t))
     ) {
       score += 245;
+      hasSongTitleMatch = true;
+      matchedCoLeadSong = true;
     } else if (
       titleCheckTokens.length > 0 &&
       titleCheckTokens.every((t) => hasWholeWordToken(titleWordSet, baseTitleNorm, t))
@@ -1849,6 +1844,7 @@ function scoreUnifiedCandidate(
         (baseTitleNoConj === songTargetNoConj || baseTitleNoConj.startsWith(`${songTargetNoConj} `))
           ? 165
           : 135;
+      hasSongTitleMatch = true;
     } else {
       const wholeMatched = titleCheckTokens.filter((t) => hasWholeWordToken(titleWordSet, baseTitleNorm, t)).length;
       const prefixMatched = titleCheckTokens.filter(
@@ -1856,6 +1852,7 @@ function scoreUnifiedCandidate(
       ).length;
       if (wholeMatched > 0) {
         score += Math.round((wholeMatched / Math.max(1, titleCheckTokens.length)) * 75);
+        hasSongTitleMatch = true;
       } else if (prefixMatched > 0) {
         // Substring/prefix matches (e.g. "Diamonds" for "Dia") get minimal partial credit so exact songs rank #1
         score += Math.round((prefixMatched / Math.max(1, titleCheckTokens.length)) * 18);
@@ -1871,8 +1868,28 @@ function scoreUnifiedCandidate(
     if (allWholeHit) score += 65;
   }
 
+  if (targetArtistNorm) {
+    // Never discard an exact queried song title or co-lead song match (e.g. "APT Rose Bruno Mars" -> "APT. - ROSÉ")
+    if (
+      role === 'none' &&
+      !songTitleExact &&
+      !matchedCoLeadSong &&
+      (isPureArtistQuery || hasPhraseWordBoundary(baseTitleNorm, targetArtistNorm))
+    ) {
+      return -999;
+    }
+    if (role === 'primary') score += isPureArtistQuery ? 150 : hasSongTitleMatch ? 135 : 20;
+    else if (role === 'co-lead') score += hasSongTitleMatch ? 115 : 15;
+    else if (role === 'featured') score += isPureArtistQuery ? -75 : 30;
+    else if (!songTitleExact && !matchedCoLeadSong) score -= 180;
+  }
+
   // Global Multi-Platform Statistical Popularity Model (Zero static artist-list favoritism)
-  const canGetPopBoost = !targetArtistNorm || role === 'primary' || role === 'co-lead' || songTitleExact;
+  // Unrelated songs by the same artist with ZERO title match must not beat the actual queried song via popularity
+  const artistGateOk =
+    !targetArtistNorm || role === 'primary' || role === 'co-lead' || songTitleExact || matchedCoLeadSong;
+  const titleGateOk = isPureArtistQuery || hasSongTitleMatch;
+  const canGetPopBoost = artistGateOk && titleGateOk;
   // 1. Real Global YouTube Play/View Count Statistics (continuous log10 curve: 100k->60, 1M->100, 10M->140, 100M->180, 1B->220)
   if (cand.youtubeViews >= 3000 && canGetPopBoost) {
     score += Math.round(Math.max(0, (Math.log10(cand.youtubeViews) - 3.5) * 40));
@@ -1968,7 +1985,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
 
     const fastStreamsPromise = Promise.race([
       searchPipedMusic(trimmed, undefined, 'music_songs'),
-      new Promise<StreamCandidate[]>((resolve) => setTimeout(() => resolve([]), 2400))
+      new Promise<StreamCandidate[]>((resolve) => setTimeout(() => resolve([]), 2800))
     ]);
 
     // Fetch real global YouTube view counts in parallel (0 Vercel compute, bounded by 2400ms race)
@@ -1991,7 +2008,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
         }
         return merged;
       })(),
-      new Promise<StreamCandidate[]>((resolve) => setTimeout(() => resolve([]), 2400))
+      new Promise<StreamCandidate[]>((resolve) => setTimeout(() => resolve([]), 2800))
     ]);
 
     const secondaryCountry: 'US' | 'ID' = country === 'ID' ? 'US' : 'ID';
