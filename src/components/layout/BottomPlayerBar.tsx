@@ -368,7 +368,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             data-testid="mobile-video-toggle"
             onClick={() =>
               onSelectStageMode(
-                isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
+                stageMode === 'video-only' || stageMode === 'video-lyric'
                   ? 'music-only'
                   : 'video-only'
               )
@@ -376,7 +376,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             aria-label={t.watchMusicVideo}
             title={t.watchMusicVideo}
             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-              isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
+              stageMode === 'video-only' || stageMode === 'video-lyric'
                 ? 'bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
@@ -630,7 +630,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             type="button"
             onClick={() =>
               onSelectStageMode(
-                isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
+                stageMode === 'video-only' || stageMode === 'video-lyric'
                   ? 'music-only'
                   : 'video-only'
               )
@@ -639,13 +639,13 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
             title={t.modeVideoOnly}
             aria-label={t.modeVideoOnly}
             className={`relative p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-              isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric')
+              stageMode === 'video-only' || stageMode === 'video-lyric'
                 ? 'text-[var(--accent-text)]'
                 : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
             }`}
           >
             <Video size={15} />
-            {isStageOpen && (stageMode === 'video-only' || stageMode === 'video-lyric') && (
+            {(stageMode === 'video-only' || stageMode === 'video-lyric') && (
               <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--accent-emerald)]" />
             )}
           </button>

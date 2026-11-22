@@ -915,6 +915,22 @@ export default function App() {
           ))
     );
 
+  // Helper: immediately hide #sonacast-yt-host completely off-screen with 100% clip-path
+  // while keeping non-zero dimensions so background audio playback never pauses.
+  const hideYtHostOffscreen = useCallback((host: HTMLDivElement | null) => {
+    if (!host) return;
+    host.style.left = '-9999px';
+    host.style.top = '-9999px';
+    host.style.right = 'auto';
+    host.style.bottom = 'auto';
+    host.style.width = '160px';
+    host.style.height = '90px';
+    host.style.opacity = '0';
+    host.style.pointerEvents = 'none';
+    host.style.clipPath = 'inset(50%)';
+    host.style.zIndex = '-1';
+  }, []);
+
   // Synchronize fixed overlay #sonacast-yt-host bounds with active slot (Video stage or RightSidebar monitor)
   useEffect(() => {
     const syncPosition = () => {
@@ -941,46 +957,14 @@ export default function App() {
         }
       }
 
-      if (!isYouTubeActive) {
-        host.style.left = '-9999px';
-        host.style.top = '-9999px';
-        host.style.right = 'auto';
-        host.style.bottom = 'auto';
-        host.style.width = '320px';
-        host.style.height = '180px';
-        host.style.opacity = '0';
-        host.style.pointerEvents = 'none';
-        host.style.clipPath = 'none';
-        host.style.zIndex = '0';
-        return;
-      }
-
-      if (!allowVisibleVideo) {
-        host.style.left = 'auto';
-        host.style.top = 'auto';
-        host.style.right = '12px';
-        host.style.bottom = '92px';
-        host.style.width = '160px';
-        host.style.height = '90px';
-        host.style.opacity = '0.001';
-        host.style.pointerEvents = 'none';
-        host.style.clipPath = 'none';
-        host.style.zIndex = '0';
+      if (!isYouTubeActive || !allowVisibleVideo) {
+        hideYtHostOffscreen(host);
         return;
       }
 
       const target = isStageVisible && isVideoStageMode ? videoSlotRef.current : ytMonitorRef.current;
       if (!target) {
-        host.style.left = 'auto';
-        host.style.top = 'auto';
-        host.style.right = '12px';
-        host.style.bottom = '92px';
-        host.style.width = '160px';
-        host.style.height = '90px';
-        host.style.opacity = '0.001';
-        host.style.pointerEvents = 'none';
-        host.style.clipPath = 'none';
-        host.style.zIndex = '0';
+        hideYtHostOffscreen(host);
         return;
       }
 
@@ -989,16 +973,7 @@ export default function App() {
         if (isStageVisible && isVideoStageMode && mainScrollRef.current) {
           const mainRect = mainScrollRef.current.getBoundingClientRect();
           if (rect.bottom <= mainRect.top + 8 || rect.top >= mainRect.bottom - 8) {
-            host.style.left = 'auto';
-            host.style.top = 'auto';
-            host.style.right = '12px';
-            host.style.bottom = '92px';
-            host.style.width = '160px';
-            host.style.height = '90px';
-            host.style.opacity = '0.001';
-            host.style.pointerEvents = 'none';
-            host.style.clipPath = 'none';
-            host.style.zIndex = '0';
+            hideYtHostOffscreen(host);
             return;
           }
           const clipTop = Math.max(0, mainRect.top - rect.top);
@@ -1017,21 +992,16 @@ export default function App() {
         host.style.width = `${rect.width}px`;
         host.style.height = `${rect.height}px`;
         const visualAllowed = !streamError && (isYtVisualReady || (isStageVisible && isVideoStageMode));
-        host.style.opacity = visualAllowed ? '1' : '0.001';
-        host.style.pointerEvents = visualAllowed ? 'auto' : 'none';
-        host.style.zIndex = visualAllowed ? '25' : '0';
+        if (!visualAllowed) {
+          hideYtHostOffscreen(host);
+          return;
+        }
+        host.style.opacity = '1';
+        host.style.pointerEvents = 'auto';
+        host.style.zIndex = '25';
         host.style.borderRadius = isStageVisible && isVideoStageMode ? '1rem' : '0.75rem';
       } else {
-        host.style.left = 'auto';
-        host.style.top = 'auto';
-        host.style.right = '12px';
-        host.style.bottom = '92px';
-        host.style.width = '160px';
-        host.style.height = '90px';
-        host.style.opacity = '0.001';
-        host.style.pointerEvents = 'none';
-        host.style.clipPath = 'none';
-        host.style.zIndex = '0';
+        hideYtHostOffscreen(host);
       }
     };
 
@@ -1056,6 +1026,7 @@ export default function App() {
       document.removeEventListener('fullscreenchange', syncPosition);
     };
   }, [
+    hideYtHostOffscreen,
     isYouTubeActive,
     isYtVisualReady,
     streamError,
@@ -1405,9 +1376,16 @@ export default function App() {
     setResolvingVideoTrackId(null);
     sharedAudioEngine.setVideoStageActive(false);
 
+    const host = ytHostRef.current;
+    if (host && document.fullscreenElement === host) {
+      document.exitFullscreen().catch(() => { });
+    }
+    hideYtHostOffscreen(host);
+
+    const resumeAt = Math.max(0, Math.floor(currentTimeRef.current));
+    const wasPlaying = sharedAudioEngine.getIsPlaying();
+
     if (tr.audioUrl) {
-      const resumeAt = Math.max(0, Math.floor(currentTimeRef.current));
-      const wasPlaying = sharedAudioEngine.getIsPlaying();
       setIsYouTubeActive(false);
       sharedAudioEngine.playTrack(tr.duration, tr.bpm, tr.audioUrl);
       if (resumeAt > 0) {
@@ -1422,9 +1400,24 @@ export default function App() {
       return;
     }
 
+    // Online YouTube track: restore official studio audio stream if currently playing MV
+    const studioAudioIds =
+      tr.candidateVideoIds && tr.candidateVideoIds.length > 0
+        ? tr.candidateVideoIds
+        : tr.youtubeId
+          ? [tr.youtubeId]
+          : [];
+    const curYtId = sharedAudioEngine.getCurrentYouTubeVideoId();
+    if (isYouTubeActive && studioAudioIds.length > 0 && curYtId && curYtId !== studioAudioIds[0]) {
+      void sharedAudioEngine.playYouTubeTrack(studioAudioIds, tr.duration, tr.bpm, resumeAt);
+      if (!wasPlaying) {
+        sharedAudioEngine.pause();
+      }
+    }
+
     stageModeRef.current = 'music-only';
     setStageMode('music-only');
-  }, []);
+  }, [hideYtHostOffscreen, isYouTubeActive]);
 
   const handleRequestVideoFullscreen = useCallback(() => {
     const host = ytHostRef.current;
@@ -3586,6 +3579,11 @@ export default function App() {
     } else {
       setCurrentTab(tab);
       if (tab === 'visualizer') {
+        if (stageModeRef.current === 'video-only' || stageModeRef.current === 'video-lyric') {
+          stageModeRef.current = 'orbwave-only';
+          setStageMode('orbwave-only');
+          hideYtHostOffscreen(ytHostRef.current);
+        }
         setIsStageOpen(true);
       } else {
         setIsStageOpen(false);
@@ -3610,8 +3608,8 @@ export default function App() {
       sharedAudioEngine.setVideoStageActive(true);
       void activateMusicVideoForTrack(currentTrackRef.current);
     } else {
-      // Leaving video mode: cancel any pending MV resolution, restore Audio Data Saver,
-      // and return to studio master audioUrl if the current track has one.
+      // Leaving video mode: IMMEDIATELY hide #sonacast-yt-host off-screen, cancel pending MV,
+      // restore Audio Data Saver, and return to studio master / official audio stream.
       ++mvSelectionTokenRef.current;
       if (mvResolveAbortRef.current) {
         mvResolveAbortRef.current.abort();
@@ -3624,11 +3622,12 @@ export default function App() {
       if (host && document.fullscreenElement === host) {
         document.exitFullscreen().catch(() => { });
       }
+      hideYtHostOffscreen(host);
 
       const tr = currentTrackRef.current;
+      const resumeAt = Math.max(0, Math.floor(currentTimeRef.current));
+      const wasPlaying = sharedAudioEngine.getIsPlaying();
       if (isYouTubeActive && tr.audioUrl) {
-        const resumeAt = Math.max(0, Math.floor(currentTimeRef.current));
-        const wasPlaying = sharedAudioEngine.getIsPlaying();
         setIsYouTubeActive(false);
         sharedAudioEngine.playTrack(tr.duration, tr.bpm, tr.audioUrl);
         if (resumeAt > 0) {
@@ -3638,6 +3637,20 @@ export default function App() {
           sharedAudioEngine.pause();
         }
         setIsPlaying(wasPlaying);
+      } else if (isYouTubeActive && !tr.audioUrl) {
+        const studioAudioIds =
+          tr.candidateVideoIds && tr.candidateVideoIds.length > 0
+            ? tr.candidateVideoIds
+            : tr.youtubeId
+              ? [tr.youtubeId]
+              : [];
+        const curYtId = sharedAudioEngine.getCurrentYouTubeVideoId();
+        if (studioAudioIds.length > 0 && curYtId && curYtId !== studioAudioIds[0]) {
+          void sharedAudioEngine.playYouTubeTrack(studioAudioIds, tr.duration, tr.bpm, resumeAt);
+          if (!wasPlaying) {
+            sharedAudioEngine.pause();
+          }
+        }
       }
     }
   };
@@ -3733,12 +3746,13 @@ export default function App() {
           position: 'fixed',
           left: '-9999px',
           top: '-9999px',
-          width: '200px',
-          height: '200px',
+          width: '160px',
+          height: '90px',
           opacity: 0,
+          clipPath: 'inset(50%)',
           pointerEvents: 'none',
           overflow: 'hidden',
-          zIndex: 25,
+          zIndex: -1,
           backgroundColor: 'transparent'
         }}
       />
@@ -4384,7 +4398,12 @@ export default function App() {
                       <button
                         type="button"
                         data-testid="stage-close-btn"
-                        onClick={() => setIsStageOpen(false)}
+                        onClick={() => {
+                          if (stageModeRef.current === 'video-only' || stageModeRef.current === 'video-lyric') {
+                            handleSwitchToAudioMaster();
+                          }
+                          setIsStageOpen(false);
+                        }}
                         aria-label={t.closeLabel}
                         title={t.closeLabel}
                         className="w-7 h-7 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] inline-flex items-center justify-center shrink-0 cursor-pointer transition-colors"
