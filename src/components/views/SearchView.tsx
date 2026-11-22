@@ -111,10 +111,71 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [selectedPlaylistTracks, setSelectedPlaylistTracks] = useState<Track[]>([]);
   const [loadingPlaylistId, setLoadingPlaylistId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
+  const [instantMatches, setInstantMatches] = useState<{
+    query: string;
+    tracks: Track[];
+    albums: CatalogAlbum[];
+    playlists: CatalogPlaylist[];
+    lyricMatches: LyricsSearchMatch[];
+  }>({ query: '', tracks: [], albums: [], playlists: [], lyricMatches: [] });
+  const [isLoadingInstant, setIsLoadingInstant] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [activeArtistFilter, setActiveArtistFilter] = useState('Queen');
   const [selectedGenre, setSelectedGenre] = useState('All Genres');
   const [showAllArtists, setShowAllArtists] = useState(false);
   const searchRequestIdRef = useRef(0);
+
+  // Live debounced Search Match dropdown on /search (mirrors topbar Instant Matches, 0 Vercel compute)
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!isSearchInputFocused || trimmed.length < 2) {
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setIsLoadingInstant(true);
+      try {
+        if (searchMode === 'lyrics') {
+          const lyricRes = await searchTracksByLyricsOnline(trimmed).catch(
+            () => [] as LyricsSearchMatch[]
+          );
+          if (!cancelled) {
+            setInstantMatches({
+              query: trimmed,
+              tracks: lyricRes.slice(0, 4).map((h) => h.track),
+              albums: [],
+              playlists: [],
+              lyricMatches: lyricRes.slice(0, 4)
+            });
+          }
+        } else {
+          const [tracksRes, albumsRes, playlistsRes] = await Promise.all([
+            searchTracksOnline(trimmed).catch(() => [] as Track[]),
+            searchAlbumsOnline(trimmed).catch(() => [] as CatalogAlbum[]),
+            searchPlaylistsOnline(trimmed).catch(() => [] as CatalogPlaylist[])
+          ]);
+          if (!cancelled) {
+            setInstantMatches({
+              query: trimmed,
+              tracks: tracksRes.slice(0, 5),
+              albums: albumsRes.slice(0, 3),
+              playlists: playlistsRes.slice(0, 3),
+              lyricMatches: []
+            });
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingInstant(false);
+        }
+      }
+    }, 240);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isSearchInputFocused, searchQuery, searchMode]);
 
   const filteredArtists = useMemo(() => {
     return ARTISTS_DIRECTORY.filter((a) => selectedGenre === 'All Genres' || a.genre === selectedGenre);
@@ -327,6 +388,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSearchInputFocused(false);
     const rawValue =
       (e.currentTarget.querySelector('input') as HTMLInputElement | null)?.value ?? searchQuery;
     if (rawValue !== searchQuery) {
@@ -363,7 +425,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
     <div className="space-y-6 select-none">
       {/* Search Header Banner */}
       <div
-        className="relative rounded-3xl overflow-hidden p-5 sm:p-8 border border-[var(--border-subtle)] transition-colors"
+        className="relative rounded-3xl overflow-visible z-20 p-5 sm:p-8 border border-[var(--border-subtle)] transition-colors"
         style={{ background: 'var(--hero-gradient)', boxShadow: 'var(--card-shadow)' }}
       >
         <div className="relative z-10 max-w-3xl">
@@ -382,13 +444,354 @@ export const SearchView: React.FC<SearchViewProps> = ({
             <div className="relative flex-1">
               <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)]" />
               <input
+                ref={searchInputRef}
                 type="text"
                 data-testid="search-view-input"
                 placeholder={t.searchPlaceholder}
                 value={searchQuery}
+                onFocus={() => setIsSearchInputFocused(true)}
+                onBlur={() => window.setTimeout(() => setIsSearchInputFocused(false), 160)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setIsSearchInputFocused(false);
+                    e.currentTarget.blur();
+                  }
+                }}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 min-h-[44px] py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-medium)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] transition-colors"
+                className="w-full pl-11 pr-9 min-h-[44px] py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-medium)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent-emerald)] transition-colors"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    searchInputRef.current?.focus();
+                  }}
+                  aria-label="Clear search"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-dim)] hover:text-[var(--text-primary)] cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              )}
+
+              {isSearchInputFocused && (
+                <div
+                  data-testid="search-match-dropdown"
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="absolute left-0 right-0 top-full mt-1.5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-medium)] shadow-2xl p-2.5 space-y-2.5 z-50 max-h-[65vh] overflow-y-auto"
+                >
+                  {searchQuery.trim().length >= 2 ? (
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between gap-2 px-1 pb-1 border-b border-[var(--border-subtle)]">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1.5">
+                          {isLoadingInstant && (
+                            <Loader2 size={11} className="animate-spin text-[var(--accent-text)]" />
+                          )}
+                          <span>{t.instantResults}</span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsSearchInputFocused(false);
+                              onRecordSearch?.(searchQuery.trim(), searchMode);
+                              executeSearch(searchQuery.trim(), searchMode);
+                            }}
+                            className="text-[10px] font-bold text-[var(--accent-text)] hover:underline cursor-pointer"
+                          >
+                            {t.browseCatalog} &rarr;
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="search-match-close"
+                            aria-label={t.removeSearchItem}
+                            onClick={() => {
+                              setIsSearchInputFocused(false);
+                              searchInputRef.current?.blur();
+                            }}
+                            className="p-1 rounded-md text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] cursor-pointer"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {instantMatches.lyricMatches.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                            {t.searchLyricsTab}
+                          </div>
+                          {instantMatches.lyricMatches.map((lm) => (
+                            <button
+                              key={`sv-inst-lyr-${lm.track.id}`}
+                              type="button"
+                              onClick={() => {
+                                setIsSearchInputFocused(false);
+                                void handlePlayTrackWithLyrics(lm.track);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[var(--bg-elevated)] text-left transition-colors cursor-pointer"
+                            >
+                              <img
+                                src={lm.track.coverUrl || DEFAULT_COVER_DATA_URI}
+                                alt={lm.track.title}
+                                onError={(e) => applyCoverFallback(e, lm.track.title, lm.track.artist)}
+                                className="w-8 h-8 rounded-lg object-cover shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                                  {lm.track.title}
+                                </div>
+                                <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                  {lm.track.artist}
+                                  {lm.matchedLine ? ` · "${lm.matchedLine}"` : ''}
+                                </div>
+                              </div>
+                              <Play size={12} className="text-[var(--accent-text)] shrink-0" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {instantMatches.lyricMatches.length === 0 && instantMatches.tracks.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                            {t.searchSongsTab}
+                          </div>
+                          {instantMatches.tracks.map((tr) => (
+                            <button
+                              key={`sv-inst-trk-${tr.id}`}
+                              type="button"
+                              data-testid="search-match-track-item"
+                              onClick={() => {
+                                setIsSearchInputFocused(false);
+                                void handlePlayTrackWithLyrics(tr);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[var(--bg-elevated)] text-left transition-colors cursor-pointer"
+                            >
+                              <img
+                                src={tr.coverUrl || DEFAULT_COVER_DATA_URI}
+                                alt={tr.title}
+                                onError={(e) => applyCoverFallback(e, tr.title, tr.artist)}
+                                className="w-8 h-8 rounded-lg object-cover shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                                  {tr.title}
+                                </div>
+                                <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                  {tr.artist}
+                                  {tr.album && tr.album !== 'Single' ? ` · ${tr.album}` : ''}
+                                </div>
+                              </div>
+                              <Play size={12} className="text-[var(--accent-text)] shrink-0" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {instantMatches.albums.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                            {t.searchAlbumsTab}
+                          </div>
+                          {instantMatches.albums.map((alb) => (
+                            <button
+                              key={`sv-inst-alb-${alb.id}`}
+                              type="button"
+                              onClick={() => {
+                                setIsSearchInputFocused(false);
+                                setSearchMode('albums');
+                                setSearchQuery(alb.title);
+                                void handleOpenSearchAlbum(alb);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[var(--bg-elevated)] text-left transition-colors cursor-pointer"
+                            >
+                              <img
+                                src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
+                                alt={alb.title}
+                                onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
+                                className="w-8 h-8 rounded-lg object-cover shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                                  {alb.title}
+                                </div>
+                                <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                  {alb.artist}
+                                </div>
+                              </div>
+                              <Disc3 size={12} className="text-[var(--text-dim)] shrink-0" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {instantMatches.playlists.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
+                            {t.searchPlaylistsTab}
+                          </div>
+                          {instantMatches.playlists.map((pl) => (
+                            <button
+                              key={`sv-inst-pl-${pl.id}`}
+                              type="button"
+                              onClick={() => {
+                                setIsSearchInputFocused(false);
+                                setSearchMode('playlists');
+                                setSearchQuery(pl.title);
+                                void handleOpenSearchPlaylist(pl);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[var(--bg-elevated)] text-left transition-colors cursor-pointer"
+                            >
+                              <img
+                                src={pl.coverUrl || DEFAULT_COVER_DATA_URI}
+                                alt={pl.title}
+                                onError={(e) => applyCoverFallback(e, pl.title, pl.creator)}
+                                className="w-8 h-8 rounded-lg object-cover shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                                  {pl.title}
+                                </div>
+                                <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                  {pl.creator}
+                                  {pl.nbTracks ? ` · ${pl.nbTracks}t` : ''}
+                                </div>
+                              </div>
+                              <ListMusic size={12} className="text-[var(--text-dim)] shrink-0" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {!isLoadingInstant &&
+                        instantMatches.tracks.length === 0 &&
+                        instantMatches.albums.length === 0 &&
+                        instantMatches.playlists.length === 0 &&
+                        instantMatches.lyricMatches.length === 0 && (
+                          <div className="px-2 py-3 text-center text-[11px] text-[var(--text-dim)]">
+                            Press Enter to search full catalog for &ldquo;{searchQuery.trim()}&rdquo;
+                          </div>
+                        )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {popularCharts.albums.length > 0 && (
+                          <div className="space-y-1 min-w-0">
+                            <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] flex items-center gap-1">
+                              <Disc3 size={10} className="text-[var(--accent-text)]" />
+                              <span>{t.topDailyAlbums}</span>
+                            </div>
+                            {popularCharts.albums.slice(0, 3).map((alb) => (
+                              <button
+                                key={`sv-dd-alb-${alb.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setIsSearchInputFocused(false);
+                                  setSearchMode('albums');
+                                  setSearchQuery(alb.title);
+                                  void handleOpenSearchAlbum(alb);
+                                }}
+                                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl bg-[var(--bg-elevated)]/60 hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-left cursor-pointer"
+                              >
+                                <img
+                                  src={alb.coverUrl || DEFAULT_COVER_DATA_URI}
+                                  alt={alb.title}
+                                  onError={(e) => applyCoverFallback(e, alb.title, alb.artist)}
+                                  className="w-7 h-7 rounded-md object-cover shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">
+                                    {alb.title}
+                                  </div>
+                                  <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                    {alb.artist}
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {popularCharts.playlists.length > 0 && (
+                          <div className="space-y-1 min-w-0">
+                            <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] flex items-center gap-1">
+                              <ListMusic size={10} className="text-[var(--accent-text)]" />
+                              <span>{t.topDailyPlaylists}</span>
+                            </div>
+                            {popularCharts.playlists.slice(0, 3).map((pl) => (
+                              <button
+                                key={`sv-dd-pl-${pl.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setIsSearchInputFocused(false);
+                                  setSearchMode('playlists');
+                                  setSearchQuery(pl.title);
+                                  void handleOpenSearchPlaylist(pl);
+                                }}
+                                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl bg-[var(--bg-elevated)]/60 hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-left cursor-pointer"
+                              >
+                                <img
+                                  src={pl.coverUrl || DEFAULT_COVER_DATA_URI}
+                                  alt={pl.title}
+                                  onError={(e) => applyCoverFallback(e, pl.title, pl.creator)}
+                                  className="w-7 h-7 rounded-md object-cover shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">
+                                    {pl.title}
+                                  </div>
+                                  <div className="text-[10px] text-[var(--text-dim)] truncate">
+                                    {pl.creator}
+                                    {pl.nbTracks ? ` · ${pl.nbTracks}t` : ''}
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {searchHistory.length > 0 && (
+                        <div className="space-y-1 pt-1 border-t border-[var(--border-subtle)]">
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] inline-flex items-center gap-1">
+                              <Clock size={10} />
+                              <span>{t.recentSearches}</span>
+                            </span>
+                            {onClearSearchHistory && (
+                              <button
+                                type="button"
+                                onClick={onClearSearchHistory}
+                                className="text-[10px] text-[var(--text-dim)] hover:text-rose-500 cursor-pointer"
+                              >
+                                {t.clearSearchHistory}
+                              </button>
+                            )}
+                          </div>
+                          {searchHistory.slice(0, 4).map((entry) => (
+                            <button
+                              key={`sv-dd-hist-${entry.id}`}
+                              type="button"
+                              onClick={() => {
+                                setIsSearchInputFocused(false);
+                                setSearchMode(entry.mode);
+                                setSearchQuery(entry.query);
+                                executeSearch(entry.query, entry.mode);
+                              }}
+                              className="w-full flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[var(--bg-elevated)] text-left text-xs text-[var(--text-primary)] cursor-pointer"
+                            >
+                              <Clock size={11} className="text-[var(--text-dim)] shrink-0" />
+                              <span className="truncate flex-1">{entry.query}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <button
