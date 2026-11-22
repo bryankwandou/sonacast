@@ -3,6 +3,9 @@ import { COHESIVE_SEED_TRACKS } from '../data/curatedPlaylists';
 import {
   classifyTrackTier,
   computeAudioVectorCosine,
+  computeMultiFlagSimilarity,
+  computeTrackMusicFlags,
+  enrichTrackWithMusicFlags,
   estimateAudioFeatures,
   inferTrackLanguageRegion,
   isRecognizedCatalogArtist,
@@ -238,6 +241,11 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
   const dominantRegion =
     Array.from(regionAffinity.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ||
     (anchorTrack ? inferTrackLanguageRegion(anchorTrack) : 'en');
+  const anchorFlags = anchorTrack
+    ? anchorTrack.musicFlags && anchorTrack.musicFlags.count >= 24
+      ? anchorTrack.musicFlags
+      : computeTrackMusicFlags(anchorTrack)
+    : null;
 
   const usedIdsAcrossMixes = new Set<string>();
   const usedTitlesAcrossMixes = new Set<string>();
@@ -285,6 +293,11 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
       s += (artistAffinity.get(art) || 0) * 14;
       s += cls.classId === dominantClassId ? 70 : dominantClassProfile.compatibleClasses.includes(cls.classId) ? 24 : -50;
       if (reg === dominantRegion) s += 32;
+      if (anchorFlags) {
+        const candFlags = t.musicFlags && t.musicFlags.count >= 24 ? t.musicFlags : computeTrackMusicFlags(t);
+        const flagSim = computeMultiFlagSimilarity(anchorFlags, candFlags);
+        s += Math.round((flagSim.similarity - 0.42) * 85);
+      }
       if (centroidVec) {
         const sim = computeAudioVectorCosine(centroidVec, estimateAudioFeatures(t));
         s += Math.round((sim - 0.72) * 90);
@@ -390,9 +403,21 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
   const discoveryScored = [...discoveryCandidates].sort((a, b) => {
     const simA = centroidVec ? computeAudioVectorCosine(centroidVec, estimateAudioFeatures(a)) : 0.75;
     const simB = centroidVec ? computeAudioVectorCosine(centroidVec, estimateAudioFeatures(b)) : 0.75;
+    const flagA = anchorFlags
+      ? computeMultiFlagSimilarity(
+          anchorFlags,
+          a.musicFlags && a.musicFlags.count >= 24 ? a.musicFlags : computeTrackMusicFlags(a)
+        ).similarity
+      : 0.5;
+    const flagB = anchorFlags
+      ? computeMultiFlagSimilarity(
+          anchorFlags,
+          b.musicFlags && b.musicFlags.count >= 24 ? b.musicFlags : computeTrackMusicFlags(b)
+        ).similarity
+      : 0.5;
     const cohA = COHESIVE_SEED_TRACKS.some((c) => c.id === a.id) || a.streamSource === 'studio-master' ? 20 : 0;
     const cohB = COHESIVE_SEED_TRACKS.some((c) => c.id === b.id) || b.streamSource === 'studio-master' ? 20 : 0;
-    return simB * 100 + cohB - (simA * 100 + cohA);
+    return simB * 85 + flagB * 60 + cohB - (simA * 85 + flagA * 60 + cohA);
   });
   const mix4Tracks = interleaveOrderedUnique(discoveryScored, 10, usedIdsAcrossMixes, usedTitlesAcrossMixes);
   const topArtists4 = Array.from(new Set(mix4Tracks.slice(0, 4).map((t) => t.artist))).slice(0, 3);
@@ -404,7 +429,7 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
       title: 'Daily Mix 1 · Personal Mix',
       subtitle: mix1Subtitle,
       badge: 'Made For You',
-      tracks: mix1Tracks
+      tracks: mix1Tracks.map(enrichTrackWithMusicFlags)
     });
   }
   if (mix2Tracks.length > 0) {
@@ -413,7 +438,7 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
       title: mix2FocusIndie ? 'Indo Indie & Band Mix' : 'Hot Hits Indonesia',
       subtitle: topArtists2.join(' · ') || 'Indonesian Favorites',
       badge: 'Indonesia Mix',
-      tracks: mix2Tracks
+      tracks: mix2Tracks.map(enrichTrackWithMusicFlags)
     });
   }
   if (mix3Tracks.length > 0) {
@@ -426,7 +451,7 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
       title: moodTitle,
       subtitle: topArtists3.join(' · ') || 'Cohesive Genre Set',
       badge: input.mood === 'all' ? 'Daily Mix 3' : 'Mood Mix',
-      tracks: mix3Tracks
+      tracks: mix3Tracks.map(enrichTrackWithMusicFlags)
     });
   }
   if (mix4Tracks.length > 0) {
@@ -435,7 +460,7 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
       title: 'Discovery Radar',
       subtitle: topArtists4.join(' · ') || 'Audio-Matched Fresh Picks',
       badge: 'Discovery',
-      tracks: mix4Tracks
+      tracks: mix4Tracks.map(enrichTrackWithMusicFlags)
     });
   }
 

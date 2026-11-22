@@ -12,6 +12,38 @@ export interface MusicVideoCandidate {
   thumbnail: string;
 }
 
+export type MusicFlagDimension =
+  | 'language_region'
+  | 'regional_scene'
+  | 'sonic_class'
+  | 'primary_genre'
+  | 'subgenre_style'
+  | 'tempo_tier'
+  | 'energy_level'
+  | 'mood_valence'
+  | 'danceability_tier'
+  | 'acoustic_profile'
+  | 'vocal_presence'
+  | 'vocal_delivery'
+  | 'instrumentation_core'
+  | 'era_decade'
+  | 'popularity_tier'
+  | 'release_format'
+  | 'lyric_theme'
+  | 'listening_context'
+  | 'rhythm_feel'
+  | 'production_polish'
+  | 'explicit_rating'
+  | 'duration_bucket'
+  | 'dialect_script'
+  | 'catalog_provenance';
+
+export interface TrackMusicFlags {
+  dimensions: Record<MusicFlagDimension, string>;
+  tags: string[];
+  count: number;
+}
+
 export interface Track {
   id: string;
   title: string;
@@ -32,6 +64,11 @@ export interface Track {
   lyrics: LyricLine[];
   artistSolanaAddress: string;
   bpm: number;
+  releaseYear?: number;
+  explicit?: boolean;
+  popularityRank?: number;
+  youtubeViews?: number;
+  musicFlags?: TrackMusicFlags;
 }
 
 export type RepeatMode = 'off' | 'all' | 'one';

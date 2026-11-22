@@ -3,8 +3,10 @@ import type {
   EqPreset,
   LyricLine,
   MoodPreset,
+  MusicFlagDimension,
   RepeatMode,
   Track,
+  TrackMusicFlags,
   UserPlaylist
 } from '../types';
 
@@ -1183,6 +1185,394 @@ export function recordTrackSignal(
   return next;
 }
 
+export const MUSIC_FLAG_DIMENSIONS: readonly MusicFlagDimension[] = [
+  'language_region',
+  'regional_scene',
+  'sonic_class',
+  'primary_genre',
+  'subgenre_style',
+  'tempo_tier',
+  'energy_level',
+  'mood_valence',
+  'danceability_tier',
+  'acoustic_profile',
+  'vocal_presence',
+  'vocal_delivery',
+  'instrumentation_core',
+  'era_decade',
+  'popularity_tier',
+  'release_format',
+  'lyric_theme',
+  'listening_context',
+  'rhythm_feel',
+  'production_polish',
+  'explicit_rating',
+  'duration_bucket',
+  'dialect_script',
+  'catalog_provenance'
+] as const;
+
+const MULTI_FLAG_WEIGHTS: Record<MusicFlagDimension, number> = {
+  language_region: 0.14,
+  regional_scene: 0.11,
+  sonic_class: 0.10,
+  primary_genre: 0.04,
+  subgenre_style: 0.08,
+  tempo_tier: 0.06,
+  energy_level: 0.07,
+  mood_valence: 0.07,
+  danceability_tier: 0.03,
+  acoustic_profile: 0.05,
+  vocal_presence: 0.04,
+  vocal_delivery: 0.03,
+  instrumentation_core: 0.05,
+  era_decade: 0.03,
+  popularity_tier: 0.015,
+  release_format: 0.015,
+  lyric_theme: 0.03,
+  listening_context: 0.04,
+  rhythm_feel: 0.04,
+  production_polish: 0.02,
+  explicit_rating: 0.005,
+  duration_bucket: 0.01,
+  dialect_script: 0.03,
+  catalog_provenance: 0.005
+};
+
+const MINANG_MELAYU_CUES =
+  /\b(minang|padang|tungkek|mambaok|rabah|palaminan|padiah|bana|ciinan|takicuah|melayu|malay|fauzana|ipank|rayola|thomas arya|arief|siti nurhaliza|yuna|insomniacks|search|naim daniel)\b/i;
+const JAWA_KOPLO_CUES =
+  /\b(jawa|koplo|dangdut|campursari|negoro|rungkad|ojo|cundamani|kalih welas|kartonyono|bojo|banyu langit|sewu kutho|klebus|wirang|sanes|nemen|pingal|dumes|satru|cidro|ambyar|tresno|denny caknan|happy asmara|guyon waton|ndx|didi kempot|gilga sahid|aftershine|ndarboy|lesti|rhoma irama)\b/i;
+const HEARTBREAK_THEME_RE =
+  /\b(sial|sisa rasa|luka|duka|menangis|tersakiti|terluka|patah|kecewa|berpisah|hilang|pergimu|tanpamu|meninggalkan|melupakan|pupus|hampa|runtuh|bersedih|tak ingin usai|tak segampang|pesan terakhir|bukan dia|cinta tak harus|someone like you|hello|fix you|broken|heartbreak|tears|goodbye|sorry|cry|lonely|hurt|pain|miss you|lose you)\b/i;
+const ROMANCE_THEME_RE =
+  /\b(sayang|cinta|rindu|kasih|pelukan|mesra|jodoh|setia|selamanya|sempurna|komang|bertaut|akad|bidadari|kekasih|penjaga hati|jatuh suka|love story|perfect|die with a smile|adore|darling|sweetheart|forever|romance|kiss|marry|beloved)\b/i;
+const NOSTALGIA_THEME_RE =
+  /\b(kenangan|masa lalu|dulu|tujuh belas|sepia|sephia|kemarin|monokrom|rumah ke rumah|kangen|sewaktu|klasik|yesterday|memories|7 years|nostalgia|retro|remember|childhood|old days)\b/i;
+const PARTY_THEME_RE =
+  /\b(party|dance|club|tonight|espresso|levitating|dynamite|apt|tabola bale|pica pica|stecu|gacor|joget|goyang|syantik|begadang|celebrate|friday|weekend|turn up|banger)\b/i;
+const ANTHEM_THEME_RE =
+  /\b(believer|lose yourself|bohemian|viva la vida|laskar pelangi|tanah airku|beraksi|evaluasi|secukupnya|kita usahakan|bertahan|hidup harus tetap berjalan|fighter|stronger|unstoppable|champion|rise|dream)\b/i;
+
+export interface MultiFlagSimilarityResult {
+  similarity: number;
+  matchedCount: number;
+  totalFlags: number;
+  matchedDimensions: MusicFlagDimension[];
+}
+
+export function estimateTrackBpm(
+  track: Pick<Track, 'title' | 'artist' | 'genre'> & Partial<Pick<Track, 'bpm' | 'album' | 'lyrics'>>
+): number {
+  const cls = classifyTrackTier({ ...track, bpm: track.bpm && track.bpm > 40 ? track.bpm : 112 }).classId;
+  const titleLower = String(track.title || '').toLowerCase();
+  let base = 116;
+  switch (cls) {
+    case 'piano_neoclassical': base = 76; break;
+    case 'soundtrack_epic': base = 88; break;
+    case 'indo_pop_ballad': base = 82; break;
+    case 'indo_indie_folk': base = 94; break;
+    case 'rnb_late_soul': base = 92; break;
+    case 'jazz_blues_acoustic': base = 96; break;
+    case 'hiphop_rap_trap': base = 98; break;
+    case 'latin_global': base = 102; break;
+    case 'arabic_middle_east': base = 104; break;
+    case 'indian_south_asian': base = 106; break;
+    case 'indo_timur_hits': base = 114; break;
+    case 'classic_global_legend': base = 116; break;
+    case 'alt_indie_rock': base = 118; break;
+    case 'modern_chart_pop': base = 118; break;
+    case 'indo_band_rock': base = 122; break;
+    case 'kpop_idol': base = 126; break;
+    case 'electronic_dance_synth': base = 128; break;
+    case 'jpop_city_anime': base = 132; break;
+    case 'indo_koplo_dangdut': base = 138; break;
+    case 'heavy_metal_hard': base = 148; break;
+  }
+  if (/\b(acoustic|unplugged|ballad|slowed|lullaby)\b/.test(titleLower)) {
+    base = Math.max(64, base - 14);
+  } else if (/\b(remix|club|dance|party|sped up)\b/.test(titleLower)) {
+    base = Math.min(168, base + 12);
+  }
+  return base;
+}
+
+/**
+ * Computes 24 orthogonal, real-world musical flags for every track (across all federated
+ * global catalogs and local studio masters) so similarity never relies on 1 single genre tag.
+ */
+export function computeTrackMusicFlags(
+  track: Pick<Track, 'id' | 'title' | 'artist' | 'album' | 'genre' | 'bpm' | 'duration'> &
+    Partial<Pick<Track, 'lyrics' | 'streamSource' | 'sourceTag' | 'releaseYear' | 'explicit' | 'popularityRank' | 'youtubeViews' | 'musicFlags'>>
+): TrackMusicFlags {
+  const titleRaw = String(track.title || '');
+  const titleLower = titleRaw.toLowerCase();
+  const artistLower = String(track.artist || '').toLowerCase();
+  const albumLower = String(track.album || '').toLowerCase();
+  const genreLower = String(track.genre || '').toLowerCase();
+  const lyricSample = getTrackLyricSample(track);
+  const fullText = `${titleLower} ${artistLower} ${albumLower} ${genreLower} ${lyricSample}`;
+
+  const lang = inferTrackLanguageRegion(track);
+  const tier = classifyTrackTier(track);
+  const family = resolveGenreFamily(track.genre, track.artist, track.title);
+  const bpm = track.bpm > 40 ? track.bpm : estimateTrackBpm(track);
+  const vec = estimateAudioFeatures({ ...track, bpm });
+  const dur = track.duration > 0 ? track.duration : 210;
+
+  // 1. regional_scene
+  let regionalScene = 'global_crossover';
+  if (lang === 'id') {
+    if (tier.classId === 'indo_timur_hits') regionalScene = 'indo_timur';
+    else if (tier.classId === 'indo_koplo_dangdut' || JAWA_KOPLO_CUES.test(fullText)) regionalScene = 'indo_jawa_koplo';
+    else if (MINANG_MELAYU_CUES.test(fullText)) regionalScene = 'indo_minang_melayu';
+    else if (tier.classId === 'indo_indie_folk') regionalScene = 'indo_indie_senja';
+    else if (tier.classId === 'indo_band_rock') regionalScene = 'indo_band_classic';
+    else regionalScene = 'indo_jakarta_pop';
+  } else if (lang === 'ko') regionalScene = 'kpop_seoul';
+  else if (lang === 'ja') regionalScene = 'jpop_tokyo';
+  else if (lang === 'es') regionalScene = 'latin_urbano';
+  else if (lang === 'hi') regionalScene = 'bollywood_south_asia';
+  else if (lang === 'ar') regionalScene = 'arabic_mena';
+  else if (lang === 'instrumental') regionalScene = 'classical_europe';
+  else if (lang === 'en') regionalScene = 'us_uk_mainstream';
+
+  // 2. subgenre_style
+  let subgenreStyle = 'contemporary_pop';
+  switch (tier.classId) {
+    case 'piano_neoclassical': subgenreStyle = 'neoclassical_piano'; break;
+    case 'soundtrack_epic': subgenreStyle = 'orchestral_score'; break;
+    case 'indo_timur_hits': subgenreStyle = vec.energy >= 0.68 ? 'eastern_dance_groove' : 'eastern_romantic_pop'; break;
+    case 'indo_pop_ballad': subgenreStyle = vec.energy <= 0.52 ? 'soulful_ballad' : 'modern_indo_pop'; break;
+    case 'indo_band_rock': subgenreStyle = 'melodic_pop_rock'; break;
+    case 'indo_indie_folk': subgenreStyle = 'indie_folk_alt'; break;
+    case 'indo_koplo_dangdut': subgenreStyle = 'dangdut_koplo'; break;
+    case 'indian_south_asian': subgenreStyle = genreLower.includes('punjabi') ? 'punjabi_bhangra' : 'bollywood_filmi'; break;
+    case 'arabic_middle_east': subgenreStyle = 'arabic_pop_nasheed'; break;
+    case 'rnb_late_soul': subgenreStyle = 'alt_rnb_soul'; break;
+    case 'classic_global_legend': subgenreStyle = 'classic_anthem'; break;
+    case 'kpop_idol': subgenreStyle = 'kpop_dance_pop'; break;
+    case 'jpop_city_anime': subgenreStyle = genreLower.includes('city') ? 'city_pop' : 'jpop_anime_rock'; break;
+    case 'alt_indie_rock': subgenreStyle = 'alternative_rock'; break;
+    case 'heavy_metal_hard': subgenreStyle = 'hard_rock_metal'; break;
+    case 'electronic_dance_synth': subgenreStyle = 'synth_electronic_dance'; break;
+    case 'hiphop_rap_trap': subgenreStyle = 'melodic_hiphop_trap'; break;
+    case 'jazz_blues_acoustic': subgenreStyle = 'jazz_acoustic_vocal'; break;
+    case 'latin_global': subgenreStyle = 'reggaeton_latin_pop'; break;
+    default: subgenreStyle = vec.acousticness >= 0.55 ? 'acoustic_pop_ballad' : 'mainstream_chart_pop'; break;
+  }
+
+  // 3. tempo_tier
+  const tempoTier =
+    bpm < 85 ? 'slow_ballad' : bpm <= 102 ? 'downtempo' : bpm <= 118 ? 'midtempo' : bpm <= 134 ? 'upbeat' : 'fast_drive';
+
+  // 4. energy_level
+  const energyLevel =
+    vec.energy < 0.30 ? 'very_low' : vec.energy < 0.50 ? 'low' : vec.energy < 0.70 ? 'medium' : vec.energy < 0.85 ? 'high' : 'explosive';
+
+  // 5. mood_valence
+  let moodValence = 'warm_romantic';
+  if (tier.classId === 'heavy_metal_hard' || (vec.energy >= 0.78 && vec.valence <= 0.45)) moodValence = 'intense_dark';
+  else if (HEARTBREAK_THEME_RE.test(`${titleLower} ${lyricSample}`) || vec.valence < 0.36) moodValence = 'melancholic';
+  else if (vec.valence < 0.48) moodValence = 'bittersweet';
+  else if (PARTY_THEME_RE.test(titleLower) || (vec.valence >= 0.72 && vec.danceability >= 0.76)) moodValence = 'euphoric_party';
+  else if (vec.valence >= 0.62) moodValence = 'uplifting';
+
+  // 6. danceability_tier
+  const danceabilityTier =
+    vec.danceability < 0.35 ? 'ambient' : vec.danceability < 0.58 ? 'sway' : vec.danceability < 0.78 ? 'groove' : 'club_floor';
+
+  // 7. acoustic_profile
+  const acousticProfile =
+    vec.acousticness >= 0.75 ? 'pure_acoustic' : vec.acousticness >= 0.48 ? 'organic_band' : vec.acousticness >= 0.22 ? 'hybrid_studio' : 'electronic_synth';
+
+  // 8. vocal_presence
+  let vocalPresence = 'lead_vocal';
+  if (tier.isInstrumental || vec.instrumentalness >= 0.75) vocalPresence = 'instrumental';
+  else if (/\b(feat\.?|ft\.?|with|&|,| x )\b/i.test(track.artist || '') && !/\b(?:&|\+)\s+the\b/i.test(track.artist || '')) vocalPresence = 'duet_collab';
+  else if (tier.classId === 'hiphop_rap_trap' || genreLower.includes('rap') || genreLower.includes('hip-hop')) vocalPresence = 'rap_cadence';
+  else if (['indo_band_rock', 'alt_indie_rock', 'heavy_metal_hard', 'kpop_idol'].includes(tier.classId)) vocalPresence = 'group_band';
+
+  // 9. vocal_delivery
+  let vocalDelivery = 'melodic_pop';
+  if (vocalPresence === 'instrumental') vocalDelivery = 'non_vocal';
+  else if (vocalPresence === 'rap_cadence') vocalDelivery = 'rhythmic_flow';
+  else if (vec.energy <= 0.48 && vec.acousticness >= 0.55) vocalDelivery = 'soft_intimate';
+  else if (['classic_global_legend', 'heavy_metal_hard', 'alt_indie_rock'].includes(tier.classId)) vocalDelivery = 'choral_anthemic';
+  else if (['judika', 'lyodra', 'mahalini', 'adele', 'whitney houston', 'celine dion', 'rossa', 'cakra khan', 'shreya ghoshal', 'arijit singh'].some((k) => artistLower.includes(k))) vocalDelivery = 'power_belting';
+
+  // 10. instrumentation_core
+  let instrumentationCore = 'hybrid_pop_kit';
+  if (tier.classId === 'piano_neoclassical') instrumentationCore = 'piano_strings';
+  else if (tier.classId === 'soundtrack_epic') instrumentationCore = 'orchestral_brass';
+  else if (tier.classId === 'indo_koplo_dangdut') instrumentationCore = 'kendang_koplo';
+  else if (tier.classId === 'indo_timur_hits') instrumentationCore = 'timur_reggae_beat';
+  else if (tier.classId === 'indo_indie_folk' || tier.classId === 'jazz_blues_acoustic' || vec.acousticness >= 0.62) instrumentationCore = 'acoustic_guitar_piano';
+  else if (['indo_band_rock', 'alt_indie_rock', 'heavy_metal_hard', 'classic_global_legend'].includes(tier.classId)) instrumentationCore = 'electric_band_drums';
+  else if (['electronic_dance_synth', 'hiphop_rap_trap', 'kpop_idol', 'rnb_late_soul'].includes(tier.classId)) instrumentationCore = 'synth_808';
+
+  // 11. era_decade
+  let eraDecade = '2020s_current';
+  if (typeof track.releaseYear === 'number' && track.releaseYear > 1900) {
+    if (track.releaseYear < 2000) eraDecade = 'classic_pre_2000';
+    else if (track.releaseYear < 2010) eraDecade = '2000s_nostalgia';
+    else if (track.releaseYear < 2020) eraDecade = '2010s_modern';
+    else eraDecade = '2020s_current';
+  } else if (inferEraBucket(track) === 'classic') {
+    eraDecade = ['dewa 19', 'sheila on 7', 'padi', 'peterpan', 'ungu', 'nidji', 'ada band', 'samsons', 'letto'].some((k) => artistLower.includes(k))
+      ? '2000s_nostalgia'
+      : 'classic_pre_2000';
+  }
+
+  // 12. popularity_tier (real global statistics when available)
+  const ytViews = Number(track.youtubeViews) || 0;
+  const dzRank = Number(track.popularityRank) || 0;
+  let popularityTier = 'regional_popular';
+  if (ytViews >= 100_000_000 || dzRank >= 750_000 || track.streamSource === 'studio-master') popularityTier = 'global_mega_hit';
+  else if (ytViews >= 10_000_000 || dzRank >= 300_000) popularityTier = 'mainstream_hit';
+  else if (ytViews >= 1_000_000 || dzRank >= 80_000 || isRecognizedCatalogArtist(track)) popularityTier = 'regional_popular';
+  else if (ytViews >= 50_000 || dzRank >= 15_000) popularityTier = 'rising_indie';
+  else popularityTier = 'deep_cut';
+
+  // 13. release_format
+  let releaseFormat = 'studio_single';
+  if (/\b(from\s+"|ost\b|soundtrack|motion picture)\b/i.test(`${titleLower} ${albumLower}`)) releaseFormat = 'soundtrack_ost';
+  else if (/\b(live|unplugged|concert|session)\b/i.test(titleLower)) releaseFormat = 'live_session';
+  else if (/\b(remix|mix|edit|sped up|slowed)\b/i.test(titleLower)) releaseFormat = 'remix_edit';
+  else if (/\b(acoustic|piano version)\b/i.test(titleLower)) releaseFormat = 'acoustic_version';
+  else if (albumLower && albumLower !== 'single' && albumLower !== titleLower) releaseFormat = 'album_track';
+
+  // 14. lyric_theme
+  let lyricTheme = 'self_reflection';
+  if (tier.isInstrumental) lyricTheme = 'instrumental_score';
+  else if (HEARTBREAK_THEME_RE.test(`${titleLower} ${lyricSample}`)) lyricTheme = 'heartbreak_grief';
+  else if (ROMANCE_THEME_RE.test(`${titleLower} ${lyricSample}`)) lyricTheme = 'romance_devotion';
+  else if (PARTY_THEME_RE.test(`${titleLower} ${lyricSample}`)) lyricTheme = 'celebration_party';
+  else if (NOSTALGIA_THEME_RE.test(`${titleLower} ${lyricSample}`)) lyricTheme = 'nostalgia_memory';
+  else if (ANTHEM_THEME_RE.test(`${titleLower} ${lyricSample}`)) lyricTheme = 'anthem_empowerment';
+
+  // 15. listening_context
+  let listeningContext = 'chill_coffee';
+  if (tier.isInstrumental) listeningContext = 'focus_study';
+  else if (vec.energy >= 0.80 && bpm >= 122) listeningContext = 'workout_energy';
+  else if (danceabilityTier === 'club_floor' || moodValence === 'euphoric_party') listeningContext = 'party_hangout';
+  else if (moodValence === 'melancholic' && vec.energy <= 0.55) listeningContext = 'heartbreak_rain';
+  else if (tier.classId === 'rnb_late_soul' || (vec.energy <= 0.54 && bpm <= 106)) listeningContext = 'late_night';
+  else if (['indo_band_rock', 'classic_global_legend', 'alt_indie_rock', 'modern_chart_pop'].includes(tier.classId)) listeningContext = 'roadtrip_drive';
+
+  // 16. rhythm_feel
+  let rhythmFeel = 'straight_4_4';
+  if (tier.isInstrumental) rhythmFeel = 'rubato_free';
+  else if (tier.classId === 'indo_koplo_dangdut') rhythmFeel = 'koplo_percussion';
+  else if (tier.classId === 'indo_timur_hits') rhythmFeel = 'reggae_bounce';
+  else if (tier.classId === 'hiphop_rap_trap') rhythmFeel = 'half_time_trap';
+  else if (['rnb_late_soul', 'latin_global', 'electronic_dance_synth', 'jazz_blues_acoustic'].includes(tier.classId)) rhythmFeel = 'syncopated_groove';
+
+  // 17. production_polish
+  let productionPolish = 'hi_fi_studio';
+  if (releaseFormat === 'live_session') productionPolish = 'concert_live';
+  else if (tier.classId === 'piano_neoclassical' || tier.classId === 'soundtrack_epic') productionPolish = 'orchestral_hall';
+  else if (eraDecade === 'classic_pre_2000' || tier.classId === 'jazz_blues_acoustic') productionPolish = 'analog_warm';
+  else if (tier.classId === 'indo_indie_folk' && vec.energy <= 0.52) productionPolish = 'lo_fi_warm_indie';
+
+  // 18. explicit_rating
+  const explicitRating = track.explicit ? 'explicit' : 'clean';
+
+  // 19. duration_bucket
+  const durationBucket =
+    dur < 160 ? 'short_hook' : dur <= 245 ? 'radio_standard' : dur <= 330 ? 'extended_ballad' : 'epic_long';
+
+  // 20. dialect_script
+  let dialectScript = `latin_${lang}`;
+  if (lang === 'id') {
+    if (regionalScene === 'indo_timur') dialectScript = 'latin_timur';
+    else if (regionalScene === 'indo_jawa_koplo') dialectScript = 'latin_jawa';
+    else if (regionalScene === 'indo_minang_melayu') dialectScript = 'latin_minang';
+    else dialectScript = 'latin_id';
+  } else if (HANGUL_SCRIPT_RE.test(titleRaw) || lang === 'ko') dialectScript = 'hangul_ko';
+  else if (CJK_KANA_SCRIPT_RE.test(titleRaw) || lang === 'ja') dialectScript = 'kana_kanji_ja';
+  else if (INDIC_SCRIPT_RE.test(titleRaw) || lang === 'hi') dialectScript = 'indic_hi';
+  else if (ARABIC_SCRIPT_RE.test(titleRaw) || lang === 'ar') dialectScript = 'arabic_ar';
+
+  // 21. catalog_provenance
+  let catalogProvenance = 'federated_global';
+  if (track.streamSource === 'studio-master' && track.id.startsWith('track-')) catalogProvenance = 'studio_master';
+  else if (track.id.startsWith('dz-') || track.id.startsWith('catalog-dz')) catalogProvenance = 'deezer_global';
+  else if (track.id.startsWith('it-') || track.id.startsWith('rss-') || /^catalog-\d+$/.test(track.id)) catalogProvenance = 'apple_music';
+  else if (track.id.startsWith('audius-') || track.sourceTag === 'Audius') catalogProvenance = 'audius_open';
+  else if (track.id.startsWith('mb-') || track.id.startsWith('catalog-mb-')) catalogProvenance = 'musicbrainz';
+  else if (track.id.startsWith('yt-') || track.id.startsWith('stream-') || track.id.startsWith('catalog-yt-')) catalogProvenance = 'youtube_music';
+
+  const dimensions: Record<MusicFlagDimension, string> = {
+    language_region: lang,
+    regional_scene: regionalScene,
+    sonic_class: tier.classId,
+    primary_genre: family,
+    subgenre_style: subgenreStyle,
+    tempo_tier: tempoTier,
+    energy_level: energyLevel,
+    mood_valence: moodValence,
+    danceability_tier: danceabilityTier,
+    acoustic_profile: acousticProfile,
+    vocal_presence: vocalPresence,
+    vocal_delivery: vocalDelivery,
+    instrumentation_core: instrumentationCore,
+    era_decade: eraDecade,
+    popularity_tier: popularityTier,
+    release_format: releaseFormat,
+    lyric_theme: lyricTheme,
+    listening_context: listeningContext,
+    rhythm_feel: rhythmFeel,
+    production_polish: productionPolish,
+    explicit_rating: explicitRating,
+    duration_bucket: durationBucket,
+    dialect_script: dialectScript,
+    catalog_provenance: catalogProvenance
+  };
+
+  const tags = MUSIC_FLAG_DIMENSIONS.map((dim) => `${dim}:${dimensions[dim]}`);
+  return {
+    dimensions,
+    tags,
+    count: tags.length
+  };
+}
+
+export function enrichTrackWithMusicFlags(track: Track): Track {
+  if (track.musicFlags && track.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length) {
+    return track;
+  }
+  return {
+    ...track,
+    musicFlags: computeTrackMusicFlags(track)
+  };
+}
+
+export function computeMultiFlagSimilarity(
+  seedFlags: TrackMusicFlags,
+  candFlags: TrackMusicFlags
+): MultiFlagSimilarityResult {
+  let weightedOverlap = 0;
+  let totalWeight = 0;
+  const matchedDimensions: MusicFlagDimension[] = [];
+
+  for (const dim of MUSIC_FLAG_DIMENSIONS) {
+    const w = MULTI_FLAG_WEIGHTS[dim];
+    totalWeight += w;
+    if (seedFlags.dimensions[dim] === candFlags.dimensions[dim]) {
+      weightedOverlap += w;
+      matchedDimensions.push(dim);
+    }
+  }
+
+  return {
+    similarity: totalWeight > 0 ? clamp(weightedOverlap / totalWeight, 0, 1) : 0,
+    matchedCount: matchedDimensions.length,
+    totalFlags: MUSIC_FLAG_DIMENSIONS.length,
+    matchedDimensions
+  };
+}
+
 export function scoreCandidateTrack(
   candidate: Track,
   seedTrack: Track,
@@ -1267,7 +1657,24 @@ export function scoreCandidateTrack(
     score -= 10;
   }
 
-  // 2. Spotify 6D Audio Feature Vector Cosine Similarity + Tempo + Era
+  // 2. Multi-Dimensional 24-Flag Music Genome Overlap + 6D Audio Vector Cosine Similarity + Tempo + Era
+  const seedFlags = seedTrack.musicFlags && seedTrack.musicFlags.count >= 24 ? seedTrack.musicFlags : computeTrackMusicFlags(seedTrack);
+  const candFlags = candidate.musicFlags && candidate.musicFlags.count >= 24 ? candidate.musicFlags : computeTrackMusicFlags(candidate);
+  const flagSim = computeMultiFlagSimilarity(seedFlags, candFlags);
+  score += clamp(Math.round((flagSim.similarity - 0.42) * 145), -58, 86);
+  if (seedFlags.dimensions.regional_scene === candFlags.dimensions.regional_scene) {
+    score += 22;
+  }
+  if (seedFlags.dimensions.mood_valence === candFlags.dimensions.mood_valence) {
+    score += 14;
+  }
+  if (seedFlags.dimensions.listening_context === candFlags.dimensions.listening_context) {
+    score += 12;
+  }
+  if (seedFlags.dimensions.rhythm_feel === candFlags.dimensions.rhythm_feel) {
+    score += 10;
+  }
+
   const seedVec = estimateAudioFeatures(seedTrack);
   const candVec = estimateAudioFeatures(candidate);
   const vecSim = computeAudioVectorCosine(seedVec, candVec);
@@ -1367,6 +1774,9 @@ export function scoreCandidateTrack(
 }
 
 function scoreTransitionPair(prevTrack: Track, candidate: Track): number {
+  const prevFlags = prevTrack.musicFlags && prevTrack.musicFlags.count >= 24 ? prevTrack.musicFlags : computeTrackMusicFlags(prevTrack);
+  const candFlags = candidate.musicFlags && candidate.musicFlags.count >= 24 ? candidate.musicFlags : computeTrackMusicFlags(candidate);
+  const flagSim = computeMultiFlagSimilarity(prevFlags, candFlags);
   const prevVec = estimateAudioFeatures(prevTrack);
   const candVec = estimateAudioFeatures(candidate);
   const sim = computeAudioVectorCosine(prevVec, candVec);
@@ -1381,7 +1791,7 @@ function scoreTransitionPair(prevTrack: Track, candidate: Track): number {
       : prevCls.compatibleClasses.includes(candCls.classId)
         ? 10
         : -20;
-  return (sim - 0.72) * 90 + bpmBonus + clsBonus;
+  return (sim - 0.72) * 80 + (flagSim.similarity - 0.45) * 60 + bpmBonus + clsBonus;
 }
 
 export function buildSmartQueueFromPool(

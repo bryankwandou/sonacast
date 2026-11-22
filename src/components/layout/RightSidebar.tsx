@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlaybackContextInfo, RadioStation, Track, TrackCreditsInfo } from '../../types';
 import {
+  ChevronDown,
   ChevronUp,
   Disc3,
   Film,
@@ -23,8 +24,10 @@ import {
 import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 import { fetchTrackCreditsOnline } from '../../services/musicService';
 import {
+  MUSIC_FLAG_DIMENSIONS,
   SONIC_CLASS_PROFILES,
   classifyTrackTier,
+  computeTrackMusicFlags,
   selectCohesiveCandidatePool
 } from '../../services/recommendationEngine';
 import { applyCoverFallback } from '../../utils/coverFallback';
@@ -104,6 +107,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 }) => {
   const { t } = useAppPreferences();
   const [activePanelTab, setActivePanelTab] = useState<'queue' | 'lyrics' | 'related'>('queue');
+  const [showAllFlags, setShowAllFlags] = useState(false);
   const [creditsEntry, setCreditsEntry] = useState<{ key: string; data: TrackCreditsInfo } | null>(null);
   const activeSidebarLyricRef = useRef<HTMLButtonElement | null>(null);
   const currentCreditsKey = `${currentTrack.id}::${currentTrack.title}`;
@@ -141,6 +145,20 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     const tier = classifyTrackTier(currentTrack);
     return SONIC_CLASS_PROFILES[tier.classId];
   }, [currentTrack]);
+
+  const currentMusicFlags = useMemo(() => {
+    if (currentTrack.musicFlags && currentTrack.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length) {
+      return currentTrack.musicFlags;
+    }
+    return computeTrackMusicFlags(currentTrack);
+  }, [currentTrack]);
+
+  const formatFlagToken = (raw: string): string =>
+    raw
+      .split('_')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
 
   const relatedTracks = useMemo(() => {
     return selectCohesiveCandidatePool(currentTrack, queue, 3).slice(0, 6);
@@ -676,17 +694,70 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
         {activePanelTab === 'related' && (
           <div className="space-y-4 py-1" data-testid="sidebar-related-panel">
-            <div className="p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] space-y-1">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
-                <Disc3 size={11} />
-                <span>Sonic Profile</span>
+            <div
+              className="p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] space-y-2.5"
+              data-testid="track-music-flags"
+              data-flag-count={currentMusicFlags.count}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
+                  <Disc3 size={11} />
+                  <span>Sonic Profile</span>
+                </div>
+                <span className="px-2 py-0.5 rounded-full bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-primary)]">
+                  {currentMusicFlags.count} Music Flags
+                </span>
               </div>
-              <div className="text-xs font-extrabold text-[var(--text-primary)]">
-                {currentClassProfile.classLabel}
+              <div className="space-y-0.5">
+                <div className="text-xs font-extrabold text-[var(--text-primary)]">
+                  {currentClassProfile.classLabel}
+                </div>
+                <div className="text-[11px] text-[var(--text-dim)]">
+                  Multi-flag genome matching across {currentMusicFlags.count} acoustic, regional, mood, and tempo attributes
+                </div>
               </div>
-              <div className="text-[11px] text-[var(--text-dim)]">
-                Matched by tempo, genre cluster, and listener neighborhood
+              <div className="flex flex-wrap gap-1.5">
+                {(['language_region', 'regional_scene', 'mood_valence', 'energy_level', 'tempo_tier', 'listening_context'] as const).map(
+                  (dim) => (
+                    <span
+                      key={dim}
+                      className="px-2 py-0.5 rounded-md bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-[10px] font-semibold text-[var(--text-secondary)]"
+                    >
+                      {formatFlagToken(currentMusicFlags.dimensions[dim])}
+                    </span>
+                  )
+                )}
               </div>
+              <button
+                type="button"
+                data-testid="toggle-all-music-flags"
+                onClick={() => setShowAllFlags((prev) => !prev)}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer transition-colors"
+              >
+                <span>{showAllFlags ? `Hide all ${currentMusicFlags.count} flags` : `View all ${currentMusicFlags.count} flags`}</span>
+                {showAllFlags ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+              {showAllFlags && (
+                <div
+                  data-testid="track-music-flags-grid"
+                  className="grid grid-cols-2 gap-1.5 pt-1"
+                >
+                  {MUSIC_FLAG_DIMENSIONS.map((dim) => (
+                    <div
+                      key={dim}
+                      data-flag-dimension={dim}
+                      className="px-2 py-1 rounded-md bg-[var(--bg-tint)] border border-[var(--border-subtle)] min-w-0"
+                    >
+                      <div className="text-[9px] uppercase tracking-wider text-[var(--text-dim)] truncate">
+                        {formatFlagToken(dim)}
+                      </div>
+                      <div className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                        {formatFlagToken(currentMusicFlags.dimensions[dim])}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {currentTrack.sourceTag !== 'live-radio' && (

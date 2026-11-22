@@ -18,12 +18,78 @@ import {
 } from '../data/curatedPlaylists';
 import {
   classifyTrackTier,
+  computeTrackMusicFlags,
+  enrichTrackWithMusicFlags,
+  estimateTrackBpm,
   extractPrimaryArtist,
   inferTrackLanguageRegion,
   isRecognizedCatalogArtist
 } from './recommendationEngine';
 
 export { FEATURED_DAILY_PLAYLISTS };
+
+export interface FederatedCatalogSourceInfo {
+  id: 'apple_music' | 'deezer' | 'youtube_music' | 'musicbrainz' | 'audius';
+  name: string;
+  endpoint: string;
+  catalogScaleLabel: string;
+  estimatedTracksMin: number;
+  accessMode: 'direct_browser_cors' | 'direct_browser_jsonp';
+}
+
+export const FEDERATED_CATALOG_SOURCES: readonly FederatedCatalogSourceInfo[] = [
+  {
+    id: 'deezer',
+    name: 'Deezer Global Catalog',
+    endpoint: 'https://api.deezer.com',
+    catalogScaleLabel: '120,000,000+ tracks',
+    estimatedTracksMin: 120_000_000,
+    accessMode: 'direct_browser_jsonp'
+  },
+  {
+    id: 'apple_music',
+    name: 'Apple Music / iTunes Global Storefronts',
+    endpoint: 'https://itunes.apple.com',
+    catalogScaleLabel: '100,000,000+ tracks',
+    estimatedTracksMin: 100_000_000,
+    accessMode: 'direct_browser_cors'
+  },
+  {
+    id: 'youtube_music',
+    name: 'YouTube Music / Piped Official Catalog',
+    endpoint: 'https://api.piped.private.coffee',
+    catalogScaleLabel: '100,000,000+ official tracks & videos',
+    estimatedTracksMin: 100_000_000,
+    accessMode: 'direct_browser_cors'
+  },
+  {
+    id: 'musicbrainz',
+    name: 'MusicBrainz Open Recording Encyclopedia',
+    endpoint: 'https://musicbrainz.org/ws/2/recording',
+    catalogScaleLabel: '41,000,000+ live-indexed recordings',
+    estimatedTracksMin: 41_000_000,
+    accessMode: 'direct_browser_cors'
+  },
+  {
+    id: 'audius',
+    name: 'Audius Open Independent Catalog',
+    endpoint: 'https://discoveryprovider.audius.co',
+    catalogScaleLabel: '1,000,000+ independent tracks',
+    estimatedTracksMin: 1_000_000,
+    accessMode: 'direct_browser_cors'
+  }
+] as const;
+
+function parseReleaseYear(raw?: string | number | null): number | undefined {
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 1900 && raw <= 2100) {
+    return Math.round(raw);
+  }
+  if (typeof raw === 'string') {
+    const m = raw.match(/\b(19\d{2}|20\d{2})\b/);
+    if (m) return parseInt(m[1], 10);
+  }
+  return undefined;
+}
 
 export function parseLrc(lrcText: string): LyricLine[] {
   const lines = lrcText.split(/\r?\n/);
@@ -739,6 +805,8 @@ interface AudiusTrackItem {
   title?: string;
   duration?: number;
   genre?: string;
+  release_date?: string;
+  play_count?: number;
   user?: { name?: string };
   artwork?: { '480x480'?: string; '1000x1000'?: string; '150x150'?: string };
 }
@@ -768,9 +836,11 @@ async function searchAudiusTracks(query: string): Promise<Track[]> {
           item.artwork?.['1000x1000'] ||
           item.artwork?.['150x150'] ||
           '';
-        return {
+        const title = item.title || 'Untitled Release';
+        const genre = item.genre || 'Electronic';
+        const baseTrack: Track = {
           id: `audius-${item.id}`,
-          title: item.title || 'Untitled Release',
+          title,
           artist: artistName,
           album: 'Audius Open Catalog',
           duration: Number(item.duration) || 210,
@@ -778,10 +848,16 @@ async function searchAudiusTracks(query: string): Promise<Track[]> {
           audioUrl: `https://discoveryprovider.audius.co/v1/tracks/${encodeURIComponent(String(item.id))}/stream?app_name=Sonacast`,
           streamSource: 'studio-master',
           sourceTag: 'Audius',
-          genre: item.genre || 'Electronic',
-          bpm: 118,
+          genre,
+          bpm: estimateTrackBpm({ title, artist: artistName, genre }),
+          releaseYear: parseReleaseYear(item.release_date),
+          youtubeViews: Number(item.play_count) || undefined,
           artistSolanaAddress: '',
           lyrics: []
+        };
+        return {
+          ...baseTrack,
+          musicFlags: computeTrackMusicFlags(baseTrack)
         };
       });
   } catch {
@@ -1289,6 +1365,8 @@ interface ITunesItem {
   artworkUrl100?: string;
   primaryGenreName?: string;
   trackTimeMillis?: number;
+  releaseDate?: string;
+  trackExplicitness?: string;
 }
 
 interface CatalogApiItem {
@@ -1301,6 +1379,8 @@ interface CatalogApiItem {
   coverUrl?: string;
   deezerRank?: number;
   fromArtistTop?: boolean;
+  releaseYear?: number;
+  explicit?: boolean;
 }
 
 interface CatalogSearchResponse {
@@ -1317,6 +1397,8 @@ interface UnifiedCandidate {
   genre: string;
   duration: number;
   coverUrl: string;
+  releaseYear?: number;
+  explicit?: boolean;
   deezerRank: number;
   youtubeViews: number;
   inGlobalChart: boolean;
@@ -1421,6 +1503,8 @@ interface DeezerTrackRaw {
   title_short?: string;
   duration?: number;
   rank?: number;
+  explicit_lyrics?: boolean;
+  release_date?: string;
   artist?: { id?: number | string; name?: string; nb_fan?: number };
   album?: { id?: number | string; title?: string; cover_big?: string; cover_xl?: string; cover_medium?: string };
   md5_image?: string;
@@ -1443,7 +1527,9 @@ function mapDeezerTrackRaw(t: DeezerTrackRaw, fromArtistTop = false, genreHint =
     duration: Number(t.duration) || 210,
     coverUrl: String(coverUrl || ''),
     deezerRank: Number(t.rank) || 0,
-    fromArtistTop
+    fromArtistTop,
+    releaseYear: parseReleaseYear(t.release_date),
+    explicit: Boolean(t.explicit_lyrics)
   };
 }
 
@@ -1660,6 +1746,10 @@ function buildTrackFromUnified(
     genre: string;
     duration: number;
     coverUrl: string;
+    releaseYear?: number;
+    explicit?: boolean;
+    deezerRank?: number;
+    youtubeViews?: number;
   },
   streamCandidates: StreamCandidate[],
   usedStreamIds: Set<string>
@@ -1668,46 +1758,66 @@ function buildTrackFromUnified(
   const expectedSecs = item.duration >= 60 ? item.duration : 210;
   const masterMatch = findMasterAudio(canonicalTitle, item.artist);
   const coverUrl = item.coverUrl || DEFAULT_FALLBACK_COVER;
+  const genre = item.genre || 'Pop';
+  const album = item.album || canonicalTitle || 'Single';
+  const artist = item.artist || 'Unknown Artist';
+  const estimatedBpm = estimateTrackBpm({ title: canonicalTitle, artist, album, genre });
 
   if (masterMatch) {
-    return {
+    const masterTrack: Track = {
       id: `master-${item.id}`,
       title: canonicalTitle,
-      artist: item.artist,
-      album: item.album || canonicalTitle || 'Single',
+      artist,
+      album,
       duration: masterMatch.duration,
       coverUrl,
       audioUrl: masterMatch.audioUrl,
       streamSource: 'studio-master',
-      genre: item.genre || 'Pop',
-      bpm: 120,
+      genre,
+      bpm: estimatedBpm,
+      releaseYear: item.releaseYear,
+      explicit: item.explicit,
+      popularityRank: item.deezerRank || undefined,
+      youtubeViews: item.youtubeViews || undefined,
       artistSolanaAddress: '',
       lyrics: []
+    };
+    return {
+      ...masterTrack,
+      musicFlags: computeTrackMusicFlags(masterTrack)
     };
   }
 
   const scoredStreams = streamCandidates
-    .map((c) => ({ c, score: scoreCandidate(c, canonicalTitle, item.artist, expectedSecs) }))
+    .map((c) => ({ c, score: scoreCandidate(c, canonicalTitle, artist, expectedSecs) }))
     .filter((x) => x.score >= 60)
     .sort((a, b) => b.score - a.score);
 
   const candidateIds = scoredStreams.slice(0, 6).map((x) => x.c.videoId);
   if (candidateIds[0]) usedStreamIds.add(candidateIds[0]);
 
-  return {
+  const officialTrack: Track = {
     id: `catalog-${item.id}`,
     title: canonicalTitle,
-    artist: item.artist || 'Unknown Artist',
-    album: item.album || canonicalTitle || 'Single',
+    artist,
+    album,
     duration: expectedSecs,
     coverUrl,
     youtubeId: candidateIds[0],
     candidateVideoIds: candidateIds.length > 0 ? candidateIds : undefined,
     streamSource: 'official-stream',
-    genre: item.genre || 'Pop',
-    bpm: 120,
+    genre,
+    bpm: estimatedBpm,
+    releaseYear: item.releaseYear,
+    explicit: item.explicit,
+    popularityRank: item.deezerRank || undefined,
+    youtubeViews: item.youtubeViews || undefined,
     artistSolanaAddress: '',
     lyrics: []
+  };
+  return {
+    ...officialTrack,
+    musicFlags: computeTrackMusicFlags(officialTrack)
   };
 }
 
@@ -2088,6 +2198,8 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
         genre: string;
         duration: number;
         coverUrl: string;
+        releaseYear?: number;
+        explicit?: boolean;
       },
       sourceMeta: {
         deezerRank?: number;
@@ -2131,6 +2243,8 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           genre: entry.genre || 'Pop',
           duration: entryDur,
           coverUrl: entry.coverUrl || DEFAULT_FALLBACK_COVER,
+          releaseYear: entry.releaseYear,
+          explicit: entry.explicit,
           deezerRank: sourceMeta.deezerRank || 0,
           youtubeViews: sourceMeta.youtubeViews || 0,
           inGlobalChart: cachedChartKeys.has(canonKey),
@@ -2150,6 +2264,12 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       }
       if (sourceMeta.youtubeViews && sourceMeta.youtubeViews > 0) {
         existing.youtubeViews = Math.max(existing.youtubeViews, sourceMeta.youtubeViews);
+      }
+      if (!existing.releaseYear && entry.releaseYear) {
+        existing.releaseYear = entry.releaseYear;
+      }
+      if (entry.explicit) {
+        existing.explicit = true;
       }
       if (cachedChartKeys.has(canonKey)) {
         existing.inGlobalChart = true;
@@ -2204,7 +2324,9 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           album: dz.album || 'Single',
           genre: dz.genre || 'Pop',
           duration: dz.duration || 210,
-          coverUrl: dz.coverUrl || ''
+          coverUrl: dz.coverUrl || '',
+          releaseYear: dz.releaseYear,
+          explicit: dz.explicit
         },
         {
           deezerRank: dz.deezerRank || 0,
@@ -2225,7 +2347,9 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           album: item.collectionName || 'Single',
           genre: item.primaryGenreName || 'Pop',
           duration: secs,
-          coverUrl: cover
+          coverUrl: cover,
+          releaseYear: parseReleaseYear(item.releaseDate),
+          explicit: item.trackExplicitness === 'explicit'
         },
         { itunesPopIdx: idx }
       );
@@ -2242,7 +2366,9 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           album: item.collectionName || 'Single',
           genre: item.primaryGenreName || 'Pop',
           duration: secs,
-          coverUrl: cover
+          coverUrl: cover,
+          releaseYear: parseReleaseYear(item.releaseDate),
+          explicit: item.trackExplicitness === 'explicit'
         },
         { itunesSearchIdx: idx }
       );
@@ -2259,7 +2385,9 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           album: item.collectionName || 'Single',
           genre: item.primaryGenreName || 'Pop',
           duration: secs,
-          coverUrl: cover
+          coverUrl: cover,
+          releaseYear: parseReleaseYear(item.releaseDate),
+          explicit: item.trackExplicitness === 'explicit'
         },
         { itunesSearchIdx: idx + 15 }
       );
@@ -2409,8 +2537,9 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
               id?: string;
               title?: string;
               length?: number;
+              'first-release-date'?: string;
               'artist-credit'?: Array<{ name?: string; artist?: { name?: string } }>;
-              releases?: Array<{ title?: string }>;
+              releases?: Array<{ title?: string; date?: string }>;
             }>;
           };
           for (const rec of mbJson.recordings || []) {
@@ -2432,7 +2561,8 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
                 album: albumTitle,
                 genre: 'Recording',
                 duration: secs,
-                coverUrl: ''
+                coverUrl: '',
+                releaseYear: parseReleaseYear(rec['first-release-date'] || rec.releases?.[0]?.date)
               },
               { itunesSearchIdx: 24 }
             );
@@ -2496,7 +2626,11 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
         const haystack = `${baseAudiusTitle} ${normalizeText(cleanArtist)}`;
         if (queryTokens.length > 0 && !queryTokens.some((tok) => haystack.includes(tok))) continue;
         coveredTitles.add(baseAudiusTitle);
-        tracks.push({ ...aTrack, title: cleanTitle, artist: cleanArtist });
+        const updatedAudius: Track = { ...aTrack, title: cleanTitle, artist: cleanArtist };
+        tracks.push({
+          ...updatedAudius,
+          musicFlags: computeTrackMusicFlags(updatedAudius)
+        });
         if (tracks.length >= 20) break;
       }
     }
@@ -2514,10 +2648,11 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
         if (queryTokens.length > 0 && !queryTokens.some((tok) => haystack.includes(tok))) continue;
         coveredTitles.add(baseCandTitle);
         const masterMatch = findMasterAudio(cleanTitle, cleanArtist);
-        tracks.push({
+        const fallbackArtist = cleanArtist || trimmed;
+        const streamTrack: Track = {
           id: `stream-${c.videoId}`,
           title: cleanTitle,
-          artist: cleanArtist || trimmed,
+          artist: fallbackArtist,
           album: 'Official Release',
           duration: masterMatch ? masterMatch.duration : c.duration,
           coverUrl: safeYtThumbnail(c.thumbnail, c.videoId),
@@ -2526,9 +2661,14 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           candidateVideoIds: masterMatch ? undefined : [c.videoId],
           streamSource: masterMatch ? 'studio-master' : 'official-stream',
           genre: 'Original Release',
-          bpm: 120,
+          bpm: estimateTrackBpm({ title: cleanTitle, artist: fallbackArtist, genre: 'Original Release' }),
+          youtubeViews: c.views || undefined,
           artistSolanaAddress: '',
           lyrics: []
+        };
+        tracks.push({
+          ...streamTrack,
+          musicFlags: computeTrackMusicFlags(streamTrack)
         });
         if (tracks.length >= 16) break;
       }
@@ -2615,7 +2755,10 @@ function catalogItemsToTracks(items: CatalogApiItem[]): Track[] {
         album: item.album || 'Single',
         genre: item.genre || 'Pop',
         duration: item.duration || 210,
-        coverUrl: item.coverUrl || DEFAULT_FALLBACK_COVER
+        coverUrl: item.coverUrl || DEFAULT_FALLBACK_COVER,
+        releaseYear: item.releaseYear,
+        explicit: item.explicit,
+        deezerRank: item.deezerRank
       },
       [],
       emptyIds
@@ -3238,7 +3381,10 @@ export async function fetchAlbumTracksOnline(
           album: item.album || resolvedAlbum.title,
           genre: item.genre || resolvedAlbum.genre || 'Album',
           duration: item.duration || 210,
-          coverUrl: item.coverUrl || resolvedAlbum.coverUrl || DEFAULT_FALLBACK_COVER
+          coverUrl: item.coverUrl || resolvedAlbum.coverUrl || DEFAULT_FALLBACK_COVER,
+          releaseYear: item.releaseYear ?? parseReleaseYear(resolvedAlbum.releaseDate),
+          explicit: item.explicit,
+          deezerRank: item.deezerRank
         },
         [],
         emptyIds
@@ -3475,7 +3621,7 @@ export async function fetchPlaylistTracksOnline(
 
   const curatedDef = findCuratedPlaylistDefinition(playlist.id);
   if (curatedDef) {
-    const seedTracks = getCuratedSeedTracksByIds(curatedDef.trackIds);
+    const seedTracks = getCuratedSeedTracksByIds(curatedDef.trackIds).map(enrichTrackWithMusicFlags);
     const anchor = seedTracks[0];
     const anchorClass = anchor ? classifyTrackTier(anchor) : null;
     const anchorLang = anchor ? inferTrackLanguageRegion(anchor) : 'en';
@@ -5280,7 +5426,7 @@ export async function searchTracksByLyricsOnline(lyricQuery: string): Promise<Ly
 
       const lyricMatch = findMatchingLyricExcerpt(lyricRes.lyrics, normSnippet, tokens);
       const trackObj: Track = c.track
-        ? c.track
+        ? enrichTrackWithMusicFlags(c.track)
         : buildTrackFromUnified(
           {
             id: `lyr-${idx}-${normalizeText(finalTitle).slice(0, 18)}-${normalizeText(finalArtist).slice(0, 14)}`,
@@ -5289,13 +5435,16 @@ export async function searchTracksByLyricsOnline(lyricQuery: string): Promise<Ly
             album: finalAlbum,
             genre: firstHit?.primaryGenreName || c.genre,
             duration: finalDur,
-            coverUrl: finalCover
+            coverUrl: finalCover,
+            releaseYear: parseReleaseYear(firstHit?.releaseDate),
+            explicit: firstHit?.trackExplicitness === 'explicit'
           },
           [],
           emptyIds
         );
       if (!c.track && lyricRes.lyrics.length > 0) {
         trackObj.lyrics = lyricRes.lyrics;
+        trackObj.musicFlags = computeTrackMusicFlags(trackObj);
       }
 
       const bestLyricScore = Math.max(lyricMatch.score, c.preScore || 0);

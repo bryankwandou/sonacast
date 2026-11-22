@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sonacast-shell-v22';
+const CACHE_NAME = 'sonacast-shell-v23';
 const OFFLINE_AUDIO_CACHE = 'sonacast-offline-audio-v1';
 const offlineAudioPaths = new Set();
 let offlinePathsReady = false;
