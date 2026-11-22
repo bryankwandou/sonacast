@@ -1,8 +1,33 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Track } from '../../types';
-import { Disc3, FolderPlus, Heart, ListPlus, ListStart, Loader2, Pause, Play, Radio } from 'lucide-react';
+import { Disc3, FolderPlus, Heart, ListPlus, ListStart, Loader2, Pause, Play, Radio, Tags, X } from 'lucide-react';
 import { applyCoverFallback } from '../../utils/coverFallback';
 import { PlayingBars } from './PlayingBars';
+import { computeTrackMusicFlags, MUSIC_FLAG_DIMENSIONS } from '../../services/recommendationEngine';
+
+const SCENE_DISPLAY_LABELS: Record<string, string> = {
+  indo_timur: 'Indo Timur',
+  indo_jawa_koplo: 'Indo Jawa',
+  indo_minang_melayu: 'Indo Minang',
+  indo_indie_senja: 'Indo Indie',
+  indo_band_classic: 'Indo Band',
+  indo_jakarta_pop: 'Indo Pop',
+  kpop_seoul: 'K-Pop',
+  jpop_tokyo: 'J-Pop',
+  latin_urbano: 'Latin',
+  bollywood_south_asia: 'Bollywood',
+  arabic_mena: 'Arabic',
+  classical_europe: 'Classical'
+};
+
+function formatFlagLabel(raw: string): string {
+  return raw
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
 
 interface TrackCardProps {
   track: Track;
@@ -36,6 +61,27 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   onOpenArtist
 }) => {
   const isActivelyPlaying = isSelected && isPlaying && !isResolving;
+  const [showFlagsModal, setShowFlagsModal] = useState(false);
+
+  const musicFlags = useMemo(() => {
+    if (track.musicFlags && track.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length) {
+      return track.musicFlags;
+    }
+    return computeTrackMusicFlags(track);
+  }, [track]);
+
+  const primaryBadgeLabel =
+    SCENE_DISPLAY_LABELS[musicFlags.dimensions.regional_scene] || track.genre || 'Music';
+
+  useEffect(() => {
+    if (!showFlagsModal) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setShowFlagsModal(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showFlagsModal]);
+
   const formatDuration = (secs: number) => {
     const mins = Math.floor(secs / 60);
     const rem = Math.floor(secs % 60);
@@ -46,6 +92,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
     <div
       role="button"
       tabIndex={0}
+      data-flag-count={musicFlags.count}
       onClick={() => onSelect(track)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -226,11 +273,100 @@ export const TrackCard: React.FC<TrackCardProps> = ({
         ) : (
           <div className="text-xs text-[var(--text-secondary)] truncate">{track.artist}</div>
         )}
-        <div className="flex items-center justify-between text-[11px] font-mono text-[var(--text-dim)] pt-0.5">
-          <span className="truncate max-w-[110px]">{track.genre}</span>
-          <span>{formatDuration(track.duration)}</span>
+        <div className="flex items-center justify-between gap-1 text-[11px] font-mono text-[var(--text-dim)] pt-0.5">
+          <div className="flex items-center gap-1 min-w-0">
+            <span className="truncate max-w-[76px]" title={primaryBadgeLabel}>
+              {primaryBadgeLabel}
+            </span>
+            <button
+              type="button"
+              data-testid="track-card-flags-btn"
+              data-flag-count={musicFlags.count}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowFlagsModal(true);
+              }}
+              aria-label={`Inspect ${musicFlags.count} music flags for ${track.title}`}
+              title={`${musicFlags.count} music flags: ${formatFlagLabel(musicFlags.dimensions.regional_scene)} · ${formatFlagLabel(musicFlags.dimensions.co_listen_cluster)} · ${formatFlagLabel(musicFlags.dimensions.rhythm_feel)}`}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] text-[9px] font-semibold text-[var(--accent-text)] shrink-0 cursor-pointer transition-colors"
+            >
+              <Tags size={9} />
+              <span>{musicFlags.count}f</span>
+            </button>
+          </div>
+          <span className="shrink-0">{formatDuration(track.duration)}</span>
         </div>
       </div>
+
+      {showFlagsModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${musicFlags.count} Music Flags for ${track.title}`}
+            data-testid="track-card-flags-popover"
+            data-flag-count={musicFlags.count}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowFlagsModal(false);
+            }}
+            className="fixed inset-0 z-[120] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg max-h-[82vh] overflow-y-auto rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-medium)] shadow-2xl p-4 sm:p-5 space-y-3.5"
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src={track.coverUrl}
+                    alt={track.title}
+                    onError={(e) => applyCoverFallback(e, track.title, track.artist)}
+                    className="w-11 h-11 rounded-lg object-cover shrink-0 bg-[var(--bg-elevated)]"
+                  />
+                  <div className="min-w-0">
+                    <div className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
+                      <Tags size={11} />
+                      <span>{musicFlags.count} Orthogonal Music Flags</span>
+                    </div>
+                    <h4 className="text-sm font-extrabold text-[var(--text-primary)] truncate">
+                      {track.title}
+                    </h4>
+                    <p className="text-xs text-[var(--text-secondary)] truncate">{track.artist}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-testid="track-card-flags-close"
+                  aria-label="Close music flags"
+                  onClick={() => setShowFlagsModal(false)}
+                  className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] flex items-center justify-center shrink-0 cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {MUSIC_FLAG_DIMENSIONS.map((dim) => (
+                  <div
+                    key={dim}
+                    data-flag-dimension={dim}
+                    className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] min-w-0"
+                  >
+                    <div className="text-[9px] uppercase tracking-wider text-[var(--text-dim)] truncate">
+                      {formatFlagLabel(dim)}
+                    </div>
+                    <div className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                      {formatFlagLabel(musicFlags.dimensions[dim])}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

@@ -409,7 +409,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/81/e2/51/81e25101-b6c1-ec65-843b-06469cf2e01e/321336.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 118,
+    bpm: 120,
+    releaseYear: 2025,
+    popularityRank: 920000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -422,7 +424,24 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/32/3a/d0/323ad023-9977-abb0-de2c-4c65946390b3/3552617.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 116,
+    bpm: 118,
+    releaseYear: 2025,
+    popularityRank: 880000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1802555280',
+    title: 'PICA PICA',
+    artist: 'Juan Reza',
+    album: 'PICA PICA - Single',
+    duration: 204,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/b3/35/8b/b3358bb3-a49b-6181-a08a-71602bedb7a0/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 122,
+    releaseYear: 2024,
+    popularityRank: 910000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -436,6 +455,8 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
       'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/eb/66/3c/eb663ccf-3d26-1baa-7006-9e92e48c5652/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
     bpm: 122,
+    releaseYear: 2025,
+    popularityRank: 870000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -449,6 +470,8 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
       'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/f4/85/e2/f485e212-6415-25d3-709c-645129dabe67/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
     bpm: 118,
+    releaseYear: 2025,
+    popularityRank: 900000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -461,7 +484,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/01/20/ab/0120ab7d-ba2e-901c-ba9f-cd0a2cdac646/6829.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 116,
+    bpm: 118,
+    releaseYear: 2025,
+    popularityRank: 865000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -475,6 +500,8 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/c1/70/44/c170441a-cf97-a088-8b4a-d41762fb58c2/2230224.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
     bpm: 120,
+    releaseYear: 2025,
+    popularityRank: 855000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -488,6 +515,8 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/0b/98/4e/0b984e8b-5886-fd43-d576-9dc297a9dccb/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
     bpm: 120,
+    releaseYear: 2025,
+    popularityRank: 830000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -501,6 +530,8 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
       'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/20/07/6e/20076e97-d7a4-c6f5-7850-5f0a2112ba23/70062.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
     bpm: 118,
+    releaseYear: 2025,
+    popularityRank: 840000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -514,6 +545,8 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/51/1e/cf/511ecf61-ec9c-d235-e215-48756b576eaa/115660.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
     bpm: 120,
+    releaseYear: 2025,
+    popularityRank: 845000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -527,6 +560,8 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
       'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/2d/aa/c6/2daac6b4-f23e-5367-0df2-b422887273d1/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
     bpm: 122,
+    releaseYear: 2025,
+    popularityRank: 835000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -539,7 +574,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/49/13/7e/49137e2e-38f2-213a-11e6-00d5c194c05d/195140103213.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 118,
+    bpm: 120,
+    releaseYear: 2024,
+    popularityRank: 905000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -552,7 +589,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/df/b4/d0/dfb4d028-dacf-7774-8989-ff01a4e415fe/12292.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 124,
+    bpm: 122,
+    releaseYear: 2018,
+    popularityRank: 915000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -566,6 +605,23 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
       'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/13/3f/8c/133f8c79-bab0-05f6-f3bb-bd3e93b9c9cc/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
     bpm: 114,
+    releaseYear: 2021,
+    popularityRank: 885000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1894804053',
+    title: 'BALE PULANG II (feat. Eno Smaper)',
+    artist: 'Gihon Marel',
+    album: 'BALE PULANG II (feat. Eno Smaper) - Single',
+    duration: 202,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/fc/21/05/fc210510-0fe1-de1f-7b05-f4d9fd9c192e/810009371953_Cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 112,
+    releaseYear: 2021,
+    popularityRank: 840000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -578,7 +634,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/c6/f1/22/c6f122ef-5a4e-31a9-5bac-a647d2a1125b/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 115,
+    bpm: 118,
+    releaseYear: 2021,
+    popularityRank: 875000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -592,6 +650,8 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
       'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/d4/1c/d9/d41cd961-fa97-d421-efd7-33664b73ff45/1257718.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
     bpm: 116,
+    releaseYear: 2025,
+    popularityRank: 825000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -604,7 +664,114 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/e1/66/26/e16626a2-e665-1362-2d4c-e095ff551765/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
+    bpm: 118,
+    releaseYear: 2020,
+    popularityRank: 860000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1512236056',
+    title: 'Cuma Saya',
+    artist: 'M.A.C',
+    album: 'Cuma Saya - Single',
+    duration: 287,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music123/v4/df/82/42/df824204-b99e-fca1-32d6-494fb927fe4a/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
     bpm: 116,
+    releaseYear: 2020,
+    popularityRank: 835000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1777953714',
+    title: 'Jaga Orang Pu Jodoh (feat. Chelz)',
+    artist: 'Near',
+    album: 'Jaga Orang Pu Jodoh (feat. Chelz) - Single',
+    duration: 156,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/3b/54/fb/3b54fb2e-6412-8851-6862-16957eada9cf/8990009073407.png/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 116,
+    releaseYear: 2024,
+    popularityRank: 815000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1821439669',
+    title: 'NONA AMBON',
+    artist: 'Doddie Latuharhary',
+    album: 'NONA AMBON - Single',
+    duration: 229,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/05/9b/b8/059bb825-5814-d61e-beb1-87782e362f24/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 116,
+    releaseYear: 2025,
+    popularityRank: 790000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-6765693184',
+    title: 'Sa Stop Mabok',
+    artist: 'Lampu1Comedy & NEW Gvme',
+    album: 'Sa Stop Mabok - Single',
+    duration: 344,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/43/3d/e1/433de15c-34b6-f52a-e77f-2aa9dd1a80de/859746981230_cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 118,
+    releaseYear: 2021,
+    popularityRank: 805000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1694335777',
+    title: 'Tamang Pung Kisah',
+    artist: 'Fresly Nikijuluw',
+    album: 'Tamang Pung Kisah - Single',
+    duration: 240,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/d7/be/f7/d7bef7b6-46fa-64e5-4ee5-15b2795fc8af/859775275072_cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 96,
+    releaseYear: 2021,
+    popularityRank: 890000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1870009520',
+    title: 'Rindu Rumah',
+    artist: 'Wizz Baker',
+    album: 'First Album',
+    duration: 271,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/3f/43/03/3f4303a2-e2e0-26c4-963e-b30bbe36e4da/3119258.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 94,
+    releaseYear: 2020,
+    popularityRank: 880000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1799650044',
+    title: 'Rumah Par Ale',
+    artist: 'Justy Aldrin',
+    album: 'Rumah Par Ale - Single',
+    duration: 311,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/38/42/73/3842737d-540f-1055-211c-c01d4e2e484a/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 96,
+    releaseYear: 2022,
+    popularityRank: 855000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -617,7 +784,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/0b/d0/d6/0bd0d674-367c-8330-47f4-efb14e25b0b2/2199565.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 108,
+    bpm: 98,
+    releaseYear: 2024,
+    popularityRank: 840000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -630,7 +799,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b2/b7/ba/b2b7bae5-ef90-22fc-3211-1d47f7f93fc6/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 104,
+    bpm: 98,
+    releaseYear: 2025,
+    popularityRank: 845000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -643,7 +814,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/6e/ea/48/6eea4800-fb09-3482-4f3b-31bb57fc069a/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 102,
+    bpm: 98,
+    releaseYear: 2025,
+    popularityRank: 835000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -656,7 +829,54 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music128/v4/c1/8e/5e/c18e5ee6-874d-d151-c3f6-6c32b8fdceaf/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
+    bpm: 94,
+    releaseYear: 2018,
+    popularityRank: 870000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1440149710',
+    title: 'Orang Ketiga',
+    artist: 'Vicky Salamor',
+    album: 'Orang Ketiga - Single',
+    duration: 258,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music118/v4/23/f0/8e/23f08e56-aa52-000d-0c0a-16463ad4c776/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 94,
+    releaseYear: 2018,
+    popularityRank: 830000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1721482927',
+    title: 'Cinta Seng Pakai Spasi',
+    artist: 'Vicky Salamor',
+    album: 'Cinta Seng Pakai Spasi - Single',
+    duration: 226,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/93/b0/45/93b045da-f718-f2fa-318f-c84de46437fc/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
     bpm: 96,
+    releaseYear: 2021,
+    popularityRank: 820000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1435493283',
+    title: 'Tuhan Beta Mau Dia',
+    artist: 'Vicky Salamor',
+    album: 'Tuhan Beta Mau Dia - Single',
+    duration: 246,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music128/v4/01/67/76/0167762c-0d7c-3fcc-116a-daead6422731/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 94,
+    releaseYear: 2018,
+    popularityRank: 815000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -669,7 +889,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/77/62/78/77627826-d63b-8578-8685-bac661357a15/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 98,
+    bpm: 96,
+    releaseYear: 2015,
+    popularityRank: 850000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -682,7 +904,69 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/cd/3e/29/cd3e2905-8fde-3dba-47a1-b994f483cd69/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
+    bpm: 92,
+    releaseYear: 2015,
+    popularityRank: 845000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1465753494',
+    title: 'Sayang',
+    artist: 'Mitha Talahatu',
+    album: 'Sayang - Single',
+    duration: 310,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music123/v4/10/bb/92/10bb92c0-4705-3357-9de2-569d4129f014/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 92,
+    releaseYear: 2013,
+    popularityRank: 850000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1709643264',
+    title: 'BETA SALAH APA',
+    artist: 'Mitha Talahatu',
+    album: 'BETA SALAH APA - Single',
+    duration: 306,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/c5/e2/ab/c5e2ab59-3cf7-16a4-e12e-e8ec1d2265b2/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 92,
+    releaseYear: 2023,
+    popularityRank: 820000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1386942628',
+    title: 'Paleng Bae',
+    artist: 'Marvey Kaya',
+    album: 'Paleng Bae - Single',
+    duration: 336,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/3e/b8/70/3eb870d6-50c0-dfa8-4767-2fa1c4cb6aa2/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
     bpm: 94,
+    releaseYear: 2018,
+    popularityRank: 825000,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1492968082',
+    title: 'Orang Katiga',
+    artist: 'Ona Hetharua',
+    album: 'Orang Katiga - Single',
+    duration: 360,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music113/v4/f0/3e/2e/f03e2e98-a4a4-5eb1-2bc8-2bababaaa5d4/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 90,
+    releaseYear: 2010,
+    popularityRank: 810000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -695,7 +979,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/31/e9/5c/31e95ce9-691c-c643-21a5-6e2f1bde7a13/15607.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 96,
+    bpm: 94,
+    releaseYear: 2022,
+    popularityRank: 865000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -709,6 +995,8 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
       'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ba/fe/46/bafe461b-dba0-76de-173c-05783c521f31/196922708404_Cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
     bpm: 94,
+    releaseYear: 2023,
+    popularityRank: 830000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -721,7 +1009,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/f0/37/37/f0373728-8cad-493b-313a-6eeec7181908/cover.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 98,
+    bpm: 96,
+    releaseYear: 2022,
+    popularityRank: 825000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -734,7 +1024,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/ec/db/0c/ecdb0cea-197c-4ab2-7172-281700260d4e/2c2874a8-8405-432c-9ce9-d8090a1b3ea4.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 100,
+    bpm: 96,
+    releaseYear: 2024,
+    popularityRank: 815000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   },
@@ -747,7 +1039,9 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     coverUrl:
       'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/d6/9e/a3/d69ea311-9c75-0109-1938-1a6f00ba0cc4/5019.jpg/600x600bb.jpg',
     genre: 'Indo Timur',
-    bpm: 100,
+    bpm: 98,
+    releaseYear: 2024,
+    popularityRank: 860000,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
   }
@@ -773,7 +1067,7 @@ export const CURATED_EDITORIAL_ALBUM_DEFS: CuratedAlbumDefinition[] = [
       artist: 'Silet Open Up, Juan Reza, Dandy Barakati & Toton Caribo',
       coverUrl:
         'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/81/e2/51/81e25101-b6c1-ec65-843b-06469cf2e01e/321336.jpg/600x600bb.jpg',
-      nbTracks: 22,
+      nbTracks: 30,
       releaseDate: '2026-01-01',
       genre: 'Indo Timur',
       recordType: 'album'
@@ -781,6 +1075,7 @@ export const CURATED_EDITORIAL_ALBUM_DEFS: CuratedAlbumDefinition[] = [
     trackIds: [
       'it-6767536022',
       'it-6782567065',
+      'it-1802555280',
       'it-1812446449',
       'it-1825337331',
       'it-1861739746',
@@ -792,14 +1087,21 @@ export const CURATED_EDITORIAL_ALBUM_DEFS: CuratedAlbumDefinition[] = [
       'it-1784652744',
       'it-1873685781',
       'it-1799649918',
+      'it-1894804053',
       'it-1750950242',
       'it-1889343825',
       'it-1539264147',
+      'it-1512236056',
+      'it-1777953714',
+      'it-1821439669',
+      'it-6765693184',
+      'it-1694335777',
+      'it-1870009520',
+      'it-1799650044',
       'it-6767788874',
       'it-1853540212',
       'it-6820892437',
       'it-1435493647',
-      'dz-3709294562',
       'it-6767536166'
     ],
     seedArtists: ['Silet Open Up', 'Juan Reza', 'Toton Caribo', 'Dandy Barakati', 'Justy Aldrin']
@@ -811,26 +1113,34 @@ export const CURATED_EDITORIAL_ALBUM_DEFS: CuratedAlbumDefinition[] = [
       artist: 'Fresly Nikijuluw, Wizz Baker, Vicky Salamor & Mitha Talahatu',
       coverUrl:
         'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/d4/1c/d9/d41cd961-fa97-d421-efd7-33664b73ff45/1257718.jpg/600x600bb.jpg',
-      nbTracks: 14,
+      nbTracks: 22,
       releaseDate: '2026-01-01',
       genre: 'Indo Timur',
       recordType: 'album'
     },
     trackIds: [
-      'it-1889343825',
+      'it-1694335777',
+      'it-1870009520',
+      'it-1799650044',
       'it-1853540212',
       'it-6820892437',
       'it-6767788874',
       'it-1435493647',
+      'it-1440149710',
+      'it-1721482927',
+      'it-1435493283',
       'it-1574433730',
       'it-990980322',
+      'it-1465753494',
+      'it-1709643264',
+      'it-1386942628',
+      'it-1492968082',
       'it-1861826558',
       'it-1714993976',
       'it-1635552718',
       'it-1826495280',
       'it-1799649918',
-      'dz-3709294562',
-      'it-6767536166'
+      'it-1889343825'
     ],
     seedArtists: ['Fresly Nikijuluw', 'Wizz Baker', 'Vicky Salamor', 'Mitha Talahatu', 'Doddie Latuharhary']
   }
@@ -844,12 +1154,13 @@ export const CURATED_DAILY_PLAYLIST_DEFS: CuratedPlaylistDefinition[] = [
       creator: 'Sonacast Editorial',
       coverUrl:
         'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/81/e2/51/81e25101-b6c1-ec65-843b-06469cf2e01e/321336.jpg/600x600bb.jpg',
-      nbTracks: 22,
-      description: 'Tabola Bale, Mode Pesawat, Pica Pica, Stecu Stecu, Ngapain Repot & Bale Pulang'
+      nbTracks: 30,
+      description: 'Tabola Bale, Mode Pesawat, Pica Pica, Stecu Stecu, Ngapain Repot, Tamang Pung Kisah & Bale Pulang'
     },
     trackIds: [
       'it-6767536022',
       'it-6782567065',
+      'it-1802555280',
       'it-1812446449',
       'it-1825337331',
       'it-1861739746',
@@ -861,14 +1172,21 @@ export const CURATED_DAILY_PLAYLIST_DEFS: CuratedPlaylistDefinition[] = [
       'it-1784652744',
       'it-1873685781',
       'it-1799649918',
+      'it-1894804053',
       'it-1750950242',
       'it-1889343825',
       'it-1539264147',
+      'it-1512236056',
+      'it-1777953714',
+      'it-1821439669',
+      'it-6765693184',
+      'it-1694335777',
+      'it-1870009520',
+      'it-1799650044',
       'it-6767788874',
       'it-1853540212',
       'it-6820892437',
       'it-1435493647',
-      'dz-3709294562',
       'it-6767536166'
     ],
     seedArtists: ['Silet Open Up', 'Juan Reza', 'Toton Caribo', 'Dandy Barakati', 'Justy Aldrin', 'Faris Adam']
@@ -880,24 +1198,32 @@ export const CURATED_DAILY_PLAYLIST_DEFS: CuratedPlaylistDefinition[] = [
       creator: 'Sonacast Editorial',
       coverUrl:
         'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/d4/1c/d9/d41cd961-fa97-d421-efd7-33664b73ff45/1257718.jpg/600x600bb.jpg',
-      nbTracks: 14,
-      description: 'Fresly Nikijuluw, Wizz Baker, Vicky Salamor, Doddie Latuharhary & Glen Sebastian'
+      nbTracks: 22,
+      description: 'Tamang Pung Kisah, Rindu Rumah, Cinta Beda Agama, Rumah Par Ale & Cinta Sakota'
     },
     trackIds: [
-      'it-1889343825',
+      'it-1694335777',
+      'it-1870009520',
+      'it-1799650044',
       'it-1853540212',
       'it-6820892437',
       'it-6767788874',
       'it-1435493647',
+      'it-1440149710',
+      'it-1721482927',
+      'it-1435493283',
       'it-1574433730',
       'it-990980322',
+      'it-1465753494',
+      'it-1709643264',
+      'it-1386942628',
+      'it-1492968082',
       'it-1861826558',
       'it-1714993976',
       'it-1635552718',
       'it-1826495280',
       'it-1799649918',
-      'dz-3709294562',
-      'it-6767536166'
+      'it-1889343825'
     ],
     seedArtists: ['Fresly Nikijuluw', 'Wizz Baker', 'Vicky Salamor', 'Mitha Talahatu', 'Doddie Latuharhary', 'Glen Sebastian']
   },

@@ -9,6 +9,7 @@ import {
   estimateAudioFeatures,
   inferTrackLanguageRegion,
   isRecognizedCatalogArtist,
+  MUSIC_FLAG_DIMENSIONS,
   normalizeBaseTitle,
   resolveGenreFamily,
   SONIC_CLASS_PROFILES,
@@ -242,7 +243,7 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
     Array.from(regionAffinity.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ||
     (anchorTrack ? inferTrackLanguageRegion(anchorTrack) : 'en');
   const anchorFlags = anchorTrack
-    ? anchorTrack.musicFlags && anchorTrack.musicFlags.count >= 24
+    ? anchorTrack.musicFlags && anchorTrack.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length
       ? anchorTrack.musicFlags
       : computeTrackMusicFlags(anchorTrack)
     : null;
@@ -294,7 +295,10 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
       s += cls.classId === dominantClassId ? 70 : dominantClassProfile.compatibleClasses.includes(cls.classId) ? 24 : -50;
       if (reg === dominantRegion) s += 32;
       if (anchorFlags) {
-        const candFlags = t.musicFlags && t.musicFlags.count >= 24 ? t.musicFlags : computeTrackMusicFlags(t);
+        const candFlags =
+          t.musicFlags && t.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length
+            ? t.musicFlags
+            : computeTrackMusicFlags(t);
         const flagSim = computeMultiFlagSimilarity(anchorFlags, candFlags);
         s += Math.round((flagSim.similarity - 0.42) * 85);
       }
@@ -406,13 +410,17 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
     const flagA = anchorFlags
       ? computeMultiFlagSimilarity(
           anchorFlags,
-          a.musicFlags && a.musicFlags.count >= 24 ? a.musicFlags : computeTrackMusicFlags(a)
+          a.musicFlags && a.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length
+            ? a.musicFlags
+            : computeTrackMusicFlags(a)
         ).similarity
       : 0.5;
     const flagB = anchorFlags
       ? computeMultiFlagSimilarity(
           anchorFlags,
-          b.musicFlags && b.musicFlags.count >= 24 ? b.musicFlags : computeTrackMusicFlags(b)
+          b.musicFlags && b.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length
+            ? b.musicFlags
+            : computeTrackMusicFlags(b)
         ).similarity
       : 0.5;
     const cohA = COHESIVE_SEED_TRACKS.some((c) => c.id === a.id) || a.streamSource === 'studio-master' ? 20 : 0;

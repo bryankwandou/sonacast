@@ -368,6 +368,35 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   </button>
                 )}
               </div>
+
+              <div
+                data-testid="sidebar-active-flags-pill"
+                data-flag-count={currentMusicFlags.count}
+                className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-[var(--border-subtle)]"
+              >
+                <div className="flex flex-wrap items-center gap-1 min-w-0">
+                  <span className="px-1.5 py-0.5 rounded bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-[9px] font-semibold text-[var(--text-secondary)]">
+                    {formatFlagToken(currentMusicFlags.dimensions.regional_scene)}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-[9px] font-semibold text-[var(--text-secondary)]">
+                    {formatFlagToken(currentMusicFlags.dimensions.co_listen_cluster)}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-[var(--bg-tint)] border border-[var(--border-subtle)] text-[9px] font-semibold text-[var(--text-secondary)]">
+                    {formatFlagToken(currentMusicFlags.dimensions.rhythm_feel)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  data-testid="sidebar-open-all-flags-btn"
+                  onClick={() => {
+                    setActivePanelTab('related');
+                    setShowAllFlags(true);
+                  }}
+                  className="px-2 py-0.5 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] text-[9px] font-bold text-[var(--accent-text)] cursor-pointer shrink-0 hover:opacity-90 transition-opacity"
+                >
+                  {currentMusicFlags.count} flags
+                </button>
+              </div>
             </div>
 
             {/* Tier-1: Manual User Queue ("Play Next / Added to Queue") */}
@@ -717,7 +746,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {(['language_region', 'regional_scene', 'mood_valence', 'energy_level', 'tempo_tier', 'listening_context'] as const).map(
+                {(
+                  [
+                    'language_region',
+                    'regional_scene',
+                    'co_listen_cluster',
+                    'viral_momentum',
+                    'mood_valence',
+                    'rhythm_feel',
+                    'tempo_tier',
+                    'listening_context'
+                  ] as const
+                ).map(
                   (dim) => (
                     <span
                       key={dim}

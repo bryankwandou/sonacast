@@ -508,6 +508,7 @@ export default function App() {
   const resolveAbortRef = useRef<AbortController | null>(null);
   const loadedTrackIdRef = useRef<string | null>(null);
   const isRefillingRadioRef = useRef(false);
+  const refillRequestIdRef = useRef(0);
   const preResolvedIdsRef = useRef<Set<string>>(new Set());
   const discoveredPoolRef = useRef<Map<string, Track>>(new Map());
   const autoRetryCountRef = useRef(0);
@@ -1092,16 +1093,19 @@ export default function App() {
   }, []);
 
   const refillRadioQueueIfNeeded = useCallback(async (seedTrack: Track, force = false) => {
-    if (isRefillingRadioRef.current) return;
+    if (!force && isRefillingRadioRef.current) return;
     const currentQ = queueRef.current;
     const idx = currentQ.findIndex((item) => item.id === seedTrack.id);
     const remaining = idx >= 0 ? currentQ.length - 1 - idx : 0;
     if (!force && remaining > 3) return;
 
+    const reqId = ++refillRequestIdRef.current;
     isRefillingRadioRef.current = true;
     try {
       const queries = getClassMatchedSeedQueries(seedTrack, activeMoodRef.current, 4);
       const batches = await Promise.allSettled(queries.map((q) => searchTracksOnline(q)));
+      if (reqId !== refillRequestIdRef.current) return;
+      if (force && currentTrackRef.current.id !== seedTrack.id) return;
       const pooled: Track[] = [];
       for (const b of batches) {
         if (b.status === 'fulfilled' && Array.isArray(b.value)) {
@@ -1120,7 +1124,9 @@ export default function App() {
       const candidatePool = selectCohesiveCandidatePool(seedTrack, combinedPool, 4);
 
       setQueue((prev) => {
+        if (reqId !== refillRequestIdRef.current) return prev;
         const activeId = currentTrackRef.current.id;
+        if (force && activeId !== seedTrack.id) return prev;
         const activeIdx = prev.findIndex((p) => p.id === activeId);
         // Only trim old tail when fresh cohesive replacement pool is substantial (>= 8 tracks), preventing 2-track queue truncation
         const preservedHead =
@@ -1152,7 +1158,9 @@ export default function App() {
     } catch {
       // Quiet background radio refill
     } finally {
-      isRefillingRadioRef.current = false;
+      if (reqId === refillRequestIdRef.current) {
+        isRefillingRadioRef.current = false;
+      }
     }
   }, [gatherLocalCandidatePool]);
 

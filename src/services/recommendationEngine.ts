@@ -221,7 +221,7 @@ export const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
       'loela drakel', 'boniex', 'trio elexis', 'verry klau', 'floo keytimu', 'uncle east',
       'randy husain', 'djipeng', 'lhc makassar', 'd ari', 'alan3m', 'edhoo jubi',
       'philips jubi', 'irsan yd', 'boorcay', 'etgard kalengke', 'omhand v', 'ajay damima',
-      'wahyu selow', 'fresh boy', 'pelita timur',
+      'wahyu selow', 'fresh boy', 'pelita timur', 'lampu1comedy', 'new gvme', 'eno smaper',
       'timur', 'ambon', 'papua', 'kupang', 'manado', 'ntt'
     ]
   },
@@ -450,13 +450,28 @@ const FOREIGN_NON_ID_TITLE_RE =
   /(?:[æøåßçñ¿¡üöäßéèêëàâîïôùûãõ]|\b(tu répondais|repondais|tænd|taend|vois sur|ca ira|ça ira|geloscht|gelöscht|vorbei|meio pa|meio pá|le horla|ei levante|mergulho|malas decisiones|nada de ti|me adora|quiero|corazon|corazón|je t'aime|pourquoi|toujours|jamais|nicht|ich bin|você|voce|saudade|nao|não|coração|luftballon|bilder)\b)/i;
 
 const TIMUR_TITLE_CUES =
-  /\b(karna su sayang|tabola bale|mode pesawat|bale pulang|sa stop|sa sayang|sa tra|sa lelah|sa cinta|sa suka|sa kecewa|sa sunyi|sa menyerah|sa harus|sa janji|sa mau|sa rindu|sa pu|sa su|sa bilang|sa tunggu|sa jaga|sa pergi|sa pigi|sa pulang|sa sendiri|sa sandiri|sa bosan|ko tra|ko su|ko pu|ko tenang|ko biasa|ko bukan|ko siapa|ko bilang|ko pigi|ko lupa|ko tau|trada|jang ganggu|jang main|jang balikan|kaka main salah|aduh mamae|nona ambon|nona papua|nona kupang|nona manado|nona timur|ste cu|stecu|pica pica|garam dan madu|garam & madu|par ale|deng dia|so bilang|su tunggu|su tra|su kalah|su bosan|beta rindu|beta sayang|beta salah|beta mau|ale pung|orang pung|tamang pung|beta pung|pung sayang|pung kisah|pigi jo|sejak se pigi|se pigi|bintang trada|mama su tunggu|hits timur|lagu timur|rindu timur|orang timur|jaga orang pu jodoh|pu jodoh|pu hati|cuma saya|orang baru lebe gacor|lebe gacor|ubur ubur ikan lele|ngapain repot|ora urus|baju hitam|se dimana|se yang paksa|cinta beda agama|cinta sakota|janji putih|ambon manise|gandong|taguling|gogoriso|so tanta|ta lipa|body pata|salting gila|masih sandiri|luka kanapa|bilang sa|mungkin ale|kalah harta|ujung taong|baku sayang|baku jaga|hitung hitung|babak terakhir|lesung pipi|komang|iqro)\b/i;
+  /\b(karna su sayang|tabola bale|mode pesawat|bale pulang|sa stop|sa sayang|sa tra|sa lelah|sa cinta|sa suka|sa kecewa|sa sunyi|sa menyerah|sa harus|sa janji|sa mau|sa rindu|sa pu|sa su|sa bilang|sa tunggu|sa jaga|sa pergi|sa pigi|sa pulang|sa sendiri|sa sandiri|sa bosan|ko tra|ko su|ko pu|ko tenang|ko biasa|ko bukan|ko siapa|ko bilang|ko pigi|ko lupa|ko tau|trada|jang ganggu|jang main|jang balikan|kaka main salah|aduh mamae|nona ambon|nona papua|nona kupang|nona manado|nona timur|nyong timur|ste cu|stecu|pica pica|garam dan madu|garam & madu|par ale|rumah par ale|deng dia|so bilang|su tunggu|su tra|su kalah|su bosan|beta rindu|beta sayang|beta salah|beta mau|beta janji|ale pung|orang pung|tamang pung|beta pung|pung sayang|pung kisah|pigi jo|sejak se pigi|se pigi|bintang trada|mama su tunggu|hits timur|lagu timur|rindu timur|orang timur|jaga orang pu jodoh|pu jodoh|pu hati|cuma saya|orang baru lebe gacor|lebe gacor|ubur ubur ikan lele|ngapain repot|ora urus|baju hitam|se dimana|se yang paksa|cinta beda agama|cinta sakota|cinta seng pakai spasi|orang ketiga|orang katiga|tuhan beta mau dia|paleng bae|rindu rumah|janji putih|ambon manise|gandong|taguling|gogoriso|so tanta|ta lipa|body pata|salting gila|masih sandiri|luka kanapa|bilang sa|mungkin ale|kalah harta|ujung taong|baku sayang|baku jaga|hitung hitung|babak terakhir|lesung pipi|komang|iqro)\b/i;
+
+const TIMUR_PARTY_VIRAL_TITLE_RE =
+  /\b(tabola bale|mode pesawat|pica pica|stecu|ste cu|ngapain repot|orang baru lebe gacor|lebe gacor|gacor|orang timur|ora urus|taguling|ubur ubur ikan lele|garam & madu|garam dan madu|karna su sayang|jang ganggu|ambon manise|kaka main salah|cuma saya|sa stop mabok|nona ambon|nona timur|nyong timur|bale pulang|aduh mamae|jaga orang pu jodoh|salting gila|body pata|joget timur)\b/i;
+
+const TIMUR_GALAU_AMBON_TITLE_RE =
+  /\b(tamang pung kisah|rindu rumah|rumah par ale|sa lelah|sejak se pigi|se yang paksa|cinta beda agama|cinta seng pakai spasi|orang ketiga|orang katiga|tuhan beta mau dia|janji putih|cinta sakota|beta salah apa|beta janji|paleng bae|semata karenamu|rusuk|gagal berjuang|sa menyerah|lesung pipi|komang|rindu mama|sa rindu|seng bisa jauh|bukan takdirku|sa sunyi|sa harus sendiri|sayang)\b/i;
+
+const VIRAL_TIMUR_SIGNATURE_TITLE_RE =
+  /\b(tabola bale|mode pesawat|pica pica|stecu|ste cu|ngapain repot|orang baru lebe gacor|orang timur|ora urus|taguling|ubur ubur ikan lele|garam & madu|garam dan madu|karna su sayang|bale pulang|jang ganggu|ambon manise|kaka main salah|cuma saya|jaga orang pu jodoh|nona ambon|sa stop mabok|tamang pung kisah|rindu rumah|rumah par ale|sa lelah|sejak se pigi|se yang paksa|cinta beda agama|cinta seng pakai spasi|orang ketiga|orang katiga|tuhan beta mau dia|janji putih|cinta sakota|beta salah apa|paleng bae|semata karenamu|rusuk|gagal berjuang|sa menyerah|lesung pipi)\b/i;
+
+const NON_ORIGINAL_REMIX_COVER_RE =
+  /\b(mix\s+mf|remake|remix|bootleg|mashup|jedag\s*jedug|slowed|sped\s*up|dj\s+\w+|koplo\s+version|versi\s+(?:koplo|dangdut|dj|remix|acoustic|akustik)|cover|karaoke|instrumental\s+version)\b/i;
+
+const KOPLO_CROSSOVER_ARTIST_RE =
+  /\b(arlida putri|difarina indra|happy asmara|denny caknan|yeni inka|niken salindry|shinta arsinta|esa risty|via vallen|nella kharisma|vita alvia)\b/i;
 
 const TIMUR_DIALECT_PAIR_RE =
   /\b(?:sa|ko|beta|ale|katong|kitorang|ngana|torang|dorang)\s+(?:su|tra|pu|pung|lelah|cinta|suka|sayang|rindu|kecewa|sunyi|menyerah|harus|janji|mau|bilang|tunggu|jaga|pergi|pigi|pulang|bale|sendiri|sandiri|tetap|percaya|masih|takut|rasa|coba|lupa|minta|stop|bosan|bukan|siapa|biasa|tenang|tau|tahu|kasih|salah|kalah|paksa|hati|hilang|setia|sakit|sedih|bahagia|manis|gila|main|dapat|punya)\b/i;
 
 const PURE_ENGLISH_TITLE_WORD_RE =
-  /\b(the|with|your|you|my|me|from|into|love|night|dream|stay|back|turn|life|slow|dancing|dark|lights?|stuck|nobody|gets|lost|skyline|window|crack|rock|twenties|snooze|years?|tryna|never|always|forever|every|where|when|what|who|why|how|heart|baby|girl|boy|time|fire|rain|home|alone|tonight|without|holding|falling|running|waiting|thinking|feeling|missing|broken|better|beautiful|crazy|wild|sweet|sorry|goodbye|hello|world|stars?|moon|sun|sky|ocean|water|blood|tears?|smile|eyes|hands|mind|soul|body|kiss|touch|hold|walk|run|fly|die|live|cry|laugh|wait|want|need|know|feel|make|take|give|come|go|see|say|tell|leave|keep|let|stop|play|sing|dance|sleep|wake)\b/gi;
+  /\b(i|we|he|she|they|it|was|were|is|are|am|been|be|have|has|had|do|does|did|will|would|could|should|can|cant|dont|wont|the|with|your|you|my|me|from|into|love|night|dream|stay|back|turn|life|slow|dancing|dark|lights?|stuck|nobody|gets|lost|lose|losing|found|skyline|window|crack|rock|twenties|snooze|years?|tryna|never|always|forever|every|where|when|what|who|why|how|heart|baby|girl|boy|time|fire|rain|home|alone|away|still|just|only|even|down|out|off|tonight|without|holding|falling|running|waiting|thinking|feeling|missing|broken|better|beautiful|crazy|wild|sweet|sorry|goodbye|hello|world|stars?|moon|sun|sky|ocean|water|blood|tears?|smile|eyes|hands|mind|soul|body|kiss|touch|hold|walk|run|fly|die|live|cry|laugh|wait|want|need|know|feel|make|take|give|come|go|see|say|tell|leave|left|keep|let|stop|play|sing|dance|sleep|wake|remember|forget|believe|call|hurt|burn|save|fake|real|nothing|something|everything|someone|everyone)\b/gi;
 
 function hasPureEnglishTitleWithoutIndoSignal(title: string): boolean {
   const lower = String(title || '').toLowerCase();
@@ -666,7 +681,10 @@ export function normalizeBaseTitle(title: string): string {
   return String(title || '')
     .toLowerCase()
     .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
-    .replace(/\b(live|remix|remaster(?:ed)?|acoustic|slowed|reverb|sped up|cover|version|edit|radio|official|audio)\b/g, ' ')
+    .replace(
+      /\b(live|remix|remake|mix\s+mf|mix|bootleg|mashup|remaster(?:ed)?|acoustic|akustik|slowed|reverb|sped up|cover|version|versi\s+\w+|edit|radio|official|audio|karaoke|dj)\b/g,
+      ' '
+    )
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1072,9 +1090,14 @@ export function estimateAudioFeatures(
     case 'soundtrack_epic':
       base = { energy: 0.62, valence: 0.42, danceability: 0.30, acousticness: 0.55, instrumentalness: 0.88 };
       break;
-    case 'indo_timur_hits':
-      base = { energy: 0.72, valence: 0.68, danceability: 0.80, acousticness: 0.28, instrumentalness: 0.02 };
+    case 'indo_timur_hits': {
+      const isGalauTimur =
+        TIMUR_GALAU_AMBON_TITLE_RE.test(titleLower) && !TIMUR_PARTY_VIRAL_TITLE_RE.test(titleLower);
+      base = isGalauTimur
+        ? { energy: 0.48, valence: 0.36, danceability: 0.56, acousticness: 0.54, instrumentalness: 0.02 }
+        : { energy: 0.78, valence: 0.74, danceability: 0.86, acousticness: 0.22, instrumentalness: 0.02 };
       break;
+    }
     case 'indo_pop_ballad':
       base = { energy: 0.44, valence: 0.38, danceability: 0.52, acousticness: 0.62, instrumentalness: 0.02 };
       break;
@@ -1247,34 +1270,39 @@ export const MUSIC_FLAG_DIMENSIONS: readonly MusicFlagDimension[] = [
   'explicit_rating',
   'duration_bucket',
   'dialect_script',
-  'catalog_provenance'
+  'catalog_provenance',
+  'viral_momentum',
+  'co_listen_cluster'
 ] as const;
 
 const MULTI_FLAG_WEIGHTS: Record<MusicFlagDimension, number> = {
-  language_region: 0.14,
+  language_region: 0.13,
   regional_scene: 0.11,
-  sonic_class: 0.10,
-  primary_genre: 0.04,
+  sonic_class: 0.09,
+  co_listen_cluster: 0.11,
+  primary_genre: 0.03,
   subgenre_style: 0.08,
-  tempo_tier: 0.06,
-  energy_level: 0.07,
-  mood_valence: 0.07,
+  tempo_tier: 0.05,
+  energy_level: 0.06,
+  mood_valence: 0.06,
   danceability_tier: 0.03,
-  acoustic_profile: 0.05,
-  vocal_presence: 0.04,
+  acoustic_profile: 0.04,
+  vocal_presence: 0.03,
   vocal_delivery: 0.03,
-  instrumentation_core: 0.05,
-  era_decade: 0.03,
-  popularity_tier: 0.015,
-  release_format: 0.015,
-  lyric_theme: 0.03,
-  listening_context: 0.04,
-  rhythm_feel: 0.04,
-  production_polish: 0.02,
+  instrumentation_core: 0.04,
+  era_decade: 0.025,
+  // Popularity, viral momentum, and catalog provenance are scored directionally (hits > deep cuts), not by equality
+  popularity_tier: 0,
+  viral_momentum: 0,
+  catalog_provenance: 0,
+  release_format: 0.02,
+  lyric_theme: 0.025,
+  listening_context: 0.035,
+  rhythm_feel: 0.045,
+  production_polish: 0.015,
   explicit_rating: 0.005,
   duration_bucket: 0.01,
-  dialect_script: 0.03,
-  catalog_provenance: 0.005
+  dialect_script: 0.03
 };
 
 const MINANG_MELAYU_CUES =
@@ -1316,7 +1344,12 @@ export function estimateTrackBpm(
     case 'latin_global': base = 102; break;
     case 'arabic_middle_east': base = 104; break;
     case 'indian_south_asian': base = 106; break;
-    case 'indo_timur_hits': base = 114; break;
+    case 'indo_timur_hits':
+      base =
+        TIMUR_GALAU_AMBON_TITLE_RE.test(titleLower) && !TIMUR_PARTY_VIRAL_TITLE_RE.test(titleLower)
+          ? 96
+          : 118;
+      break;
     case 'classic_global_legend': base = 116; break;
     case 'alt_indie_rock': base = 118; break;
     case 'modern_chart_pop': base = 118; break;
@@ -1462,12 +1495,20 @@ export function computeTrackMusicFlags(
       : 'classic_pre_2000';
   }
 
-  // 12. popularity_tier (real global statistics when available)
+  // 12. popularity_tier (real global & regional hit prominence)
   const ytViews = Number(track.youtubeViews) || 0;
   const dzRank = Number(track.popularityRank) || 0;
+  const isNonOriginal =
+    NON_ORIGINAL_REMIX_COVER_RE.test(`${titleLower} ${albumLower}`) ||
+    (tier.classId === 'indo_timur_hits' && KOPLO_CROSSOVER_ARTIST_RE.test(artistLower));
+  const isViralTimurSignature =
+    tier.classId === 'indo_timur_hits' &&
+    !isNonOriginal &&
+    VIRAL_TIMUR_SIGNATURE_TITLE_RE.test(titleLower);
+
   let popularityTier = 'regional_popular';
   if (ytViews >= 100_000_000 || dzRank >= 750_000 || track.streamSource === 'studio-master') popularityTier = 'global_mega_hit';
-  else if (ytViews >= 10_000_000 || dzRank >= 300_000) popularityTier = 'mainstream_hit';
+  else if (ytViews >= 10_000_000 || dzRank >= 300_000 || isViralTimurSignature) popularityTier = 'mainstream_hit';
   else if (ytViews >= 1_000_000 || dzRank >= 80_000 || isRecognizedCatalogArtist(track)) popularityTier = 'regional_popular';
   else if (ytViews >= 50_000 || dzRank >= 15_000) popularityTier = 'rising_indie';
   else popularityTier = 'deep_cut';
@@ -1476,7 +1517,7 @@ export function computeTrackMusicFlags(
   let releaseFormat = 'studio_single';
   if (/\b(from\s+"|ost\b|soundtrack|motion picture)\b/i.test(`${titleLower} ${albumLower}`)) releaseFormat = 'soundtrack_ost';
   else if (/\b(live|unplugged|concert|session)\b/i.test(titleLower)) releaseFormat = 'live_session';
-  else if (/\b(remix|mix|edit|sped up|slowed)\b/i.test(titleLower)) releaseFormat = 'remix_edit';
+  else if (isNonOriginal || /\b(remix|mix|edit|sped up|slowed)\b/i.test(titleLower)) releaseFormat = 'remix_edit';
   else if (/\b(acoustic|piano version)\b/i.test(titleLower)) releaseFormat = 'acoustic_version';
   else if (albumLower && albumLower !== 'single' && albumLower !== titleLower) releaseFormat = 'album_track';
 
@@ -1502,7 +1543,12 @@ export function computeTrackMusicFlags(
   let rhythmFeel = 'straight_4_4';
   if (tier.isInstrumental) rhythmFeel = 'rubato_free';
   else if (tier.classId === 'indo_koplo_dangdut') rhythmFeel = 'koplo_percussion';
-  else if (tier.classId === 'indo_timur_hits') rhythmFeel = 'reggae_bounce';
+  else if (tier.classId === 'indo_timur_hits') {
+    rhythmFeel =
+      TIMUR_GALAU_AMBON_TITLE_RE.test(titleLower) && !TIMUR_PARTY_VIRAL_TITLE_RE.test(titleLower)
+        ? 'timur_ballad_sway'
+        : 'reggae_bounce';
+  }
   else if (tier.classId === 'hiphop_rap_trap') rhythmFeel = 'half_time_trap';
   else if (['rnb_late_soul', 'latin_global', 'electronic_dance_synth', 'jazz_blues_acoustic'].includes(tier.classId)) rhythmFeel = 'syncopated_groove';
 
@@ -1541,6 +1587,59 @@ export function computeTrackMusicFlags(
   else if (track.id.startsWith('mb-') || track.id.startsWith('catalog-mb-')) catalogProvenance = 'musicbrainz';
   else if (track.id.startsWith('yt-') || track.id.startsWith('stream-') || track.id.startsWith('catalog-yt-')) catalogProvenance = 'youtube_music';
 
+  // 25. viral_momentum (separates chart/editorial hits from deep cuts & remixes)
+  let viralMomentum = 'catalog_standard';
+  if (!isNonOriginal) {
+    if (
+      ytViews >= 50_000_000 ||
+      dzRank >= 800_000 ||
+      (isViralTimurSignature && (TIMUR_PARTY_VIRAL_TITLE_RE.test(titleLower) || dzRank >= 840_000))
+    ) {
+      viralMomentum = 'chart_viral_hit';
+    } else if (
+      ytViews >= 10_000_000 ||
+      dzRank >= 450_000 ||
+      isViralTimurSignature ||
+      track.streamSource === 'studio-master'
+    ) {
+      viralMomentum = 'editorial_signature';
+    } else if (ytViews >= 1_000_000 || dzRank >= 120_000) {
+      viralMomentum = 'steady_popular';
+    }
+  }
+
+  // 26. co_listen_cluster (Spotify-style collaborative listening neighborhood)
+  let coListenCluster = 'global_pop_chart';
+  switch (tier.classId) {
+    case 'indo_timur_hits':
+      coListenCluster =
+        TIMUR_GALAU_AMBON_TITLE_RE.test(titleLower) && !TIMUR_PARTY_VIRAL_TITLE_RE.test(titleLower)
+          ? 'timur_ambon_galau'
+          : 'timur_party_viral';
+      break;
+    case 'indo_pop_ballad':
+      coListenCluster = regionalScene === 'indo_minang_melayu' ? 'indo_minang_melayu' : 'indo_pop_mainstream';
+      break;
+    case 'indo_indie_folk': coListenCluster = 'indo_senja_indie'; break;
+    case 'indo_band_rock': coListenCluster = 'indo_band_2000s'; break;
+    case 'indo_koplo_dangdut': coListenCluster = 'indo_koplo_jawa'; break;
+    case 'rnb_late_soul': coListenCluster = 'rnb_late_night'; break;
+    case 'classic_global_legend': coListenCluster = 'classic_anthem_era'; break;
+    case 'kpop_idol': coListenCluster = 'kpop_hits'; break;
+    case 'jpop_city_anime': coListenCluster = 'jpop_anime'; break;
+    case 'alt_indie_rock': coListenCluster = 'alt_rock_modern'; break;
+    case 'heavy_metal_hard': coListenCluster = 'metal_hard_rock'; break;
+    case 'electronic_dance_synth': coListenCluster = 'electronic_club'; break;
+    case 'hiphop_rap_trap': coListenCluster = 'hiphop_rap_core'; break;
+    case 'jazz_blues_acoustic': coListenCluster = 'acoustic_jazz_warm'; break;
+    case 'piano_neoclassical':
+    case 'soundtrack_epic': coListenCluster = 'classical_orchestral'; break;
+    case 'latin_global': coListenCluster = 'latin_urbano_hits'; break;
+    case 'indian_south_asian': coListenCluster = 'bollywood_hits'; break;
+    case 'arabic_middle_east': coListenCluster = 'arabic_hits'; break;
+    default: coListenCluster = 'global_pop_chart'; break;
+  }
+
   const dimensions: Record<MusicFlagDimension, string> = {
     language_region: lang,
     regional_scene: regionalScene,
@@ -1565,7 +1664,9 @@ export function computeTrackMusicFlags(
     explicit_rating: explicitRating,
     duration_bucket: durationBucket,
     dialect_script: dialectScript,
-    catalog_provenance: catalogProvenance
+    catalog_provenance: catalogProvenance,
+    viral_momentum: viralMomentum,
+    co_listen_cluster: coListenCluster
   };
 
   const tags = MUSIC_FLAG_DIMENSIONS.map((dim) => `${dim}:${dimensions[dim]}`);
@@ -1631,6 +1732,16 @@ export function scoreCandidateTrack(
   const seedLang = inferTrackLanguageRegion(seedTrack);
   const candLang = inferTrackLanguageRegion(candidate);
 
+  const seedFlags =
+    seedTrack.musicFlags && seedTrack.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length
+      ? seedTrack.musicFlags
+      : computeTrackMusicFlags(seedTrack);
+  const candFlags =
+    candidate.musicFlags && candidate.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length
+      ? candidate.musicFlags
+      : computeTrackMusicFlags(candidate);
+  const flagSim = computeMultiFlagSimilarity(seedFlags, candFlags);
+
   // 0. Equivalent Sonic Class / Style Tier Matching & Spotify Peer-Artist Graph
   if (candClass.classId === seedClass.classId) {
     score += 62;
@@ -1654,7 +1765,15 @@ export function scoreCandidateTrack(
     score += 42;
   } else if (isRecognizedCatalogArtist(candidate)) {
     score += 22;
-  } else if (mood === 'all' && candArtist !== seedArtist) {
+  } else if (
+    mood === 'all' &&
+    candArtist !== seedArtist &&
+    !(
+      candClass.classId === seedClass.classId &&
+      seedFlags.dimensions.regional_scene === candFlags.dimensions.regional_scene &&
+      flagSim.similarity >= 0.5
+    )
+  ) {
     score -= 110;
   }
 
@@ -1695,13 +1814,13 @@ export function scoreCandidateTrack(
     score -= 10;
   }
 
-  // 2. Multi-Dimensional 24-Flag Music Genome Overlap + 6D Audio Vector Cosine Similarity + Tempo + Era
-  const seedFlags = seedTrack.musicFlags && seedTrack.musicFlags.count >= 24 ? seedTrack.musicFlags : computeTrackMusicFlags(seedTrack);
-  const candFlags = candidate.musicFlags && candidate.musicFlags.count >= 24 ? candidate.musicFlags : computeTrackMusicFlags(candidate);
-  const flagSim = computeMultiFlagSimilarity(seedFlags, candFlags);
-  score += clamp(Math.round((flagSim.similarity - 0.42) * 145), -58, 86);
+  // 2. Multi-Dimensional 26-Flag Music Genome Overlap + Co-Listen Cluster + Directional Hit Prominence
+  score += clamp(Math.round((flagSim.similarity - 0.42) * 155), -62, 92);
+  if (seedFlags.dimensions.co_listen_cluster === candFlags.dimensions.co_listen_cluster) {
+    score += 36;
+  }
   if (seedFlags.dimensions.regional_scene === candFlags.dimensions.regional_scene) {
-    score += 22;
+    score += 28;
   }
   if (seedFlags.dimensions.mood_valence === candFlags.dimensions.mood_valence) {
     score += 14;
@@ -1710,7 +1829,55 @@ export function scoreCandidateTrack(
     score += 12;
   }
   if (seedFlags.dimensions.rhythm_feel === candFlags.dimensions.rhythm_feel) {
-    score += 10;
+    score += 14;
+  }
+
+  // Directional Popularity & Viral Momentum (Spotify-style popular hit priority over obscure B-sides)
+  if (candFlags.dimensions.viral_momentum === 'chart_viral_hit') {
+    score += 68;
+  } else if (candFlags.dimensions.viral_momentum === 'editorial_signature') {
+    score += 46;
+  } else if (candFlags.dimensions.viral_momentum === 'steady_popular') {
+    score += 18;
+  }
+
+  if (candFlags.dimensions.popularity_tier === 'global_mega_hit') {
+    score += 26;
+  } else if (candFlags.dimensions.popularity_tier === 'mainstream_hit') {
+    score += 18;
+  } else if (candFlags.dimensions.popularity_tier === 'regional_popular') {
+    score += 6;
+  } else if (
+    candFlags.dimensions.popularity_tier === 'deep_cut' &&
+    candFlags.dimensions.viral_momentum === 'catalog_standard'
+  ) {
+    score -= 38;
+  }
+
+  // Prefer clean canonical Apple Music / Deezer / Studio Master metadata over messy raw YouTube upload titles
+  if (
+    candFlags.dimensions.catalog_provenance === 'apple_music' ||
+    candFlags.dimensions.catalog_provenance === 'deezer_global' ||
+    candFlags.dimensions.catalog_provenance === 'studio_master'
+  ) {
+    score += 24;
+  } else if (
+    candFlags.dimensions.catalog_provenance === 'youtube_music' &&
+    (/\b(omv|mv|official\s+music|lirik|lyrics)\b/i.test(candidate.title) || candidate.title.length > 52)
+  ) {
+    score -= 28;
+  }
+
+  // Penalize unofficial remixes, remakes, bootleg DJ mixes, and crossover covers when seed is an original release
+  const seedIsRemixOrCover =
+    seedFlags.dimensions.release_format === 'remix_edit' ||
+    NON_ORIGINAL_REMIX_COVER_RE.test(seedTrack.title);
+  const candIsRemixOrCover =
+    candFlags.dimensions.release_format === 'remix_edit' ||
+    NON_ORIGINAL_REMIX_COVER_RE.test(candidate.title) ||
+    (seedClass.classId === 'indo_timur_hits' && KOPLO_CROSSOVER_ARTIST_RE.test(candidate.artist));
+  if (!seedIsRemixOrCover && candIsRemixOrCover) {
+    score -= 260;
   }
 
   const seedVec = estimateAudioFeatures(seedTrack);
@@ -1812,8 +1979,14 @@ export function scoreCandidateTrack(
 }
 
 function scoreTransitionPair(prevTrack: Track, candidate: Track): number {
-  const prevFlags = prevTrack.musicFlags && prevTrack.musicFlags.count >= 24 ? prevTrack.musicFlags : computeTrackMusicFlags(prevTrack);
-  const candFlags = candidate.musicFlags && candidate.musicFlags.count >= 24 ? candidate.musicFlags : computeTrackMusicFlags(candidate);
+  const prevFlags =
+    prevTrack.musicFlags && prevTrack.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length
+      ? prevTrack.musicFlags
+      : computeTrackMusicFlags(prevTrack);
+  const candFlags =
+    candidate.musicFlags && candidate.musicFlags.count >= MUSIC_FLAG_DIMENSIONS.length
+      ? candidate.musicFlags
+      : computeTrackMusicFlags(candidate);
   const flagSim = computeMultiFlagSimilarity(prevFlags, candFlags);
   const prevVec = estimateAudioFeatures(prevTrack);
   const candVec = estimateAudioFeatures(candidate);
@@ -2038,6 +2211,53 @@ export function getClassMatchedSeedQueries(
   const seedPrimary = extractPrimaryArtist(track.artist);
   const classProfile = classifyTrackTier(track);
   const seedLang = inferTrackLanguageRegion(track);
+  const seedHash = Math.floor(hashPair(track.artist || 'artist', track.title || 'title') * 100);
+
+  // Eastern Indonesian (Hits Lagu Timur) sub-cluster hit discovery queries matching Spotify's viral Timur radio graph
+  if (classProfile.classId === 'indo_timur_hits') {
+    const titleLower = String(track.title || '').toLowerCase();
+    const isGalauSeed =
+      TIMUR_GALAU_AMBON_TITLE_RE.test(titleLower) && !TIMUR_PARTY_VIRAL_TITLE_RE.test(titleLower);
+    const timurHitQueries = isGalauSeed
+      ? [
+          'Tamang Pung Kisah Fresly Nikijuluw',
+          'Rindu Rumah Wizz Baker',
+          'Bale Pulang Justy Aldrin',
+          'Cinta Beda Agama Vicky Salamor',
+          'Cinta Sakota Mitha Talahatu',
+          'Sa Lelah Glen Sebastian',
+          'Janji Putih Doddie Latuharhary',
+          'Rumah Par Ale Justy Aldrin',
+          'Gagal Berjuang Gihon Marel',
+          'Semata Karenamu Mario G Klau'
+        ]
+      : [
+          'TABOLA BALE Silet Open Up',
+          'Pica Pica Juan Reza',
+          'Stecu Stecu Faris Adam',
+          'Mode Pesawat Dandy Barakati',
+          'Ngapain Repot Toton Caribo',
+          'Orang Baru Lebe Gacor Ecko Show',
+          'Karna Su Sayang Near',
+          'Jang Ganggu Shine Of Black',
+          'Bale Pulang Toton Caribo',
+          'Kaka Main Salah Putry Pasanea'
+        ];
+    const filteredHits = timurHitQueries.filter(
+      (q) =>
+        (!seedPrimary || !q.toLowerCase().includes(seedPrimary)) &&
+        (!titleLower || !q.toLowerCase().includes(titleLower))
+    );
+    const chosen: string[] = [];
+    const step = filteredHits.length > count ? Math.max(1, Math.floor(filteredHits.length / Math.max(1, count))) : 1;
+    for (let i = 0; i < filteredHits.length && chosen.length < count; i++) {
+      const q = filteredHits[(seedHash + i * step) % filteredHits.length];
+      if (!chosen.includes(q)) chosen.push(q);
+    }
+    if (chosen.length >= count) {
+      return chosen.slice(0, count);
+    }
+  }
 
   const peerPool = classProfile.peerArtists.filter(
     (name) => name.toLowerCase() !== seedPrimary && !seedPrimary.includes(name.toLowerCase())
@@ -2056,7 +2276,6 @@ export function getClassMatchedSeedQueries(
 
   const moodQueries =
     mood !== 'all' && (seedLang === 'en' || mood === 'indonesian') ? getMoodSeedQueries(mood) : [];
-  const seedHash = Math.floor(hashPair(track.artist || 'artist', track.title || 'title') * 100);
 
   const combined = Array.from(new Set(peerPool));
   const result: string[] = [];
@@ -2126,6 +2345,7 @@ export function selectCohesiveCandidatePool(
   }
 
   // Hard language boundary filter applied upfront before any class matching
+  const seedIsRemixOrCover = NON_ORIGINAL_REMIX_COVER_RE.test(seedTrack.title);
   const langSafePool = deduped.filter((cand) => {
     const cl = inferTrackLanguageRegion(cand);
     if (seedLang === 'instrumental') {
@@ -2137,8 +2357,16 @@ export function selectCohesiveCandidatePool(
     }
     // Non-English seeds (Indonesian / Lagu Timur / Dangdut, Indian, Arabic, K-Pop, J-Pop, Latin) stay strictly in-language
     if (cl !== seedLang) return false;
-    // Extra guard for Indonesian & Lagu Timur seeds: block pure English-titled tracks (e.g. "Stay Back", "My Life", "TWENTIES")
+    // Extra guard for Indonesian & Lagu Timur seeds: block pure English-titled tracks (e.g. "Stay Back", "I was lose you", "TWENTIES")
     if (seedLang === 'id' && hasPureEnglishTitleWithoutIndoSignal(cand.title)) {
+      return false;
+    }
+    // For Eastern Indonesian hits, exclude unofficial remakes/DJ mixes/Koplo covers when seed is an original track
+    if (
+      seedTier.classId === 'indo_timur_hits' &&
+      !seedIsRemixOrCover &&
+      (NON_ORIGINAL_REMIX_COVER_RE.test(cand.title) || KOPLO_CROSSOVER_ARTIST_RE.test(cand.artist))
+    ) {
       return false;
     }
     return true;
@@ -2152,7 +2380,7 @@ export function selectCohesiveCandidatePool(
     return true;
   });
 
-  if (exactClassAndLang.length >= minSameLangClass) {
+  if (exactClassAndLang.length >= (seedTier.classId === 'indo_timur_hits' ? 1 : minSameLangClass)) {
     return exactClassAndLang;
   }
 

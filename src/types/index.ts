@@ -36,7 +36,9 @@ export type MusicFlagDimension =
   | 'explicit_rating'
   | 'duration_bucket'
   | 'dialect_script'
-  | 'catalog_provenance';
+  | 'catalog_provenance'
+  | 'viral_momentum'
+  | 'co_listen_cluster';
 
 export interface TrackMusicFlags {
   dimensions: Record<MusicFlagDimension, string>;
