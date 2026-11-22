@@ -120,7 +120,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   isPlaying,
   resolvingTrackId,
   onSelectTrack,
-  onTogglePlay: _onTogglePlay,
+  onTogglePlay,
   onUploadTrack,
   onUpdateLyrics,
   onNavigateSearch: _onNavigateSearch,
@@ -855,8 +855,15 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     key={track.id}
                     track={track}
                     isSelected={track.id === currentTrack.id}
+                    isPlaying={isPlaying}
                     isResolving={resolvingTrackId === track.id}
-                    onSelect={handlePlayTrackWithLyrics}
+                    onSelect={(chosen) => {
+                      if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id) {
+                        onTogglePlay();
+                      } else {
+                        handlePlayTrackWithLyrics(chosen);
+                      }
+                    }}
                     isLiked={likedTrackIds?.has(track.id)}
                     onToggleLike={onToggleLike}
                     onAddToAlbum={onAddToAlbum}
@@ -1452,8 +1459,13 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   key={track.id}
                   track={track}
                   isSelected={track.id === currentTrack.id}
+                  isPlaying={isPlaying}
                   isResolving={resolvingTrackId === track.id}
                   onSelect={(chosen) => {
+                    if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id) {
+                      onTogglePlay();
+                      return;
+                    }
                     if (onPlayTrackList) {
                       onPlayTrackList(
                         filteredMasters,
@@ -1550,8 +1562,13 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     track={track}
                     rank={idx + 1}
                     isSelected={track.id === currentTrack.id}
+                    isPlaying={isPlaying}
                     isResolving={resolvingTrackId === track.id}
                     onSelect={(chosen) => {
+                      if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id) {
+                        onTogglePlay();
+                        return;
+                      }
                       if (onPlayTrackList) {
                         onPlayTrackList(
                           activeCharts,

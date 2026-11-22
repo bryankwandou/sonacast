@@ -68,6 +68,7 @@ const INITIAL_ARTIST_CHIP_LIMIT = 12;
 export const SearchView: React.FC<SearchViewProps> = ({
   curatedTracks,
   currentTrack,
+  isPlaying,
   resolvingTrackId,
   externalQuery,
   externalMode,
@@ -1292,6 +1293,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   <TrackCard
                     track={track}
                     isSelected={track.id === currentTrack.id}
+                    isPlaying={isPlaying}
                     isResolving={resolvingTrackId === track.id}
                     onSelect={(chosen) => {
                       if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id) {

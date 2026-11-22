@@ -1,11 +1,13 @@
 import React from 'react';
 import type { Track } from '../../types';
-import { Disc3, FolderPlus, Heart, ListPlus, ListStart, Loader2, Play, Radio } from 'lucide-react';
+import { Disc3, FolderPlus, Heart, ListPlus, ListStart, Loader2, Pause, Play, Radio } from 'lucide-react';
 import { applyCoverFallback } from '../../utils/coverFallback';
+import { PlayingBars } from './PlayingBars';
 
 interface TrackCardProps {
   track: Track;
   isSelected: boolean;
+  isPlaying?: boolean;
   isResolving?: boolean;
   onSelect: (track: Track) => void;
   rank?: number;
@@ -21,6 +23,7 @@ interface TrackCardProps {
 export const TrackCard: React.FC<TrackCardProps> = ({
   track,
   isSelected,
+  isPlaying = false,
   isResolving,
   onSelect,
   rank,
@@ -32,6 +35,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   onStartRadio,
   onOpenArtist
 }) => {
+  const isActivelyPlaying = isSelected && isPlaying && !isResolving;
   const formatDuration = (secs: number) => {
     const mins = Math.floor(secs / 60);
     const rem = Math.floor(secs % 60);
@@ -147,15 +151,31 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           </div>
         )}
 
-        {/* Bottom Play/Resolving Badge */}
+        {/* Live Playing Equalizer Pill (bottom-left when actively playing) */}
+        {isActivelyPlaying && (
+          <div
+            data-testid="track-card-playing-bars"
+            className="pointer-events-none z-10 absolute bottom-2 left-2 px-2 py-1 rounded-full bg-black/75 backdrop-blur-sm text-[var(--accent-emerald)] inline-flex items-center gap-1 shadow-md"
+          >
+            <PlayingBars isPlaying={true} />
+          </div>
+        )}
+
+        {/* Bottom Play/Pause/Resolving Badge */}
         <div
-          className={`pointer-events-none z-10 absolute bottom-2 right-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition-all ${isSelected || isResolving
-            ? 'opacity-100 translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
-            : 'opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+          data-testid="track-card-play-badge"
+          data-playing={isActivelyPlaying ? 'true' : 'false'}
+          className={`pointer-events-none z-10 absolute bottom-2 right-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 ${isActivelyPlaying
+            ? 'opacity-100 translate-y-0 scale-105 bg-[var(--accent-emerald)] text-[var(--accent-fg)] ring-4 ring-[var(--accent-emerald)]/30'
+            : isSelected || isResolving
+              ? 'opacity-100 translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
+              : 'opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 bg-[var(--accent-emerald)] text-[var(--accent-fg)]'
             }`}
         >
           {isResolving ? (
             <Loader2 size={16} className="animate-spin" />
+          ) : isActivelyPlaying ? (
+            <Pause size={16} className="fill-current" />
           ) : (
             <Play size={16} className="fill-current ml-0.5" />
           )}

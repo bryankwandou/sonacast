@@ -38,8 +38,10 @@ import {
 interface MusicViewProps {
   tracks: Track[];
   currentTrack: Track;
+  isPlaying?: boolean;
   resolvingTrackId?: string | null;
   onSelectTrack: (track: Track) => void;
+  onTogglePlay?: () => void;
   onNavigateSearch?: (initialQuery: string) => void;
   likedTracks?: Track[];
   recentTracks?: Track[];
@@ -116,8 +118,10 @@ function matchesAlbumCategory(alb: CatalogAlbum, cat: AlbumCategoryFilter): bool
 export const MusicView: React.FC<MusicViewProps> = ({
   tracks,
   currentTrack,
+  isPlaying = false,
   resolvingTrackId,
   onSelectTrack,
+  onTogglePlay,
   onNavigateSearch: _onNavigateSearch,
   likedTracks = [],
   recentTracks = [],
@@ -736,23 +740,30 @@ export const MusicView: React.FC<MusicViewProps> = ({
                   track={track}
                   rank={idx + 1}
                   isSelected={track.id === currentTrack.id}
+                  isPlaying={isPlaying}
                   isResolving={resolvingTrackId === track.id}
-                  onSelect={(chosen) =>
-                    onPlayTrackList
-                      ? onPlayTrackList(
-                          activeCharts,
-                          false,
-                          {
-                            id: `charts-${chartRegion}`,
-                            type: 'charts',
-                            title: chartRegion === 'global' ? t.chartsGlobal : t.chartsIndonesia,
-                            coverUrl: activeCharts[0]?.coverUrl,
-                            ordered: true
-                          },
-                          idx
-                        )
-                      : onSelectTrack(chosen)
-                  }
+                  onSelect={(chosen) => {
+                    if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id && onTogglePlay) {
+                      onTogglePlay();
+                      return;
+                    }
+                    if (onPlayTrackList) {
+                      onPlayTrackList(
+                        activeCharts,
+                        false,
+                        {
+                          id: `charts-${chartRegion}`,
+                          type: 'charts',
+                          title: chartRegion === 'global' ? t.chartsGlobal : t.chartsIndonesia,
+                          coverUrl: activeCharts[0]?.coverUrl,
+                          ordered: true
+                        },
+                        idx
+                      );
+                    } else {
+                      onSelectTrack(chosen);
+                    }
+                  }}
                   isLiked={likedTrackIds?.has(track.id)}
                   onToggleLike={onToggleLike}
                   onAddToAlbum={onAddToAlbum}
@@ -870,23 +881,30 @@ export const MusicView: React.FC<MusicViewProps> = ({
                 key={`music-master-${track.id}`}
                 track={track}
                 isSelected={track.id === currentTrack.id}
+                isPlaying={isPlaying}
                 isResolving={resolvingTrackId === track.id}
-                onSelect={(chosen) =>
-                  onPlayTrackList
-                    ? onPlayTrackList(
-                        tracks,
-                        false,
-                        {
-                          id: 'featured-masters',
-                          type: 'library',
-                          title: t.featuredMastersHeading,
-                          coverUrl: tracks[0]?.coverUrl,
-                          ordered: true
-                        },
-                        idx
-                      )
-                    : onSelectTrack(chosen)
-                }
+                onSelect={(chosen) => {
+                  if (chosen.id === currentTrack.id && resolvingTrackId !== chosen.id && onTogglePlay) {
+                    onTogglePlay();
+                    return;
+                  }
+                  if (onPlayTrackList) {
+                    onPlayTrackList(
+                      tracks,
+                      false,
+                      {
+                        id: 'featured-masters',
+                        type: 'library',
+                        title: t.featuredMastersHeading,
+                        coverUrl: tracks[0]?.coverUrl,
+                        ordered: true
+                      },
+                      idx
+                    );
+                  } else {
+                    onSelectTrack(chosen);
+                  }
+                }}
                 isLiked={likedTrackIds?.has(track.id)}
                 onToggleLike={onToggleLike}
                 onAddToAlbum={onAddToAlbum}

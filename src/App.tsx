@@ -4561,8 +4561,10 @@ export default function App() {
                     <MusicView
                       tracks={TRACK_CATALOG}
                       currentTrack={currentTrack}
+                      isPlaying={isPlaying}
                       resolvingTrackId={resolvingTrackId}
                       onSelectTrack={handleSelectTrack}
+                      onTogglePlay={handleTogglePlay}
                       onNavigateSearch={navigateToSearch}
                       likedTracks={recState.likedTracks}
                       recentTracks={recState.recentTracks}
