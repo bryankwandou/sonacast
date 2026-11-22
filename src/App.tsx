@@ -730,8 +730,12 @@ export default function App() {
     let cancelled = false;
     const params =
       typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const isSharedTrackUrl =
+      typeof window !== 'undefined'
+        ? Boolean(parseSharedTrackFromUrl(window.location.pathname, window.location.search))
+        : false;
     const blendParam = params?.get('blend')?.trim().toUpperCase() || '';
-    const albumParam = params?.get('album')?.trim().toUpperCase() || '';
+    const albumParam = !isSharedTrackUrl ? params?.get('album')?.trim().toUpperCase() || '' : '';
 
     const hydrateCloud = async () => {
       if (hasCloudSessionHint() || blendParam || albumParam) {

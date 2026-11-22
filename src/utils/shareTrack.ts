@@ -73,7 +73,7 @@ export function buildTrackShareUrl(track: Track, originOverride?: string): strin
   if (safeTitle) params.set('title', safeTitle);
   if (safeArtist) params.set('artist', safeArtist);
   if (safeAlbum && safeAlbum.toLowerCase() !== 'single' && safeAlbum.toLowerCase() !== safeTitle.toLowerCase()) {
-    params.set('album', safeAlbum);
+    params.set('al', safeAlbum);
   }
   if (safeGenre) params.set('genre', safeGenre);
   if (Number.isFinite(track.duration) && track.duration >= 30 && track.duration <= 3600) {
@@ -102,7 +102,10 @@ export function parseSharedTrackFromUrl(pathname: string, search: string): Share
   const rawId = sanitizeParam(params.get('id') || params.get('track') || pathId, 120);
   const title = sanitizeParam(params.get('title') || params.get('t'), 140);
   const artist = sanitizeParam(params.get('artist') || params.get('a'), 140);
-  const album = isTrackRoute || Boolean(rawId || title) ? sanitizeParam(params.get('album'), 120) : '';
+  const album = sanitizeParam(
+    params.get('al') || (isTrackRoute || Boolean(rawId || title) ? params.get('album') : ''),
+    120
+  );
   const genre = sanitizeParam(params.get('genre'), 60);
   const durRaw = Number(params.get('dur') || params.get('duration') || 0);
   const duration = Number.isFinite(durRaw) && durRaw >= 30 && durRaw <= 3600 ? Math.round(durRaw) : 0;
@@ -136,6 +139,16 @@ export function findLocalSharedTrack(parsed: SharedTrackParams): Track | null {
   const artistNorm = normalizeLookup(parsed.artist);
   const idAsTitleNorm = !titleNorm && parsed.id ? normalizeLookup(parsed.id) : '';
 
+  const withFlagsAndStream = (hit: Track): Track => {
+    const merged: Track =
+      !hit.audioUrl && !hit.youtubeId && parsed.youtubeId
+        ? { ...hit, youtubeId: parsed.youtubeId, candidateVideoIds: [parsed.youtubeId] }
+        : hit;
+    return merged.musicFlags && merged.musicFlags.count >= 24
+      ? merged
+      : { ...merged, musicFlags: computeTrackMusicFlags(merged) };
+  };
+
   if (idLower) {
     const byId = localPool.find(
       (item) =>
@@ -143,11 +156,7 @@ export function findLocalSharedTrack(parsed: SharedTrackParams): Track | null {
         `catalog-${item.id.toLowerCase()}` === idLower ||
         `master-${item.id.toLowerCase()}` === idLower
     );
-    if (byId) {
-      return byId.musicFlags && byId.musicFlags.count >= 24
-        ? byId
-        : { ...byId, musicFlags: computeTrackMusicFlags(byId) };
-    }
+    if (byId) return withFlagsAndStream(byId);
   }
 
   if (titleNorm) {
@@ -158,20 +167,12 @@ export function findLocalSharedTrack(parsed: SharedTrackParams): Track | null {
       if (!artistNorm) return true;
       return a === artistNorm || a.includes(artistNorm) || artistNorm.includes(a);
     });
-    if (byMeta) {
-      return byMeta.musicFlags && byMeta.musicFlags.count >= 24
-        ? byMeta
-        : { ...byMeta, musicFlags: computeTrackMusicFlags(byMeta) };
-    }
+    if (byMeta) return withFlagsAndStream(byMeta);
   }
 
   if (idAsTitleNorm) {
     const byTitleOnly = localPool.find((item) => normalizeLookup(item.title) === idAsTitleNorm);
-    if (byTitleOnly) {
-      return byTitleOnly.musicFlags && byTitleOnly.musicFlags.count >= 24
-        ? byTitleOnly
-        : { ...byTitleOnly, musicFlags: computeTrackMusicFlags(byTitleOnly) };
-    }
+    if (byTitleOnly) return withFlagsAndStream(byTitleOnly);
   }
 
   return null;
