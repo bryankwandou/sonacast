@@ -870,7 +870,7 @@ async function searchAudiusTracks(query: string): Promise<Track[]> {
   }
 }
 
-const MV_CACHE_STORAGE_KEY = 'sonacast_mv_cache_v2';
+const MV_CACHE_STORAGE_KEY = 'sonacast_mv_cache_v3';
 const mvStreamCache = new Map<
   string,
   {
@@ -938,7 +938,186 @@ function writeMvCache(
 }
 
 const NON_MV_PENALTY_RE =
-  /\b(lyric\s+video|lyrics|lirik|official\s+audio|audio\s+only|karaoke|instrumental|cover|remix|slowed|reverb|nightcore|sped\s+up|8d|reaction|tutorial|lesson|piano\s+version|guitar\s+tab|1\s+hour)\b/i;
+  /\b(lyric\s+video|lyrics|lirik|official\s+audio|audio\s+only|unofficial|fan\s*made|parody|karaoke|instrumental|cover|akustik\s+cover|remix|slowed|reverb|nightcore|sped\s+up|8d|reaction|tutorial|lesson|piano\s+version|guitar\s+tab|1\s+hour|playlist|full\s+album|kumpulan\s+lagu|lagu\s+terbaik|lagu\s+terpopuler|nonstop|medley|mashup|mixtape)\b/i;
+
+const COMPILATION_OR_WRONG_FORMAT_RE =
+  /\b(playlist|full\s+album|kumpulan\s+lagu|lagu\s+terbaik|lagu\s+terpopuler|nonstop|medley|mashup|mixtape|1\s+hour|reaction|tutorial|lesson|karaoke|parody)\b/i;
+
+const VIDEO_NOISE_TAG_RE =
+  /\b(official\s+music\s+video|official\s+lyric\s+video|official\s+video|official\s+audio|music\s+video|lyric\s+video|video\s+klip|video\s+musik|video\s+clip|audio\s+only|lirik\s+lagu|lyrics?|lirik|official|unofficial|visualizer|performance|remastered|remaster|hd|4k|hq|mv|m\/v|explicit|clean|audio|video)\b/gi;
+
+const FEAT_SPLIT_RE = /\b(?:ft\.?|feat\.?|featuring|with)\b.*$/i;
+
+function tokenizeStrict(text: string): string[] {
+  return normalizeText(text)
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+}
+
+function stripCandidateMetadataTags(rawTitle: string): string {
+  // Remove parenthetical/bracketed qualifiers like (Official Music Video), [Lirik], (HD), (feat. X)
+  let cleaned = (rawTitle || '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/【[^】]*】/g, ' ');
+  cleaned = cleaned.replace(VIDEO_NOISE_TAG_RE, ' ');
+  return cleaned.replace(/\s+/g, ' ').trim();
+}
+
+interface StructuredCandidateMatch {
+  extractedSongTokens: string[];
+  extractedArtistText: string;
+  titleExact: boolean;
+  titleRecall: number;
+  titlePrecision: number;
+  artistMatched: boolean;
+  foreignArtistConflict: boolean;
+}
+
+function analyzeStructuredCandidateMatch(
+  rawItemTitle: string,
+  rawAuthor: string,
+  targetTitle: string,
+  targetArtist: string
+): StructuredCandidateMatch {
+  const targetTitleTokens = tokenizeStrict(targetTitle);
+  const targetTitleNorm = targetTitleTokens.join(' ');
+  const primaryArtistRaw = (targetArtist || '').split(/[,&]|ft\.?|feat\.?/i)[0] || '';
+  const targetArtistTokens = tokenizeStrict(primaryArtistRaw);
+  const fullArtistTokens = tokenizeStrict(targetArtist);
+  const authorTokens = tokenizeStrict(rawAuthor.replace(/\s*-\s*topic\b/i, ' '));
+  const authorNorm = authorTokens.join(' ');
+
+  const cleanedTitleRaw = stripCandidateMetadataTags(rawItemTitle);
+  // Split ONLY on whitespace-bounded delimiters so hyphenated titles like "Hati-Hati di Jalan" stay intact
+  const rawSegments = cleanedTitleRaw
+    .split(/\s+[-—–|]\s+|\s+:\s+/)
+    .map((s) => s.replace(FEAT_SPLIT_RE, ' ').trim())
+    .filter((s) => s.length > 0);
+
+  const countTokenOverlap = (hayTokens: string[], needleTokens: string[]): number => {
+    if (needleTokens.length === 0 || hayTokens.length === 0) return 0;
+    const set = new Set(hayTokens);
+    let hits = 0;
+    for (const tok of needleTokens) {
+      if (set.has(tok)) hits += 1;
+    }
+    return hits;
+  };
+
+  const artistOverlapRatio = (segTokens: string[]): number => {
+    if (targetArtistTokens.length === 0) return 0;
+    const primaryHits = countTokenOverlap(segTokens, targetArtistTokens);
+    const fullHits = countTokenOverlap(segTokens, fullArtistTokens);
+    return Math.max(
+      primaryHits / targetArtistTokens.length,
+      fullHits / Math.max(1, fullArtistTokens.length)
+    );
+  };
+
+  const titleOverlapStats = (segTokens: string[]) => {
+    if (targetTitleTokens.length === 0) {
+      return { recall: 0, precision: 0, exact: false };
+    }
+    const hits = countTokenOverlap(segTokens, targetTitleTokens);
+    const recall = hits / targetTitleTokens.length;
+    const precision = segTokens.length > 0 ? hits / segTokens.length : 0;
+    const exact = segTokens.join(' ') === targetTitleNorm && targetTitleNorm.length > 0;
+    return { recall, precision, exact };
+  };
+
+  let extractedSongTokens: string[] = [];
+  let extractedArtistText = '';
+  let artistMatchedInTitle = false;
+
+  if (rawSegments.length >= 2) {
+    const seg0Tokens = tokenizeStrict(rawSegments[0]);
+    const seg1Tokens = tokenizeStrict(rawSegments[1]);
+
+    const a0 = artistOverlapRatio(seg0Tokens);
+    const a1 = artistOverlapRatio(seg1Tokens);
+    const t0 = titleOverlapStats(seg0Tokens);
+    const t1 = titleOverlapStats(seg1Tokens);
+
+    // Order A: seg0 = Artist, seg1 = Song  vs  Order B: seg0 = Song, seg1 = Artist
+    // Crucial anti-collision: if seg0 clearly names the artist (e.g. "WAHYU SELOW - WKWKWK") and seg1 has 0 artist overlap,
+    // seg1 MUST be judged as the song title ("wkwkwk"), preventing artist name words ("selow") from faking a title match!
+    let chooseOrderA: boolean;
+    if (a0 > 0 && a1 === 0) {
+      chooseOrderA = true;
+    } else if (a1 > 0 && a0 === 0) {
+      chooseOrderA = false;
+    } else if (a0 !== a1) {
+      chooseOrderA = a0 > a1;
+    } else {
+      const scoreOrderA = t1.recall * 2 + t1.precision + (t1.exact ? 1 : 0);
+      const scoreOrderB = t0.recall * 2 + t0.precision + (t0.exact ? 1 : 0);
+      chooseOrderA = scoreOrderA >= scoreOrderB;
+    }
+
+    if (chooseOrderA) {
+      extractedArtistText = seg0Tokens.join(' ');
+      extractedSongTokens = seg1Tokens;
+      artistMatchedInTitle = a0 >= 0.5;
+    } else {
+      extractedArtistText = seg1Tokens.join(' ');
+      extractedSongTokens = seg0Tokens;
+      artistMatchedInTitle = a1 >= 0.5;
+    }
+  } else {
+    const allTokens = tokenizeStrict(cleanedTitleRaw.replace(FEAT_SPLIT_RE, ' '));
+    const authorArtistMatch = artistOverlapRatio(authorTokens) >= 0.5;
+    if (authorArtistMatch) {
+      // Bare title upload on the artist's own channel (e.g. "Bohemian Rhapsody" by "Queen Official")
+      // Remove leading artist tokens only if the title is longer than target title and starts with artist
+      const artistPrefixLen =
+        targetArtistTokens.length > 0 &&
+        allTokens.length > targetTitleTokens.length &&
+        targetArtistTokens.every((tok, idx) => allTokens[idx] === tok)
+          ? targetArtistTokens.length
+          : 0;
+      extractedSongTokens = artistPrefixLen > 0 ? allTokens.slice(artistPrefixLen) : allTokens;
+      artistMatchedInTitle = artistPrefixLen > 0;
+    } else {
+      // Strip matched artist tokens once so artist words cannot spoof a song title match
+      const remaining = [...allTokens];
+      let removedArtistCount = 0;
+      for (const aTok of targetArtistTokens) {
+        const idx = remaining.indexOf(aTok);
+        if (idx >= 0) {
+          remaining.splice(idx, 1);
+          removedArtistCount += 1;
+        }
+      }
+      artistMatchedInTitle =
+        targetArtistTokens.length > 0 && removedArtistCount / targetArtistTokens.length >= 0.5;
+      extractedSongTokens = remaining.length > 0 ? remaining : allTokens;
+    }
+  }
+
+  const authorArtistRatio = artistOverlapRatio(authorTokens);
+  const authorMatched =
+    authorArtistRatio >= 0.5 ||
+    (targetArtistTokens.length > 0 &&
+      targetArtistTokens.every((tok) => authorNorm.includes(tok) && tok.length >= 3));
+  const artistMatched = targetArtistTokens.length === 0 ? true : artistMatchedInTitle || authorMatched;
+
+  // If the video explicitly names a DIFFERENT artist segment (e.g. "Via Vallen - Selow" when target is "Wahyu")
+  // and neither title nor channel matches our artist, flag as foreign artist cover/conflict!
+  const foreignArtistConflict =
+    targetArtistTokens.length > 0 && !artistMatched && extractedArtistText.length > 0;
+
+  const stats = titleOverlapStats(extractedSongTokens);
+  return {
+    extractedSongTokens,
+    extractedArtistText,
+    titleExact: stats.exact,
+    titleRecall: stats.recall,
+    titlePrecision: stats.precision,
+    artistMatched,
+    foreignArtistConflict
+  };
+}
 
 function scoreMusicVideoCandidate(
   item: StreamCandidate,
@@ -946,12 +1125,11 @@ function scoreMusicVideoCandidate(
   cleanArtist: string,
   expectedDuration?: number
 ): number {
-  const hay = normalizeText(`${item.title} ${item.author}`);
-  const titleNorm = normalizeText(cleanTitle);
-  const artistNorm = normalizeText(cleanArtist);
   const rawTitle = (item.title || '').toLowerCase();
   const rawAuthor = (item.author || '').toLowerCase();
   const authorNorm = normalizeText(item.author);
+  const titleNorm = normalizeText(cleanTitle);
+  const artistNorm = normalizeText(cleanArtist);
 
   if (rawAuthor.endsWith('- topic') || rawAuthor.includes(' - topic')) {
     return -400;
@@ -962,49 +1140,20 @@ function scoreMusicVideoCandidate(
   ) {
     return -360;
   }
-
-  if (NON_MV_PENALTY_RE.test(rawTitle) && !/\bofficial\s+(?:music\s+)?video\b/i.test(rawTitle)) {
-    return -200;
+  if (/\bunofficial\b|\bfan\s*made\b|\bparody\b/i.test(rawTitle)) {
+    return -380;
   }
-
-  let score = 0;
-
-  if (titleNorm && hay.includes(titleNorm)) {
-    score += 48;
-  } else {
-    const words = titleNorm.split(/\s+/).filter((w) => w.length >= 2);
-    const matched = words.filter((w) => hay.includes(w)).length;
-    const minNeeded = words.length >= 2 ? Math.max(2, Math.ceil(words.length * 0.7)) : 1;
-    if (words.length > 0 && matched < minNeeded) return -300;
-    score += Math.round((matched / Math.max(1, words.length)) * 30);
+  if (COMPILATION_OR_WRONG_FORMAT_RE.test(rawTitle) && !COMPILATION_OR_WRONG_FORMAT_RE.test(cleanTitle)) {
+    return -420;
   }
-
-  if (artistNorm) {
-    const artistTokens = artistNorm.split(/\s+/).filter((w) => w.length >= 2);
-    if (hay.includes(artistNorm) || authorNorm.includes(artistNorm)) {
-      score += 32;
-    } else if (artistTokens.some((tok) => hay.includes(tok))) {
-      score += 18;
-    } else {
-      score -= 18;
-    }
-  }
-
-  if (/\bofficial\s+music\s+video\b|\bmusic\s+video\b|\bvideo\s+klip\b|\bm\s*\/\s*v\b|\bmv\b/i.test(rawTitle)) {
-    score += 75;
-  } else if (/\bofficial\s+video\b|\bvideo\s+clip\b|\bvideo\s+musik\b/i.test(rawTitle)) {
-    score += 58;
-  }
-
-  // Official artist VEVO / artist channel MV uploads format titles as "Artist - Title"
   if (
-    titleNorm &&
-    artistNorm &&
-    hay.includes(artistNorm) &&
-    normalizeText(item.title).includes(artistNorm) &&
-    normalizeText(item.title).includes(titleNorm)
+    NON_MV_PENALTY_RE.test(rawTitle) &&
+    (!/\bofficial\s+(?:music\s+)?video\b/i.test(rawTitle) || /\b(lyric|lirik|cover|remix|karaoke)\b/i.test(rawTitle))
   ) {
-    score += 36;
+    return -240;
+  }
+  if (item.duration > 900 || (expectedDuration && expectedDuration >= 60 && item.duration > 40 && Math.abs(item.duration - expectedDuration) > Math.max(95, expectedDuration * 0.65))) {
+    return -380;
   }
 
   // Reject auto-generated static album-art Topic tracks (bare song title with no video cue)
@@ -1017,43 +1166,84 @@ function scoreMusicVideoCandidate(
     return -380;
   }
 
+  // Structural song-title vs artist verification (prevents artist-word collisions like "WAHYU SELOW - WKWKWK" matching "Selow")
+  const match = analyzeStructuredCandidateMatch(item.title, item.author, cleanTitle, cleanArtist);
+  const targetTitleWordCount = tokenizeStrict(cleanTitle).length;
+  const minRecall = targetTitleWordCount >= 3 ? 0.66 : 0.99;
+
+  if (targetTitleWordCount > 0 && match.titleRecall < minRecall) {
+    return -450;
+  }
+  if (targetTitleWordCount > 0 && match.titlePrecision < 0.45) {
+    return -360;
+  }
+  if (match.foreignArtistConflict) {
+    return -380;
+  }
+
+  let score = 0;
+
+  // Title precision & recall score
+  if (match.titleExact) {
+    score += 95;
+  } else {
+    score += Math.round(match.titleRecall * 55 + match.titlePrecision * 30);
+  }
+
+  // Artist verification score
+  if (artistNorm) {
+    if (match.artistMatched) {
+      score += 42;
+    } else {
+      score -= 120;
+    }
+  }
+
+  // Official MV cues (guarded against "unofficial")
+  const isOfficialMv =
+    !/\bunofficial\b/i.test(rawTitle) &&
+    /\bofficial\s+music\s+video\b|\bmusic\s+video\b|\bvideo\s+klip\b|\bm\s*\/\s*v\b|\bmv\b/i.test(rawTitle);
+  const isOfficialVideo =
+    !/\bunofficial\b/i.test(rawTitle) &&
+    /\bofficial\s+video\b|\bvideo\s+clip\b|\bvideo\s+musik\b/i.test(rawTitle);
+
+  if (isOfficialMv) {
+    score += 62;
+  } else if (isOfficialVideo) {
+    score += 48;
+  }
+
+  // Channel authority bonus (reward artist/VEVO/label channels WITHOUT unfairly penalizing regional labels like Indo Semar Sakti)
   const isExactArtistChannel =
     rawAuthor.includes('vevo') ||
     Boolean(artistNorm && (authorNorm === artistNorm || authorNorm.includes(artistNorm)));
+  const isKnownLabelChannel =
+    /\b(records?|recordings?|music|musik|official|entertainment|group|studios?|optima|semar|aquarius|nagaswara|musica|sony|universal|warner|vevo|hits|satura|ascada|trinity|88rising|smtown|hybe|jyp|yg)\b/i.test(
+      rawAuthor
+    );
+
   if (isExactArtistChannel) {
-    score += 48;
-    if (
-      titleNorm &&
-      artistNorm &&
-      normalizeText(item.title).includes(artistNorm) &&
-      normalizeText(item.title).includes(titleNorm) &&
-      !/\b(audio|lyric|lirik|instrumental|karaoke)\b/i.test(rawTitle) &&
-      (!item.duration || item.duration >= 90)
-    ) {
-      // Official VEVO / artist channel MV ("Artist - Song" or "Artist - Song (Official Video)")
-      score += 68;
-    }
-  } else if (!/\b(records?|recordings?|music|official|entertainment|group)\b/i.test(rawAuthor)) {
-    score -= 50;
+    score += 36;
+  } else if (isKnownLabelChannel) {
+    score += 18;
   }
 
-  if (/\bofficial\b/i.test(rawTitle) || /\bofficial\b/i.test(rawAuthor)) {
-    score += 15;
+  if (!/\bunofficial\b/i.test(rawTitle) && (/\bofficial\b/i.test(rawTitle) || /\bofficial\b/i.test(rawAuthor))) {
+    score += 12;
   }
 
-  if (/\blyrics?\b/i.test(rawTitle)) {
-    score -= 95;
+  if (/\blyrics?\b|\blirik\b/i.test(rawTitle)) {
+    score -= 110;
   }
-  if (/\blive\b|\bconcert\b|\btour\b|\bfancam\b/i.test(rawTitle)) {
-    score -= 22;
+  if (/\blive\b|\bconcert\b|\btour\b|\bfancam\b/i.test(rawTitle) && !/\blive\b/i.test(cleanTitle)) {
+    score -= 28;
   }
 
   if (expectedDuration && expectedDuration > 40 && item.duration > 40) {
     const diff = Math.abs(item.duration - expectedDuration);
-    if (diff <= 15) score += 20;
-    else if (diff <= 50) score += 16;
-    else if (diff > 180) score -= 35;
-    else if (diff > 65) score -= 24;
+    if (diff <= 15) score += 24;
+    else if (diff <= 45) score += 16;
+    else if (diff > 75) score -= 35;
   }
 
   return score;
@@ -1077,11 +1267,12 @@ export async function resolveMusicVideoStream(
 
   const cleanTitle = cleanLyricsTitle(title);
   const cleanArtist = cleanLyricsArtist(artist);
-  const mvQuery = `${cleanTitle} ${cleanArtist}`.trim();
+  const artistTitleQuery = cleanArtist ? `${cleanArtist} ${cleanTitle}`.trim() : cleanTitle;
+  const dashQuery = cleanArtist ? `${cleanArtist} - ${cleanTitle}`.trim() : cleanTitle;
 
   const [mvVideoRes, mvAltRes] = await Promise.allSettled([
-    searchPipedMusic(`${mvQuery} official music video`, parentSignal, 'videos'),
-    searchPipedMusic(mvQuery, parentSignal, 'videos')
+    searchPipedMusic(`${artistTitleQuery} official music video`, parentSignal, 'videos'),
+    searchPipedMusic(dashQuery, parentSignal, 'videos')
   ]);
 
   const rawPool: StreamCandidate[] = [];
@@ -1099,12 +1290,13 @@ export async function resolveMusicVideoStream(
 
   if (rawPool.length === 0) return null;
 
+  // Enforce strict positive match threshold (>= 45) so wrong/unrelated songs are NEVER shown as a track's MV
   const ranked = rawPool
     .map((item) => ({
       item,
       score: scoreMusicVideoCandidate(item, cleanTitle, cleanArtist, expectedDuration)
     }))
-    .filter((entry) => entry.score > -120)
+    .filter((entry) => entry.score >= 45)
     .sort((a, b) => b.score - a.score);
 
   const usable = ranked.map((r) => r.item).slice(0, 6);
@@ -1152,13 +1344,10 @@ function scoreCandidate(
   expectedDuration?: number
 ): number {
   let score = 0;
-  const candTitle = normalizeText(candidate.title);
-  const candAuthor = normalizeText(candidate.author);
-  const normTitle = normalizeText(stripTitleModifiers(targetTitle));
+  const cleanTargetTitle = stripTitleModifiers(targetTitle);
   const rawLowerTitle = (targetTitle || '').toLowerCase();
   const candRawLower = (candidate.title || '').toLowerCase();
   const candAuthorLower = (candidate.author || '').toLowerCase();
-  const primaryArtist = normalizeText(targetArtist.split(/[,&]|ft\.?|feat\.?/i)[0] || '');
 
   // Block cross-market Indian/Bollywood stream hijacks for non-Indian tracks
   const targetLooksIndian = STREAM_INDIAN_MISMATCH_RE.test(`${targetTitle} ${targetArtist}`);
@@ -1166,44 +1355,48 @@ function scoreCandidate(
     score -= 320;
   }
 
-  if (candTitle === normTitle) score += 65;
-  else if (normTitle && candTitle.includes(normTitle)) score += 40;
-
-  const titleWords = normTitle.split(' ').filter((w) => w.length >= 2);
-  let matchedWords = 0;
-  for (const word of titleWords) {
-    if (candTitle.includes(word)) matchedWords++;
-  }
-  if (titleWords.length > 0) {
-    score += Math.round((matchedWords / titleWords.length) * 35);
-    if (matchedWords === 0) score -= 60;
+  if (COMPILATION_OR_WRONG_FORMAT_RE.test(candRawLower) && !COMPILATION_OR_WRONG_FORMAT_RE.test(rawLowerTitle)) {
+    return -360;
   }
 
-  let artistMatched = false;
-  if (primaryArtist) {
-    if (candAuthor.includes(primaryArtist) || candTitle.includes(primaryArtist)) {
-      score += 45;
-      artistMatched = true;
-    } else if (primaryArtist.split(' ').every((part) => candAuthor.includes(part) || candTitle.includes(part))) {
-      score += 28;
-      artistMatched = true;
+  // Apply the same structural title-vs-artist verification so audio failover never picks a wrong song
+  const match = analyzeStructuredCandidateMatch(candidate.title, candidate.author, cleanTargetTitle, targetArtist);
+  const titleWordCount = tokenizeStrict(cleanTargetTitle).length;
+
+  if (match.titleExact) {
+    score += 85;
+  } else if (titleWordCount > 0) {
+    const minRecall = titleWordCount >= 3 ? 0.6 : 0.99;
+    if (match.titleRecall < minRecall) {
+      score -= 220;
     } else {
-      score -= 90;
+      score += Math.round(match.titleRecall * 52 + match.titlePrecision * 28);
+      if (match.titlePrecision < 0.45) {
+        score -= 95;
+      }
     }
   }
 
-  if (artistMatched && candAuthorLower.includes('- topic')) {
+  if (match.foreignArtistConflict) {
+    score -= 240;
+  } else if (match.artistMatched) {
+    score += 48;
+  } else {
+    score -= 110;
+  }
+
+  if (match.artistMatched && candAuthorLower.includes('- topic')) {
     // Official YouTube Music auto-generated DDEX studio master: normalized to -14 LUFS & static cover frame (~85% less data)
     score += 72;
   } else if (
-    artistMatched &&
+    match.artistMatched &&
     (candRawLower.includes('official audio') || candRawLower.includes('audio only'))
   ) {
     score += 48;
-  } else if (artistMatched && candRawLower.includes('lyrics')) {
+  } else if (match.artistMatched && (candRawLower.includes('lyrics') || candRawLower.includes('lirik'))) {
     score += 4;
   } else if (
-    artistMatched &&
+    match.artistMatched &&
     (candAuthorLower.includes('vevo') || candRawLower.includes('official video') || candRawLower.includes('music video'))
   ) {
     // Demote moving music videos during Audio Mode (separate Music Video stage calls resolveMusicVideoStream)
@@ -1213,16 +1406,19 @@ function scoreCandidate(
   if (!rawLowerTitle.includes('live') && (candRawLower.includes('(live') || candRawLower.includes('live in ') || candRawLower.includes('concert'))) {
     score -= 22;
   }
+  if (!rawLowerTitle.includes('cover') && /\bcover\b/i.test(candRawLower)) {
+    score -= 85;
+  }
 
   if (expectedDuration && expectedDuration >= 60 && candidate.duration >= 60) {
     const diff = Math.abs(candidate.duration - expectedDuration);
     if (diff <= 5) score += 55;
     else if (diff <= 10) score += 42;
     else if (diff <= 25) score += 18;
-    else if (diff > 60) score -= 40;
+    else if (diff > 60) score -= 55;
   }
 
-  if ((candidate.duration > 0 && candidate.duration < 60) || candidate.duration > 1800) score -= 100;
+  if ((candidate.duration > 0 && candidate.duration < 60) || candidate.duration > 1800) score -= 120;
   return score;
 }
 
@@ -1232,7 +1428,7 @@ export interface ResolvedFullStream {
   duration: number;
 }
 
-const STREAM_CACHE_KEY = 'sonacast_stream_cache_v2';
+const STREAM_CACHE_KEY = 'sonacast_stream_cache_v3';
 const STREAM_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const streamMemoryCache = new Map<string, { value: ResolvedFullStream; cachedAt: number }>();
 
@@ -1398,14 +1594,18 @@ export async function resolveFullTrackStream(
 
       if (combined.length === 0) return null;
 
-      const ranked = [...combined].sort(
-        (a, b) =>
-          scoreCandidate(b, title, artist, expectedDuration) -
-          scoreCandidate(a, title, artist, expectedDuration)
-      );
+      const scored = combined
+        .map((c) => ({ item: c, score: scoreCandidate(c, title, artist, expectedDuration) }))
+        .sort((a, b) => b.score - a.score);
 
-      const candidateIds = ranked.slice(0, 8).map((c) => c.videoId);
-      const best = ranked[0];
+      const verified = scored.filter((entry) => entry.score >= 25);
+      const acceptable =
+        verified.length > 0 ? verified : scored.filter((entry) => entry.score >= 0).slice(0, 1);
+
+      if (acceptable.length === 0) return null;
+
+      const candidateIds = acceptable.slice(0, 6).map((e) => e.item.videoId);
+      const best = acceptable[0].item;
 
       const resolved: ResolvedFullStream = {
         youtubeId: candidateIds[0],

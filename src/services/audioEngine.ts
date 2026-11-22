@@ -172,6 +172,7 @@ export class AudioEngine {
   private html5PollGen = -1;
   private ytWatchdogTimer: number | null = null;
   private ytWatchdogKickedOnce = false;
+  private ytQualityAppliedGen = -1;
   private ytResumeCheckTimer: number | null = null;
   private ytFadeTimer: number | null = null;
   private wakeRecoverTimer: number | null = null;
@@ -1090,7 +1091,7 @@ export class AudioEngine {
       this.cancelWorkerTimer(this.ytWatchdogTimer);
       this.ytWatchdogTimer = null;
     }
-    const waitMs = delayOverrideMs ?? (this.isDocumentHidden ? 5200 : 3600);
+    const waitMs = delayOverrideMs ?? (this.isDocumentHidden ? 5800 : 4800);
     this.ytWatchdogTimer = this.scheduleWorkerTimer(() => {
       this.ytWatchdogTimer = null;
       if (gen !== this.playGeneration || this.activeBackend !== 'youtube' || !this.isPlaying) {
@@ -1110,23 +1111,25 @@ export class AudioEngine {
       if ((typeof pos === 'number' && pos >= 0.3) || ytState === 1) {
         return;
       }
-      // In background tabs, give YouTube one unMute+playVideo nudge if stuck in CUED/PAUSED/UNSTARTED before skipping candidate
+      // If actively buffering (3) or stuck in CUED/PAUSED/UNSTARTED on first check, give one non-destructive grace extension
+      // instead of abruptly killing the primary official track candidate on slower connections
       if (
-        this.isDocumentHidden &&
         !this.ytWatchdogKickedOnce &&
         this.ytPlayer &&
         this.ytReady &&
-        (ytState === -1 || ytState === 2 || ytState === 5 || ytState === 3)
+        (ytState === 3 || (this.isDocumentHidden && (ytState === -1 || ytState === 2 || ytState === 5)))
       ) {
         this.ytWatchdogKickedOnce = true;
         try {
           this.ytPlayer.unMute?.();
           this.ytPlayer.setVolume(this.getCalibratedYouTubeVolume());
-          this.ytPlayer.playVideo();
+          if (ytState !== 3) {
+            this.ytPlayer.playVideo();
+          }
         } catch {
           // Ignore kick error
         }
-        this.armYouTubeWatchdog(gen, 3200);
+        this.armYouTubeWatchdog(gen, 4500);
         return;
       }
       this.advanceToNextCandidate(gen);
@@ -1207,14 +1210,17 @@ export class AudioEngine {
     return Math.max(0, Math.min(1, base * mult));
   }
 
-  private applyYouTubeBandwidthMode(player?: YTPlayerInstance | null) {
+  private applyYouTubeBandwidthMode(player?: YTPlayerInstance | null, force = false) {
     const targetPlayer = player || this.ytPlayer;
     if (!targetPlayer) return;
+    if (!force && this.ytQualityAppliedGen === this.playGeneration) return;
+    this.ytQualityAppliedGen = this.playGeneration;
     try {
       if (this.audioDataSaverEnabled && !this.videoStageActive) {
-        targetPlayer.setPlaybackQualityRange?.('tiny', 'small');
+        // Use stable 'small'..'medium' ladder (avoid forcing 'tiny' 144p which can stall on sparse CDN chunks)
+        targetPlayer.setPlaybackQualityRange?.('small', 'medium');
         targetPlayer.setPlaybackQuality?.('small');
-      } else {
+      } else if (force) {
         targetPlayer.setPlaybackQualityRange?.('medium', 'hd720');
         targetPlayer.setPlaybackQuality?.('default');
       }
@@ -1887,8 +1893,8 @@ export class AudioEngine {
           this.completeCurrentTrack(pollGen);
           return;
         }
-        const stallLimitMs = this.html5PlayPending ? 3600 : this.isDocumentHidden ? 2400 : 1400;
-        if (stalledMs >= stallLimitMs && !this.blobRecoverInFlight) {
+        const stallLimitMs = this.html5PlayPending ? 5500 : this.isDocumentHidden ? 6500 : 4800;
+        if (stalledMs >= stallLimitMs && activeEl.readyState < 3 && !this.blobRecoverInFlight) {
           void this.recoverStalledHtml5Seek(pollGen, activeEl.currentTime);
         }
       }
@@ -1910,7 +1916,7 @@ export class AudioEngine {
 
   private startHtml5Poll() {
     this.stopHtml5Poll();
-    const intervalMs = this.isDocumentHidden ? 800 : this.lowCpuMode ? 350 : 100;
+    const intervalMs = this.isDocumentHidden ? 800 : this.lowCpuMode ? 400 : 250;
     const pollGen = this.playGeneration;
     this.html5PollGen = pollGen;
     this.html5LastPos = this.getActiveHtml5Element()?.currentTime ?? -1;
@@ -2011,8 +2017,9 @@ export class AudioEngine {
         }
 
         // Mid-track silence/buffering stall self-recovery ONLY while tab is visible:
-        // In hidden tabs Chromium throttles cross-origin YouTube infoDelivery even while audio plays smoothly,
-        // so running mid-track seekTo/reload while hidden would rewind or interrupt live background audio.
+        // Never wipe YouTube's active buffer with seekTo at 5s while buffering (state 3);
+        // allow 12s for natural network buffering, nudge with non-destructive playVideo() first,
+        // and only seekTo/failover if truly deadlocked.
         if (
           !this.isDocumentHidden &&
           this.isPlaying &&
@@ -2024,22 +2031,39 @@ export class AudioEngine {
             this.ytMidStallLastPos = effectivePos;
             this.ytMidStallSince = nowMs;
             this.ytMidStallRecoveries = 0;
-          } else if (nowMs - this.ytMidStallSince >= 5200) {
-            this.ytMidStallSince = nowMs;
-            if (this.ytMidStallRecoveries === 0) {
-              this.ytMidStallRecoveries = 1;
-              try {
-                this.ytPlayer.unMute?.();
-                this.ytPlayer.seekTo(effectivePos + 0.15, true);
-                this.ytPlayer.playVideo();
-              } catch {
-                // Ignore recovery nudge error
+          } else {
+            const stallThresholdMs =
+              ytState === 3
+                ? this.ytMidStallRecoveries === 0
+                  ? 12000
+                  : 8000
+                : 7000;
+            if (nowMs - this.ytMidStallSince >= stallThresholdMs) {
+              this.ytMidStallSince = nowMs;
+              if (this.ytMidStallRecoveries === 0) {
+                this.ytMidStallRecoveries = 1;
+                try {
+                  this.ytPlayer.unMute?.();
+                  this.ytPlayer.setVolume(this.getCalibratedYouTubeVolume());
+                  this.ytPlayer.playVideo();
+                } catch {
+                  // Ignore recovery nudge error
+                }
+              } else if (this.ytMidStallRecoveries === 1) {
+                this.ytMidStallRecoveries = 2;
+                try {
+                  this.ytPlayer.unMute?.();
+                  this.ytPlayer.seekTo(effectivePos + 0.05, true);
+                  this.ytPlayer.playVideo();
+                } catch {
+                  // Ignore seek nudge error
+                }
+              } else if (this.ytMidStallRecoveries === 2 && this.candidateIndex + 1 < this.candidateIds.length) {
+                this.ytMidStallRecoveries = 3;
+                this.pendingYtSeekSeconds = Math.floor(effectivePos);
+                this.advanceToNextCandidate(pollGen);
+                return;
               }
-            } else if (this.ytMidStallRecoveries === 1 && this.candidateIndex + 1 < this.candidateIds.length) {
-              this.ytMidStallRecoveries = 2;
-              this.pendingYtSeekSeconds = Math.floor(effectivePos);
-              this.advanceToNextCandidate(pollGen);
-              return;
             }
           }
         } else {
@@ -2104,7 +2128,7 @@ export class AudioEngine {
     this.ytMidStallSince = 0;
     this.ytMidStallLastPos = -1;
     this.ytMidStallRecoveries = 0;
-    const intervalMs = this.isDocumentHidden ? 800 : this.lowCpuMode ? 350 : 100;
+    const intervalMs = this.isDocumentHidden ? 800 : this.lowCpuMode ? 400 : 250;
     const pollGen = this.playGeneration;
     this.ytPollGen = pollGen;
     this.ytPollInterval = window.setInterval(() => {
@@ -2289,7 +2313,6 @@ export class AudioEngine {
             this.ytTrackTransitionUntil = 0;
             this.ytBgPauseRecoverCount = 0;
             this.ytWatchdogKickedOnce = false;
-            this.applyYouTubeBandwidthMode(event.target);
             if (this.pendingYtSeekSeconds !== null) {
               const deferredSeek = this.pendingYtSeekSeconds;
               this.pendingYtSeekSeconds = null;
@@ -3245,7 +3268,7 @@ export class AudioEngine {
   public setAudioDataSaver(enabled: boolean) {
     this.audioDataSaverEnabled = enabled;
     if (this.activeBackend === 'youtube' && this.ytPlayer && this.ytReady) {
-      this.applyYouTubeBandwidthMode(this.ytPlayer);
+      this.applyYouTubeBandwidthMode(this.ytPlayer, true);
     }
   }
 
@@ -3257,7 +3280,7 @@ export class AudioEngine {
     if (this.videoStageActive === active) return;
     this.videoStageActive = active;
     if (this.activeBackend === 'youtube' && this.ytPlayer && this.ytReady) {
-      this.applyYouTubeBandwidthMode(this.ytPlayer);
+      this.applyYouTubeBandwidthMode(this.ytPlayer, true);
     }
   }
 

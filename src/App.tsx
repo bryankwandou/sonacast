@@ -3238,10 +3238,11 @@ export default function App() {
     };
   }, [isPlaying, currentTrack, queue, manualQueue, recState, activeMood, prewarmTrackStream]);
 
-  // Background pre-resolve next upcoming track mid-playback in case queue changed dynamically
+  // Background pre-resolve next upcoming track ONCE past 35% playback (boolean trigger avoids re-running on every time tick)
+  const passedPrewarmThreshold =
+    currentTrack.duration > 0 && currentTime / currentTrack.duration >= 0.35;
   useEffect(() => {
-    if (!isPlaying || currentTrack.duration <= 0) return;
-    if (currentTime / currentTrack.duration < 0.35) return;
+    if (!isPlaying || !passedPrewarmThreshold) return;
 
     const preview = pickNextTrackPure({
       currentTrack,
@@ -3253,7 +3254,7 @@ export default function App() {
     }).nextTrack;
 
     prewarmTrackStream(preview);
-  }, [isPlaying, currentTime, currentTrack, queue, manualQueue, recState, activeMood, prewarmTrackStream]);
+  }, [isPlaying, passedPrewarmThreshold, currentTrack, queue, manualQueue, recState, activeMood, prewarmTrackStream]);
 
   // OS Lockscreen / Media Keys integration
   useEffect(() => {
