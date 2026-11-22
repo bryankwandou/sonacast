@@ -204,17 +204,24 @@ export const SONIC_CLASS_PROFILES: Record<SonicClassId, SonicClassProfile> = {
       'Dian Sorowea', 'Dandy Barakati', 'Silet Open Up', 'Juan Reza',
       'Wizz Baker', 'Fresly Nikijuluw', 'Toton Caribo', 'Mace Purba', 'Jacson Zeran',
       'Justy Aldrin', 'Vicky Salamor', 'Mario G Klau', 'Gihon Marel', 'Ecko Show',
-      'Raim Laode', 'Chesylino', 'Gery Gany', 'Shine Of Black'
+      'Raim Laode', 'Chesylino', 'Gery Gany', 'Shine Of Black', 'Glen Sebastian',
+      'Faris Adam', 'Doddie Latuharhary', 'Mitha Talahatu', 'Putry Pasanea', 'Kapthenpurek'
     ],
     keywords: [
-      'near', 'dian sorowea', 'dandy barakati', 'silet open up', 'juan reza',
+      'near', 'dian sorowea', 'dandy barakati', 'dante nababan', 'silet open up', 'juan reza',
       'wizz baker', 'fresly nikijuluw', 'toton caribo', 'mace purba', 'jacson zeran',
-      'jecson zeran', 'justy aldrin', 'vicky salamor', 'mario g klau', 'gihon marel',
+      'jacson seran', 'jecson zeran', 'justy aldrin', 'vicky salamor', 'mario g klau', 'gihon marel',
       'ecko show', 'raim laode', 'chesylino', 'gery gany', 'shine of black',
-      'ona hetharua', 'mitha talahatu', 'glenn sebastian', 'doddie latuharhary',
+      'ona hetharua', 'mitha talahatu', 'glen sebastian', 'glenn sebastian', 'doddie latuharhary',
       'yochen amos', 'whllyano', 'nyong franco', 'dj qhelfin', 'marvey kaya',
-      'aldy maldini', 'faris adam', 'tenxi', 'naykilla', 'jemsii', 'm.a.c', 'mac papua',
+      'aldy maldini', 'faris adam', 'diva aurel', 'tenxi', 'naykilla', 'jemsii', 'm.a.c', 'mor m.a.c', 'mac papua',
       'nino minggo', 'ichad bless', 'osen hutasoit', 'vicky sianipar', 'trio ambisi',
+      'kapthenpurek', 'putry pasanea', 'putri pasanea', 'mona latumahina', 'willy sopacua',
+      'chaken supusepa', 'ryo domara', 'piche kota', 'novia bachmid', 'yopie latul',
+      'loela drakel', 'boniex', 'trio elexis', 'verry klau', 'floo keytimu', 'uncle east',
+      'randy husain', 'djipeng', 'lhc makassar', 'd ari', 'alan3m', 'edhoo jubi',
+      'philips jubi', 'irsan yd', 'boorcay', 'etgard kalengke', 'omhand v', 'ajay damima',
+      'wahyu selow', 'fresh boy', 'pelita timur',
       'timur', 'ambon', 'papua', 'kupang', 'manado', 'ntt'
     ]
   },
@@ -443,13 +450,36 @@ const FOREIGN_NON_ID_TITLE_RE =
   /(?:[æøåßçñ¿¡üöäßéèêëàâîïôùûãõ]|\b(tu répondais|repondais|tænd|taend|vois sur|ca ira|ça ira|geloscht|gelöscht|vorbei|meio pa|meio pá|le horla|ei levante|mergulho|malas decisiones|nada de ti|me adora|quiero|corazon|corazón|je t'aime|pourquoi|toujours|jamais|nicht|ich bin|você|voce|saudade|nao|não|coração|luftballon|bilder)\b)/i;
 
 const TIMUR_TITLE_CUES =
-  /\b(karna su sayang|tabola bale|mode pesawat|bale pulang|sa stop|sa sayang|sa tra|ko tra|ko tenang|ko biasa|trada|jang ganggu|jang balikan|kaka main salah|aduh mamae|nona ambon|nona papua|ste cu|stecu|pica pica|garam dan madu|garam & madu|par ale|deng dia|so bilang|su tunggu|beta rindu|beta sayang|ale pung|pigi jo|bintang trada|mama su tunggu|hits timur|lagu timur|rindu timur|orang timur|jaga orang pu jodoh|pu jodoh|cuma saya|orang baru lebe gacor|lebe gacor|ubur ubur ikan lele|ngapain repot|ora urus|baju hitam|se dimana|se yang paksa|cinta beda agama|hitung hitung|babak terakhir|lesung pipi|komang|iqro)\b/i;
+  /\b(karna su sayang|tabola bale|mode pesawat|bale pulang|sa stop|sa sayang|sa tra|sa lelah|sa cinta|sa suka|sa kecewa|sa sunyi|sa menyerah|sa harus|sa janji|sa mau|sa rindu|sa pu|sa su|sa bilang|sa tunggu|sa jaga|sa pergi|sa pigi|sa pulang|sa sendiri|sa sandiri|sa bosan|ko tra|ko su|ko pu|ko tenang|ko biasa|ko bukan|ko siapa|ko bilang|ko pigi|ko lupa|ko tau|trada|jang ganggu|jang main|jang balikan|kaka main salah|aduh mamae|nona ambon|nona papua|nona kupang|nona manado|nona timur|ste cu|stecu|pica pica|garam dan madu|garam & madu|par ale|deng dia|so bilang|su tunggu|su tra|su kalah|su bosan|beta rindu|beta sayang|beta salah|beta mau|ale pung|orang pung|tamang pung|beta pung|pung sayang|pung kisah|pigi jo|sejak se pigi|se pigi|bintang trada|mama su tunggu|hits timur|lagu timur|rindu timur|orang timur|jaga orang pu jodoh|pu jodoh|pu hati|cuma saya|orang baru lebe gacor|lebe gacor|ubur ubur ikan lele|ngapain repot|ora urus|baju hitam|se dimana|se yang paksa|cinta beda agama|cinta sakota|janji putih|ambon manise|gandong|taguling|gogoriso|so tanta|ta lipa|body pata|salting gila|masih sandiri|luka kanapa|bilang sa|mungkin ale|kalah harta|ujung taong|baku sayang|baku jaga|hitung hitung|babak terakhir|lesung pipi|komang|iqro)\b/i;
+
+const TIMUR_DIALECT_PAIR_RE =
+  /\b(?:sa|ko|beta|ale|katong|kitorang|ngana|torang|dorang)\s+(?:su|tra|pu|pung|lelah|cinta|suka|sayang|rindu|kecewa|sunyi|menyerah|harus|janji|mau|bilang|tunggu|jaga|pergi|pigi|pulang|bale|sendiri|sandiri|tetap|percaya|masih|takut|rasa|coba|lupa|minta|stop|bosan|bukan|siapa|biasa|tenang|tau|tahu|kasih|salah|kalah|paksa|hati|hilang|setia|sakit|sedih|bahagia|manis|gila|main|dapat|punya)\b/i;
+
+const PURE_ENGLISH_TITLE_WORD_RE =
+  /\b(the|with|your|you|my|me|from|into|love|night|dream|stay|back|turn|life|slow|dancing|dark|lights?|stuck|nobody|gets|lost|skyline|window|crack|rock|twenties|snooze|years?|tryna|never|always|forever|every|where|when|what|who|why|how|heart|baby|girl|boy|time|fire|rain|home|alone|tonight|without|holding|falling|running|waiting|thinking|feeling|missing|broken|better|beautiful|crazy|wild|sweet|sorry|goodbye|hello|world|stars?|moon|sun|sky|ocean|water|blood|tears?|smile|eyes|hands|mind|soul|body|kiss|touch|hold|walk|run|fly|die|live|cry|laugh|wait|want|need|know|feel|make|take|give|come|go|see|say|tell|leave|keep|let|stop|play|sing|dance|sleep|wake)\b/gi;
+
+function hasPureEnglishTitleWithoutIndoSignal(title: string): boolean {
+  const lower = String(title || '').toLowerCase();
+  if (!lower) return false;
+  if (
+    TIMUR_TITLE_CUES.test(lower) ||
+    TIMUR_DIALECT_PAIR_RE.test(lower) ||
+    INDONESIAN_STRONG_TITLE_CUES.test(lower) ||
+    countUniqueRegexMatches(lower, INDONESIAN_STRUCTURAL_WORD_RE) >= 1
+  ) {
+    return false;
+  }
+  const engHits = countUniqueRegexMatches(lower, PURE_ENGLISH_TITLE_WORD_RE);
+  if (engHits >= 2) return true;
+  const words = lower.replace(/[^a-z\s]/g, ' ').trim().split(/\s+/).filter((w) => w.length >= 2);
+  return words.length >= 1 && words.length <= 2 && engHits === words.length;
+}
 
 const INDONESIAN_STRONG_TITLE_CUES =
   /\b(sayang|sayangku|sayangmu|cinta|cintaku|cintamu|rindu|rinduku|rindumu|hati|hatiku|hatimu|kenangan|kisah|tertawan|trakan|mendua|dirimu|diriku|sialnya|sempurna|kasih|separuh|monokrom|tujuh belas|berdua|bertahan|menunggu|selamanya|karena|jangan|terlalu|karna|jang|komang|tak segampang|sisa rasa|hilang tanpa bilang|tak ingin usai|pesan terakhir|penjaga hati|semata karenamu|berhenti berharap|seluruh nafas|cukup tahu|dan\.\.\.|kangen|negoro|angin|mendung|rungkad|ojo|lali|pulang|pesawat|bale|tabola|trada|nona|mamae|selow|laskar|pelangi|menangis|sial|satu bulan|mati-matian|berjalan|terlintas|bintang|senja|pelukan|bunga maaf|lampu merah|lampu kuning|teruntuk|ambang rindu|jiwa yang bersedih|asmalibrasi|teman tapi mesra|hampa|dawai|kejora|begadang|syantik|bertaut|sorai|cincin|mangu|runtuh|duka|akad|tampar|teramini|seumur hidup|kulepas|ikhlas|benci kusangka|emas hantaran|haruskah aku mati|perasaanku|berpisah|berbeza|mengerti|tungkek|mambaok|rabah|palaminan|padiah|bana|ciinan|takicuah|cundamani|kalih welasku|kartonyono|medot janji|pamer bojo|banyu langit|sewu kutho|stasiun balapan|klebus|wirang|sanes|nemen|pingal|dumes|satru|cidro|ambyar|tresno|bojo|layang kangen|lungiting asmoro|terluka|tersakiti|bersedih|kecewa|melupakan|meninggalkan|bertemu|terbelah|lesung pipi|teh hijau|jatuh suka|adu rayu|percuma|bawa dia kembali|anugerah terindah|bisa tanpamu|kumau dia|hanya rindu|jikalau kau cinta|bukan dia tapi aku|mama papa larang|rahasia hati|hapus aku|sumpah dan cinta|bila aku jatuh cinta|mau dibawa kemana|asal kau bahagia|pergi pagi pulang pagi|apa kabar sayang|dilema cinta|cinta dalam hati|demi waktu|pelan pelan saja|masih cinta|tanah airku|ruang rindu|sebelum cahaya|sandaran hati|permintaan hati|terlalu manis|ku tak bisa|andai aku bisa|untukku|kala cinta menggoda|seperti yang kau minta|lilin lilin kecil|haruskah ku mati|manusia bodoh|surga cinta|setengah hati|putri iklan|cari pacar lagi|cinta tak harus memiliki|betapa ku cinta|bukan cinta biasa|purnama merindu|mistikus cinta|risalah hati|aku milikmu|pupus|sephia|seberapa pantas|hari bersamanya|pemuja rahasia|walau habis terang|ada apa denganmu|mimpi yang sempurna|menghapus jejakmu|separuh aku|hidup untukmu|yang terdalam|tak lagi sama|semua tak sama|begitu indah|kasih tak sampai|mahadewi|kepastian yang ku tunggu|11 januari|nakal|bidadari tak bersayap|kekasih terhebat|teman bahagia|bersamamu|dari mata|pandangan pertama|dekat di hati|melepasmu|bersama bintang|kau masih kekasihku|terendap laraku|akhirnya ku menemukanmu|pura pura lupa|seamin tak seiman|luka yang kurindu|jodoh pasti bertemu|panah asmara|apalah arti menunggu|mantan terindah|tak berharap lagi|tak sanggup lagi|jangan hilangkan dia|aku baik saja|rumah ke rumah|evakuasi|evaluasi|secukupnya|berdansalah|usahakan lagi|seperti ini|belum sekarang|menantu sinting|kota ini tak sama|tanpamu|bergema|tiba-tiba jumat|cari jodoh|baik baik sayang|nenekku pahlawanku|bang toyib|ada gajah dibalik batu|emang dasar|tetap bertahan|kepingan hati|salam terakhir|putih putih melati|cinta bukan harta|kekasih bayangan|harus terpisah|seluruh cinta|bukan jodohnya|menjaga jodoh|sesi potret|dunia yang nanti|bersenja gurau|sebelah mata|puisi alam|kursi goyang|mari bercerita|buat aku tersenyum|sang penghibur|tunggu aku di jakarta|sesuatu yang indah|aku cinta dia|janji setia|cinta satukan kita|bertahan pergi|cari aku di bandung|hilang tapi ada|awal kisah)\b/i;
 
 const INDONESIAN_STRUCTURAL_WORD_RE =
-  /\b(aku|kamu|kau|kita|yang|tidak|tak|dengan|untuk|dari|pada|dalam|saat|jika|kalau|bila|lagi|sudah|belum|akan|harus|bisa|masih|pernah|selalu|hanya|cuma|tentang|tanpa|kembali|pergi|datang|hidup|mati|dunia|malam|pagi|hari|waktu|bulan|tahun|mata|jiwa|luka|rasa|kata|nama|wajah|suara|senyum|mimpi|janji|setia|teman|sahabat|kekasih|wanita|perempuan|lelaki|tuhan|surga|langit|bumi|hujan|laut|kota|rumah|jalan|lampu|bunga|matahari|cahaya|gelap|terang|sepi|sunyi|indah|cantik|manis|pahit|pedih|perih|sakit|hilang|hadir|tinggal|lepas|peluk|tangis|tawa|salah|jujur|bohong|percaya|ragu|takut|kuat|lelah|tenang|damai|benci|marah|cemburu|egois|sabar|rela|tega|bodoh|gila|mesra|seperti|begini|begitu|kenapa|mengapa|bagaimana|dimana|kemana|siapa|apa|semua|seluruh|setiap|seorang|sebuah|satu|dua|tiga|tujuh|seribu|sekali|terakhir|pertama|terbaik|terindah|terdalam|kini|nanti|dulu|baru|lama|esok|kemarin|sampai|hingga|walau|meski|namun|tapi|atau|dan|demi|biar|biarlah|semoga|tolong|mohon|usahakan|tinggalkan|lupakan|maafkan|lepaskan|mengerti|pahami|ingat|lupa|tahu|tau|mau|ingin|butuh|suka|harap|punya|milik|orang|lain|bukan|jadi|buat|sama|ini|itu|sini|sana|di|ke|ku|mu|nya|ora|iso|kowe|wes|wis|nganti|wengi|tanpo|udan|dalan|liyane|nan|indak|ndak|denai|uda|adiak|rancak|lamak)\b/gi;
+  /\b(aku|kamu|kau|kita|yang|tidak|tak|dengan|untuk|dari|pada|dalam|saat|jika|kalau|bila|lagi|sudah|belum|akan|harus|bisa|masih|pernah|selalu|hanya|cuma|tentang|tanpa|kembali|pergi|datang|hidup|mati|dunia|malam|pagi|hari|waktu|bulan|tahun|mata|jiwa|luka|rasa|kata|nama|wajah|suara|senyum|mimpi|janji|setia|teman|sahabat|kekasih|wanita|perempuan|lelaki|tuhan|surga|langit|bumi|hujan|laut|kota|rumah|jalan|lampu|bunga|matahari|cahaya|gelap|terang|sepi|sunyi|indah|cantik|manis|pahit|pedih|perih|sakit|hilang|hadir|tinggal|lepas|peluk|tangis|tawa|salah|jujur|bohong|percaya|ragu|takut|kuat|lelah|tenang|damai|benci|marah|cemburu|egois|sabar|rela|tega|bodoh|gila|mesra|seperti|begini|begitu|kenapa|mengapa|bagaimana|dimana|kemana|siapa|apa|semua|seluruh|setiap|seorang|sebuah|satu|dua|tiga|tujuh|seribu|sekali|terakhir|pertama|terbaik|terindah|terdalam|kini|nanti|dulu|baru|lama|esok|kemarin|sampai|hingga|walau|meski|namun|tapi|atau|dan|demi|biar|biarlah|semoga|tolong|mohon|usahakan|tinggalkan|lupakan|maafkan|lepaskan|mengerti|pahami|ingat|lupa|tahu|tau|mau|ingin|butuh|suka|harap|punya|milik|orang|lain|bukan|jadi|buat|sama|ini|itu|sini|sana|di|ke|ku|mu|nya|ora|iso|kowe|wes|wis|nganti|wengi|tanpo|udan|dalan|liyane|nan|indak|ndak|denai|uda|adiak|rancak|lamak|sa|ko|beta|ale|su|tra|trada|pung|pigi|bale|sampe|sandiri|kanapa|tamang|gandong|lebe|jang|deng|katong|ngana|torang|taong)\b/gi;
 
 const WORD_BOUNDARY_CACHE = new Map<string, RegExp>();
 
@@ -576,7 +606,11 @@ function isArabicTrackSignal(
 
 function hasIndonesianLexicalSignal(textLower: string): boolean {
   if (!textLower) return false;
-  if (TIMUR_TITLE_CUES.test(textLower) || INDONESIAN_STRONG_TITLE_CUES.test(textLower)) {
+  if (
+    TIMUR_TITLE_CUES.test(textLower) ||
+    TIMUR_DIALECT_PAIR_RE.test(textLower) ||
+    INDONESIAN_STRONG_TITLE_CUES.test(textLower)
+  ) {
     return true;
   }
   return countUniqueRegexMatches(textLower, INDONESIAN_STRUCTURAL_WORD_RE) >= 2;
@@ -829,7 +863,11 @@ export function classifyTrackTier(
   }
 
   // 6. Eastern Indonesian (Lagu Timur) titles & genres
-  if (TIMUR_TITLE_CUES.test(`${titleLower} ${albumLower}`) || genreLower.includes('timur')) {
+  if (
+    TIMUR_TITLE_CUES.test(`${titleLower} ${albumLower}`) ||
+    TIMUR_DIALECT_PAIR_RE.test(`${titleLower} ${albumLower}`) ||
+    genreLower.includes('timur')
+  ) {
     return SONIC_CLASS_PROFILES.indo_timur_hits;
   }
 
@@ -2097,8 +2135,13 @@ export function selectCohesiveCandidatePool(
       // English seeds never pull Indian, Arabic, Indonesian, or other unrelated non-English scripts
       return cl === 'en' || cl === 'ko' || cl === 'ja' || cl === 'es';
     }
-    // Non-English seeds (Indonesian, Indian, Arabic, K-Pop, J-Pop, Latin, etc.) stay strictly in-language
-    return cl === seedLang;
+    // Non-English seeds (Indonesian / Lagu Timur / Dangdut, Indian, Arabic, K-Pop, J-Pop, Latin) stay strictly in-language
+    if (cl !== seedLang) return false;
+    // Extra guard for Indonesian & Lagu Timur seeds: block pure English-titled tracks (e.g. "Stay Back", "My Life", "TWENTIES")
+    if (seedLang === 'id' && hasPureEnglishTitleWithoutIndoSignal(cand.title)) {
+      return false;
+    }
+    return true;
   });
 
   const exactClassAndLang = langSafePool.filter((cand) => {

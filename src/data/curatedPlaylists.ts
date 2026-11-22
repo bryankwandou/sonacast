@@ -1,4 +1,4 @@
-import type { CatalogPlaylist, Track } from '../types';
+import type { CatalogAlbum, CatalogPlaylist, Track } from '../types';
 import { TRACK_CATALOG } from './catalog';
 
 const ZERO_SOL_ADDRESS = '';
@@ -398,6 +398,358 @@ export const COHESIVE_SEED_TRACKS: Track[] = [
     bpm: 68,
     lyrics: [],
     artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  // Verified Eastern Indonesian (Hits Lagu Timur) catalog tracks from Apple Music ID
+  {
+    id: 'it-6767536022',
+    title: 'TABOLA BALE',
+    artist: 'Silet Open Up, Jacson Seran, Juan Reza & Diva Aurel',
+    album: 'TABOLA BALE - Single',
+    duration: 274,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/81/e2/51/81e25101-b6c1-ec65-843b-06469cf2e01e/321336.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 118,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-6782567065',
+    title: 'MODE PESAWAT',
+    artist: 'Dandy Barakati & Dante Nababan',
+    album: 'MODE PESAWAT - Single',
+    duration: 242,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/32/3a/d0/323ad023-9977-abb0-de2c-4c65946390b3/3552617.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 116,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1812446449',
+    title: 'Pica Pica 2',
+    artist: 'Juan Reza',
+    album: 'Pica Pica 2 - Single',
+    duration: 210,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/eb/66/3c/eb663ccf-3d26-1baa-7006-9e92e48c5652/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 122,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1825337331',
+    title: 'Stecu Stecu',
+    artist: 'Faris Adam',
+    album: 'Stecu Stecu - Single',
+    duration: 224,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/f4/85/e2/f485e212-6415-25d3-709c-645129dabe67/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 118,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1861739746',
+    title: 'Ngapain Repot (feat. Wizz Baker & Fresly Nikijuluw)',
+    artist: 'Toton Caribo',
+    album: 'Ngapain Repot - Single',
+    duration: 254,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/01/20/ab/0120ab7d-ba2e-901c-ba9f-cd0a2cdac646/6829.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 116,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-6783811964',
+    title: 'Orang Baru Lebe Gacor',
+    artist: 'Ecko Show, Juan Reza & Chesylino',
+    album: 'Orang Baru Lebe Gacor - Single',
+    duration: 217,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/c1/70/44/c170441a-cf97-a088-8b4a-d41762fb58c2/2230224.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 120,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1832511833',
+    title: 'Orang Timur',
+    artist: 'Juan Reza',
+    album: 'Orang Timur - Single',
+    duration: 214,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/0b/98/4e/0b984e8b-5886-fd43-d576-9dc297a9dccb/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 120,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1867777845',
+    title: 'Ora Urus',
+    artist: 'Toton Caribo, Justy Aldrin, Wizz Baker & Jacson Zeran',
+    album: 'Ora Urus - Single',
+    duration: 279,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/20/07/6e/20076e97-d7a4-c6f5-7850-5f0a2112ba23/70062.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 118,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1868956761',
+    title: 'TAGULING-GULING (feat. Jacson Zeran, Diva Aurel & Ecko Show)',
+    artist: 'Silet Open Up',
+    album: 'TAGULING-GULING - Single',
+    duration: 282,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/51/1e/cf/511ecf61-ec9c-d235-e215-48756b576eaa/115660.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 120,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1800107208',
+    title: 'Ubur Ubur Ikan Lele (feat. Jacson Zeran & Chesylino)',
+    artist: 'Juan Reza',
+    album: 'Ubur Ubur Ikan Lele - Single',
+    duration: 211,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/2d/aa/c6/2daac6b4-f23e-5367-0df2-b422887273d1/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 122,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1784652744',
+    title: 'Garam & Madu (Sakit Dadaku)',
+    artist: 'Tenxi, Jemsii & Naykilla',
+    album: 'Garam & Madu (Sakit Dadaku) - Single',
+    duration: 184,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/49/13/7e/49137e2e-38f2-213a-11e6-00d5c194c05d/195140103213.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 118,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1873685781',
+    title: 'Karna Su Sayang',
+    artist: 'Near & Dian Sorowea',
+    album: 'Karna Su Sayang - Single',
+    duration: 201,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/df/b4/d0/dfb4d028-dacf-7774-8989-ff01a4e415fe/12292.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 124,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1799649918',
+    title: 'Bale Pulang (feat. Toton Caribo)',
+    artist: 'Justy Aldrin',
+    album: 'Bale Pulang - Single',
+    duration: 291,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/13/3f/8c/133f8c79-bab0-05f6-f3bb-bd3e93b9c9cc/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 114,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1750950242',
+    title: 'Jang Ganggu',
+    artist: 'Shine of Black',
+    album: 'Jang Ganggu - EP',
+    duration: 239,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/c6/f1/22/c6f122ef-5a4e-31a9-5bac-a647d2a1125b/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 115,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1889343825',
+    title: 'AMBON MANISE (feat. Jacson Zeran & Novia Bachmid)',
+    artist: 'Toton Caribo',
+    album: 'AMBON MANISE - Single',
+    duration: 305,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/d4/1c/d9/d41cd961-fa97-d421-efd7-33664b73ff45/1257718.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 116,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1539264147',
+    title: 'Kaka Main Salah (feat. Kapthenpurek)',
+    artist: 'Putry Pasanea',
+    album: 'Kaka Main Salah - Single',
+    duration: 262,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/e1/66/26/e16626a2-e665-1362-2d4c-e095ff551765/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 116,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-6767788874',
+    title: 'Sa Lelah (feat. Chesylino)',
+    artist: 'Glen Sebastian',
+    album: 'Sa Lelah - Single',
+    duration: 205,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/0b/d0/d6/0bd0d674-367c-8330-47f4-efb14e25b0b2/2199565.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 108,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1853540212',
+    title: 'Sejak Se Pigi',
+    artist: 'Fresly Nikijuluw',
+    album: 'Sejak Se Pigi - Single',
+    duration: 248,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b2/b7/ba/b2b7bae5-ef90-22fc-3211-1d47f7f93fc6/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 104,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-6820892437',
+    title: 'Se Yang Paksa',
+    artist: 'Wizz Baker',
+    album: 'Se Yang Paksa - Single',
+    duration: 253,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/6e/ea/48/6eea4800-fb09-3482-4f3b-31bb57fc069a/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 102,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1435493647',
+    title: 'Cinta Beda Agama',
+    artist: 'Vicky Salamor',
+    album: 'Cinta Beda Agama - Single',
+    duration: 319,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music128/v4/c1/8e/5e/c18e5ee6-874d-d151-c3f6-6c32b8fdceaf/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 96,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1574433730',
+    title: 'Janji Putih',
+    artist: 'Doddie Latuharhary',
+    album: 'Janji Putih - Single',
+    duration: 232,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/77/62/78/77627826-d63b-8578-8685-bac661357a15/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 98,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-990980322',
+    title: 'Cinta Sakota',
+    artist: 'Mitha Talahatu',
+    album: 'Mitharmoni',
+    duration: 345,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/cd/3e/29/cd3e2905-8fde-3dba-47a1-b994f483cd69/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 94,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1861826558',
+    title: 'Semata Karenamu',
+    artist: 'Mario G Klau',
+    album: 'Semata Karenamu - Single',
+    duration: 279,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/31/e9/5c/31e95ce9-691c-c643-21a5-6e2f1bde7a13/15607.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 96,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1714993976',
+    title: 'Rusuk',
+    artist: 'Gery Gany',
+    album: 'Rusuk - Single',
+    duration: 256,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ba/fe/46/bafe461b-dba0-76de-173c-05783c521f31/196922708404_Cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 94,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1635552718',
+    title: 'Gagal Berjuang',
+    artist: 'Gihon Marel',
+    album: 'Gagal Berjuang - Single',
+    duration: 223,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/f0/37/37/f0373728-8cad-493b-313a-6eeec7181908/cover.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 98,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-1826495280',
+    title: 'Sa Menyerah (feat. D Ari)',
+    artist: 'Mace Purba',
+    album: 'Sa Menyerah - Single',
+    duration: 277,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/ec/db/0c/ecdb0cea-197c-4ab2-7172-281700260d4e/2c2874a8-8405-432c-9ce9-d8090a1b3ea4.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 100,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
+  },
+  {
+    id: 'it-6767536166',
+    title: 'Lesung Pipi',
+    artist: 'Raim Laode',
+    album: 'Lesung Pipi - Single',
+    duration: 225,
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/d6/9e/a3/d69ea311-9c75-0109-1938-1a6f00ba0cc4/5019.jpg/600x600bb.jpg',
+    genre: 'Indo Timur',
+    bpm: 100,
+    lyrics: [],
+    artistSolanaAddress: ZERO_SOL_ADDRESS
   }
 ];
 
@@ -407,7 +759,148 @@ export interface CuratedPlaylistDefinition {
   seedArtists: string[];
 }
 
+export interface CuratedAlbumDefinition {
+  album: CatalogAlbum;
+  trackIds: string[];
+  seedArtists: string[];
+}
+
+export const CURATED_EDITORIAL_ALBUM_DEFS: CuratedAlbumDefinition[] = [
+  {
+    album: {
+      id: 'curated-alb-hits-lagu-timur',
+      title: 'Hits Lagu Timur',
+      artist: 'Silet Open Up, Juan Reza, Dandy Barakati & Toton Caribo',
+      coverUrl:
+        'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/81/e2/51/81e25101-b6c1-ec65-843b-06469cf2e01e/321336.jpg/600x600bb.jpg',
+      nbTracks: 22,
+      releaseDate: '2026-01-01',
+      genre: 'Indo Timur',
+      recordType: 'album'
+    },
+    trackIds: [
+      'it-6767536022',
+      'it-6782567065',
+      'it-1812446449',
+      'it-1825337331',
+      'it-1861739746',
+      'it-6783811964',
+      'it-1832511833',
+      'it-1867777845',
+      'it-1868956761',
+      'it-1800107208',
+      'it-1784652744',
+      'it-1873685781',
+      'it-1799649918',
+      'it-1750950242',
+      'it-1889343825',
+      'it-1539264147',
+      'it-6767788874',
+      'it-1853540212',
+      'it-6820892437',
+      'it-1435493647',
+      'dz-3709294562',
+      'it-6767536166'
+    ],
+    seedArtists: ['Silet Open Up', 'Juan Reza', 'Toton Caribo', 'Dandy Barakati', 'Justy Aldrin']
+  },
+  {
+    album: {
+      id: 'curated-alb-timur-galau',
+      title: 'Lagu Timur Galau & Ambon Manise',
+      artist: 'Fresly Nikijuluw, Wizz Baker, Vicky Salamor & Mitha Talahatu',
+      coverUrl:
+        'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/d4/1c/d9/d41cd961-fa97-d421-efd7-33664b73ff45/1257718.jpg/600x600bb.jpg',
+      nbTracks: 14,
+      releaseDate: '2026-01-01',
+      genre: 'Indo Timur',
+      recordType: 'album'
+    },
+    trackIds: [
+      'it-1889343825',
+      'it-1853540212',
+      'it-6820892437',
+      'it-6767788874',
+      'it-1435493647',
+      'it-1574433730',
+      'it-990980322',
+      'it-1861826558',
+      'it-1714993976',
+      'it-1635552718',
+      'it-1826495280',
+      'it-1799649918',
+      'dz-3709294562',
+      'it-6767536166'
+    ],
+    seedArtists: ['Fresly Nikijuluw', 'Wizz Baker', 'Vicky Salamor', 'Mitha Talahatu', 'Doddie Latuharhary']
+  }
+];
+
 export const CURATED_DAILY_PLAYLIST_DEFS: CuratedPlaylistDefinition[] = [
+  {
+    playlist: {
+      id: 'daily-pl-hits-lagu-timur',
+      title: 'Hits Lagu Timur',
+      creator: 'Sonacast Editorial',
+      coverUrl:
+        'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/81/e2/51/81e25101-b6c1-ec65-843b-06469cf2e01e/321336.jpg/600x600bb.jpg',
+      nbTracks: 22,
+      description: 'Tabola Bale, Mode Pesawat, Pica Pica, Stecu Stecu, Ngapain Repot & Bale Pulang'
+    },
+    trackIds: [
+      'it-6767536022',
+      'it-6782567065',
+      'it-1812446449',
+      'it-1825337331',
+      'it-1861739746',
+      'it-6783811964',
+      'it-1832511833',
+      'it-1867777845',
+      'it-1868956761',
+      'it-1800107208',
+      'it-1784652744',
+      'it-1873685781',
+      'it-1799649918',
+      'it-1750950242',
+      'it-1889343825',
+      'it-1539264147',
+      'it-6767788874',
+      'it-1853540212',
+      'it-6820892437',
+      'it-1435493647',
+      'dz-3709294562',
+      'it-6767536166'
+    ],
+    seedArtists: ['Silet Open Up', 'Juan Reza', 'Toton Caribo', 'Dandy Barakati', 'Justy Aldrin', 'Faris Adam']
+  },
+  {
+    playlist: {
+      id: 'daily-pl-timur-galau',
+      title: 'Lagu Timur Galau & Ambon Manise',
+      creator: 'Sonacast Editorial',
+      coverUrl:
+        'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/d4/1c/d9/d41cd961-fa97-d421-efd7-33664b73ff45/1257718.jpg/600x600bb.jpg',
+      nbTracks: 14,
+      description: 'Fresly Nikijuluw, Wizz Baker, Vicky Salamor, Doddie Latuharhary & Glen Sebastian'
+    },
+    trackIds: [
+      'it-1889343825',
+      'it-1853540212',
+      'it-6820892437',
+      'it-6767788874',
+      'it-1435493647',
+      'it-1574433730',
+      'it-990980322',
+      'it-1861826558',
+      'it-1714993976',
+      'it-1635552718',
+      'it-1826495280',
+      'it-1799649918',
+      'dz-3709294562',
+      'it-6767536166'
+    ],
+    seedArtists: ['Fresly Nikijuluw', 'Wizz Baker', 'Vicky Salamor', 'Mitha Talahatu', 'Doddie Latuharhary', 'Glen Sebastian']
+  },
   {
     playlist: {
       id: 'daily-pl-hot-indo',
@@ -640,6 +1133,10 @@ export const FEATURED_DAILY_PLAYLISTS: CatalogPlaylist[] = CURATED_DAILY_PLAYLIS
 
 export function findCuratedPlaylistDefinition(playlistId: string): CuratedPlaylistDefinition | null {
   return CURATED_DAILY_PLAYLIST_DEFS.find((def) => def.playlist.id === playlistId) || null;
+}
+
+export function findCuratedAlbumDefinition(albumId: string): CuratedAlbumDefinition | null {
+  return CURATED_EDITORIAL_ALBUM_DEFS.find((def) => def.album.id === albumId) || null;
 }
 
 export function getCuratedSeedTracksByIds(ids: string[]): Track[] {

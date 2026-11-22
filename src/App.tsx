@@ -206,9 +206,9 @@ export default function App() {
   const [queue, setQueue] = useState<Track[]>(() =>
     initialImmediateSharedTrack
       ? [
-          initialImmediateSharedTrack,
-          ...TRACK_CATALOG.filter((item) => item.id !== initialImmediateSharedTrack.id)
-        ]
+        initialImmediateSharedTrack,
+        ...TRACK_CATALOG.filter((item) => item.id !== initialImmediateSharedTrack.id)
+      ]
       : TRACK_CATALOG
   );
   const [stageMode, setStageMode] = useState<StageExperienceMode>('orbwave-only');
@@ -909,10 +909,10 @@ export default function App() {
     isVideoStageMode &&
     Boolean(
       activeYtVideoId &&
-        (currentTrack.musicVideoId === activeYtVideoId ||
-          (currentTrack.musicVideoCandidates || []).some(
-            (c) => c.videoId === activeYtVideoId
-          ))
+      (currentTrack.musicVideoId === activeYtVideoId ||
+        (currentTrack.musicVideoCandidates || []).some(
+          (c) => c.videoId === activeYtVideoId
+        ))
     );
 
   // Helper: immediately hide #sonacast-yt-host completely off-screen with 100% clip-path
@@ -1611,12 +1611,12 @@ export default function App() {
               const patchItem = (item: Track) =>
                 item.id === nextPreviewTrack.id && !item.youtubeId
                   ? {
-                      ...item,
-                      youtubeId: streamRes.youtubeId,
-                      candidateVideoIds: streamRes.candidateIds,
-                      duration: streamRes.duration || item.duration,
-                      streamSource: 'official-stream' as const
-                    }
+                    ...item,
+                    youtubeId: streamRes.youtubeId,
+                    candidateVideoIds: streamRes.candidateIds,
+                    duration: streamRes.duration || item.duration,
+                    streamSource: 'official-stream' as const
+                  }
                   : item;
               queueRef.current = queueRef.current.map(patchItem);
               setQueue((prevQ) => prevQ.map(patchItem));
@@ -1924,23 +1924,23 @@ export default function App() {
               setCurrentTrack((prev) =>
                 prev.id === resolved.id
                   ? {
-                      ...hydrated,
-                      lyrics: prev.lyrics.length > hydrated.lyrics.length ? prev.lyrics : hydrated.lyrics
-                    }
+                    ...hydrated,
+                    lyrics: prev.lyrics.length > hydrated.lyrics.length ? prev.lyrics : hydrated.lyrics
+                  }
                   : prev
               );
               setQueue((prevQ) =>
                 prevQ.map((item) =>
                   item.id === resolved.id
                     ? {
-                        ...hydrated,
-                        lyrics: item.lyrics.length > hydrated.lyrics.length ? item.lyrics : hydrated.lyrics
-                      }
+                      ...hydrated,
+                      lyrics: item.lyrics.length > hydrated.lyrics.length ? item.lyrics : hydrated.lyrics
+                    }
                     : item
                 )
               );
             })
-            .catch(() => {});
+            .catch(() => { });
         }
       } catch {
         if (!cancelled) {
@@ -2186,7 +2186,11 @@ export default function App() {
                 (t) => !existingIds.has(t.id)
               );
               const safeFallback = selectCohesiveCandidatePool(seed, rawFallback, 1);
-              additions = (safeFallback.length > 0 ? safeFallback : rawFallback).slice(0, 10);
+              const allCohesive =
+                safeFallback.length > 0
+                  ? safeFallback
+                  : selectCohesiveCandidatePool(seed, gatherLocalCandidatePool(seed.id), 1);
+              additions = allCohesive.slice(0, 10);
             }
             const nextAuto =
               additions[0] ||

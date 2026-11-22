@@ -12,7 +12,9 @@ import type {
 import { ARTISTS_DIRECTORY } from '../data/artists800';
 import { TRACK_CATALOG } from '../data/catalog';
 import {
+  CURATED_EDITORIAL_ALBUM_DEFS,
   FEATURED_DAILY_PLAYLISTS,
+  findCuratedAlbumDefinition,
   findCuratedPlaylistDefinition,
   getCuratedSeedTracksByIds
 } from '../data/curatedPlaylists';
@@ -3031,7 +3033,7 @@ const DAILY_CHARTS_FEED_URLS = [
   'https://cdn.jsdelivr.net/gh/bryankwandou/sonacast@catalog-data/daily-charts.json',
   'https://raw.githubusercontent.com/bryankwandou/sonacast/catalog-data/daily-charts.json'
 ];
-const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v6';
+const DAILY_CHARTS_CACHE_KEY = 'sonacast_daily_charts_v7';
 const DAILY_CHARTS_TTL_MS = 12 * 60 * 60 * 1000;
 const NON_MUSIC_EXTRA_RE = /\b(sound\s*effects?|sfx|original\s+motion\s+picture|video\s+game|minecraft|bandai|asmr|karaoke|lullaby|white\s*noise|brown\s*noise|pink\s*noise|rain\s*sounds|sleep\s*sounds|sleeptherapy|deep\s+sleep|for\s+sleep|relaxation|meditation|gorguts|obscura|magical\s+strings|cynthoni|death\s+metal)\b/i;
 const RETRO_PL_RE = /\b(?:top\s+hits\s+19[678]\d|best\s+of\s+hits\s+19[678]\d|christmas|xmas|natal|sleep|relaxation|meditation|calm\s+piano|study\s+lofi|chill\s+lofi|country)\b/i;
@@ -3327,6 +3329,27 @@ export async function fetchPopularCharts(): Promise<PopularChartsResult> {
 }
 
 export const FEATURED_RELEASE_ALBUMS: CatalogAlbum[] = [
+  ...CURATED_EDITORIAL_ALBUM_DEFS.map((d) => d.album),
+  {
+    id: 'it-1271026182',
+    title: 'Indonesia Timur Terpopuler',
+    artist: 'Various Artists',
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/f7/1e/2b/f71e2b9a-ac1b-b97c-0dc5-27743e259790/cover.jpg/600x600bb.jpg',
+    nbTracks: 12,
+    genre: 'Indo Timur',
+    recordType: 'album'
+  },
+  {
+    id: 'it-1895102029',
+    title: "iqro'",
+    artist: 'Raim Laode',
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/3b/26/cb/3b26cbe3-8140-6f42-7b56-036a4e192ba5/2947485.jpg/600x600bb.jpg',
+    nbTracks: 11,
+    genre: 'Indo Timur',
+    recordType: 'album'
+  },
   {
     id: '299400142',
     title: 'Manusia',
@@ -3335,6 +3358,26 @@ export const FEATURED_RELEASE_ALBUMS: CatalogAlbum[] = [
       'https://cdn-images.dzcdn.net/images/cover/ec4b98e50b1c776c71774097eb1aee95/1000x1000-000000-80-0-0.jpg',
     nbTracks: 10,
     genre: 'Indonesian Pop',
+    recordType: 'album'
+  },
+  {
+    id: 'it-1445928136',
+    title: 'VICKY SALAMOR - EP',
+    artist: 'Vicky Salamor',
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/1e/b3/6d/1eb36d27-4e67-b75b-63aa-03ba7eae1484/cover.jpg/600x600bb.jpg',
+    nbTracks: 6,
+    genre: 'Indo Timur',
+    recordType: 'ep'
+  },
+  {
+    id: 'it-1038489204',
+    title: 'Orange',
+    artist: 'Doddie Latuharhary',
+    coverUrl:
+      'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/1c/c9/05/1cc905e0-7253-d815-b34d-447b50e5b1bd/cover.jpg/600x600bb.jpg',
+    nbTracks: 9,
+    genre: 'Indo Timur',
     recordType: 'album'
   },
   {
@@ -3571,13 +3614,28 @@ export const FEATURED_RELEASE_ALBUMS: CatalogAlbum[] = [
 
 const albumTracksCache = new Map<string, { album: CatalogAlbum; tracks: Track[] }>();
 
-/** Searches release albums directly via external CORS iTunes & Deezer JSONP (0 Vercel compute). */
+/** Searches release albums directly via external CORS iTunes (ID + Global) & Deezer JSONP + curated editorial collections (0 Vercel compute). */
 export async function searchAlbumsOnline(query: string): Promise<CatalogAlbum[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
 
-  const [itRes, dzRes] = await Promise.all([
-    fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&entity=album&limit=14`, {
+  const normQ = normalizeText(trimmed);
+  const qTokens = normQ.split(/\s+/).filter((t) => t.length >= 2);
+  const curatedAlbumMatches = FEATURED_RELEASE_ALBUMS.filter((alb) => {
+    const hay = normalizeText(`${alb.title} ${alb.artist} ${alb.genre || ''}`);
+    if (normQ && hay.includes(normQ)) return true;
+    if (qTokens.length === 0) return false;
+    const hits = qTokens.filter((tok) => hay.includes(tok)).length;
+    return hits >= Math.ceil(qTokens.length * 0.6);
+  });
+
+  const [itIdRes, itGlobalRes, dzRes] = await Promise.all([
+    fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&entity=album&limit=14&country=ID`, {
+      signal: AbortSignal.timeout(4000)
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null),
+    fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(trimmed)}&entity=album&limit=10`, {
       signal: AbortSignal.timeout(4000)
     })
       .then((r) => (r.ok ? r.json() : null))
@@ -3604,6 +3662,40 @@ export async function searchAlbumsOnline(query: string): Promise<CatalogAlbum[]>
     merged.push(alb);
   };
 
+  for (const curated of curatedAlbumMatches) {
+    pushAlbum(curated);
+  }
+
+  const pushItunesRows = (resObj: { results?: unknown[] } | null) => {
+    const itRows = Array.isArray(resObj?.results) ? resObj.results : [];
+    for (const a of itRows as Array<{
+      collectionId?: number;
+      collectionName?: string;
+      artistName?: string;
+      artworkUrl100?: string;
+      trackCount?: number;
+      releaseDate?: string;
+      primaryGenreName?: string;
+    }>) {
+      if (!a?.collectionName || !a?.artistName) continue;
+      pushAlbum({
+        id: `it-${a.collectionId || ''}`,
+        title: String(a.collectionName),
+        artist: String(a.artistName),
+        coverUrl:
+          typeof a.artworkUrl100 === 'string'
+            ? a.artworkUrl100.replace('100x100bb', '600x600bb')
+            : DEFAULT_FALLBACK_COVER,
+        nbTracks: Number(a.trackCount) || 0,
+        releaseDate: typeof a.releaseDate === 'string' ? a.releaseDate.slice(0, 10) : undefined,
+        genre: String(a.primaryGenreName || 'Album'),
+        recordType: (Number(a.trackCount) || 0) <= 5 ? 'single' : 'album'
+      });
+    }
+  };
+
+  pushItunesRows(itIdRes);
+
   const dzRows = Array.isArray(dzRes?.data) ? dzRes.data : [];
   for (const a of dzRows) {
     if (!a?.id || !a?.title) continue;
@@ -3619,33 +3711,9 @@ export async function searchAlbumsOnline(query: string): Promise<CatalogAlbum[]>
     });
   }
 
-  const itRows = Array.isArray(itRes?.results) ? itRes.results : [];
-  for (const a of itRows as Array<{
-    collectionId?: number;
-    collectionName?: string;
-    artistName?: string;
-    artworkUrl100?: string;
-    trackCount?: number;
-    releaseDate?: string;
-    primaryGenreName?: string;
-  }>) {
-    if (!a?.collectionName || !a?.artistName) continue;
-    pushAlbum({
-      id: `it-${a.collectionId || ''}`,
-      title: String(a.collectionName),
-      artist: String(a.artistName),
-      coverUrl:
-        typeof a.artworkUrl100 === 'string'
-          ? a.artworkUrl100.replace('100x100bb', '600x600bb')
-          : DEFAULT_FALLBACK_COVER,
-      nbTracks: Number(a.trackCount) || 0,
-      releaseDate: typeof a.releaseDate === 'string' ? a.releaseDate.slice(0, 10) : undefined,
-      genre: String(a.primaryGenreName || 'Album'),
-      recordType: (Number(a.trackCount) || 0) <= 5 ? 'single' : 'album'
-    });
-  }
+  pushItunesRows(itGlobalRes);
 
-  return merged.slice(0, 18);
+  return merged.slice(0, 20);
 }
 
 interface AlbumTrackApiItem extends CatalogApiItem {
@@ -3660,6 +3728,23 @@ export async function fetchAlbumTracksOnline(
   const cached = albumTracksCache.get(album.id);
   if (cached && cached.tracks.length > 0) {
     return cached;
+  }
+
+  const curatedAlbum = findCuratedAlbumDefinition(album.id);
+  if (curatedAlbum) {
+    const seedTracks = getCuratedSeedTracksByIds(curatedAlbum.trackIds).map((tr, idx) => ({
+      ...enrichTrackWithMusicFlags(tr),
+      sourceTag: `Track ${idx + 1}`
+    }));
+    const finalResult = {
+      album: {
+        ...curatedAlbum.album,
+        nbTracks: seedTracks.length
+      },
+      tracks: seedTracks
+    };
+    albumTracksCache.set(album.id, finalResult);
+    return finalResult;
   }
 
   const emptyIds = new Set<string>();
@@ -3745,13 +3830,23 @@ export async function fetchAlbumTracksOnline(
   if (album.id.startsWith('it-')) {
     try {
       const numericId = album.id.slice(3).replace(/[^0-9]/g, '');
-      const res = await fetch(
-        `https://itunes.apple.com/lookup?id=${numericId}&entity=song&limit=100`,
-        { signal: AbortSignal.timeout(4500) }
-      );
-      if (res.ok) {
+      const fetchItunesAlbumRows = async (countryParam: string) => {
+        const res = await fetch(
+          `https://itunes.apple.com/lookup?id=${numericId}&entity=song&limit=100${countryParam}`,
+          { signal: AbortSignal.timeout(4500) }
+        );
+        if (!res.ok) return [];
         const data = await res.json();
-        const rows = Array.isArray(data?.results) ? data.results : [];
+        return Array.isArray(data?.results) ? data.results : [];
+      };
+      const preferIdStore = /indo|timur|ambon|papua|dangdut|koplo|malay/i.test(
+        `${album.genre || ''} ${album.title || ''} ${album.artist || ''}`
+      );
+      let rows = await fetchItunesAlbumRows(preferIdStore ? '&country=ID' : '');
+      if (!rows.some((r: { wrapperType?: string }) => r.wrapperType === 'track')) {
+        rows = await fetchItunesAlbumRows(preferIdStore ? '' : '&country=ID');
+      }
+      if (rows.length > 0) {
         const rawTracks = rows
           .filter((r: { wrapperType?: string; trackName?: string }) => r.wrapperType === 'track' && r.trackName)
           .sort(
