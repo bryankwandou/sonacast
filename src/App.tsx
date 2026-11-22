@@ -3487,6 +3487,18 @@ export default function App() {
         targetInput?.focus();
       });
     };
+    const isTextEntryTarget = (el: HTMLElement | null): boolean => {
+      if (!el) return false;
+      if (el.isContentEditable) return true;
+      const tag = el.tagName;
+      if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (tag === 'INPUT') {
+        const inputType = ((el as HTMLInputElement).type || 'text').toLowerCase();
+        return !['button', 'submit', 'reset', 'range', 'checkbox', 'radio'].includes(inputType);
+      }
+      return Boolean(el.closest('[contenteditable="true"]'));
+    };
+    let handledSpacePlayPause = false;
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -3495,24 +3507,23 @@ export default function App() {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
+      const target = (e.target as HTMLElement | null) || (document.activeElement as HTMLElement | null);
+      if (isTextEntryTarget(target)) {
+        return;
+      }
+      const isSpaceKey = e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar';
+      if (isSpaceKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        handledSpacePlayPause = true;
+        if (e.repeat) return;
+        handleTogglePlayRef.current();
         return;
       }
       if (e.key === '/') {
         e.preventDefault();
         setCurrentTab((prev) => (prev === 'landing' ? 'discover' : prev));
         focusActiveSearchInput();
-      } else if (e.code === 'Space') {
-        e.preventDefault();
-        if (sharedAudioEngine.getIsPlaying()) sharedAudioEngine.pause();
-        else sharedAudioEngine.resume();
       } else if (e.code === 'ArrowRight') {
         e.preventDefault();
         if (e.shiftKey) handleNextRef.current(false);
@@ -3543,8 +3554,20 @@ export default function App() {
         setIsShortcutsOpen((prev) => !prev);
       }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    const onKeyUp = (e: KeyboardEvent) => {
+      const isSpaceKey = e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar';
+      if (isSpaceKey && handledSpacePlayPause) {
+        handledSpacePlayPause = false;
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+    };
   }, [handlePrev, handleToggleLike, handleToggleShuffle, handleCycleRepeat]);
 
   const handleSeek = (secs: number) => {
