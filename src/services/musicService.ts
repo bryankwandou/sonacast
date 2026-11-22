@@ -571,6 +571,7 @@ export interface StreamCandidate {
   author: string;
   duration: number;
   thumbnail: string;
+  views?: number;
 }
 
 let dzJsonpSeq = 0;
@@ -683,14 +684,16 @@ async function searchSinglePipedMirror(
     const rawItems = Array.isArray(data?.items) ? data.items : [];
 
     return rawItems
-      .map((item: { url?: string; title?: string; uploaderName?: string; duration?: number; thumbnail?: string }) => {
+      .map((item: { url?: string; title?: string; uploaderName?: string; duration?: number; thumbnail?: string; views?: number }) => {
         const videoId = (item.url || '').split('v=')[1]?.split('&')[0] || '';
+        const rawViews = Number(item.views);
         return {
           videoId,
           title: item.title || '',
           author: item.uploaderName || '',
           duration: Number(item.duration) || 0,
-          thumbnail: videoId ? safeYtThumbnail(item.thumbnail, videoId) : ''
+          thumbnail: videoId ? safeYtThumbnail(item.thumbnail, videoId) : '',
+          views: Number.isFinite(rawViews) && rawViews > 0 ? rawViews : 0
         };
       })
       .filter(
@@ -1315,6 +1318,8 @@ interface UnifiedCandidate {
   duration: number;
   coverUrl: string;
   deezerRank: number;
+  youtubeViews: number;
+  inGlobalChart: boolean;
   fromArtistTop: boolean;
   artistTopIdx: number;
   itunesPopIdx: number;
@@ -1706,6 +1711,71 @@ function buildTrackFromUnified(
   };
 }
 
+const NON_MUSIC_VIDEO_STATS_RE =
+  /\b(full\s+(?:hd\s+)?movie|hindi\s+dubbed|dubbed\s+movie|interview|podcast|episode\s+\d|programa|breaking\s+news|prince\s+harry|meghan\s+markle|ufc|octagon|highlights|trailer|reaction|tutorial|lesson|unboxing|gameplay|compilation|nonstop|medley|1\s+hour|2\s+hours?|meditation|417hz|528hz|chanting|rap\s+battle|outspoken)\b/i;
+
+const FAN_LYRIC_UPLOADER_RE =
+  /\b(lyrics?|lirik|7clouds|mor\s+lyrics|taj\s+tracks|dan\s+music|lost\s+panda|rare\s+vibes|unique\s+sound|dope\s*music|dopenetwork|goldy\s+lyrics|indolirik|somber\s+sounds|resonate\s+id)\b/i;
+
+function canonicalPrimaryArtistKey(artist: string): string {
+  const raw = String(artist || '').trim();
+  if (!raw) return '';
+  // Preserve canonical band conjunctions ("Andra & The Backbone" === "Andra And The Backbone")
+  const bandNormalized = raw.replace(/\s+(?:&|\+)\s+(the\b)/gi, ' and $1');
+  const primary = bandNormalized.split(/\s*(?:,|&|ft\.?|feat\.?|featuring)\s*/i)[0] || bandNormalized;
+  return normalizeText(primary);
+}
+
+function hasWholeWordToken(wordSet: Set<string>, normText: string, token: string): boolean {
+  if (!token) return false;
+  if (wordSet.has(token)) return true;
+  if (isNonLatinScript(token)) return normText.includes(token);
+  return false;
+}
+
+function hasPrefixWordToken(words: string[], token: string): boolean {
+  if (!token || token.length < 3) return false;
+  return words.some((w) => w.startsWith(token));
+}
+
+function hasPhraseWordBoundary(haystackNorm: string, phraseNorm: string): boolean {
+  if (!haystackNorm || !phraseNorm) return false;
+  if (haystackNorm === phraseNorm) return true;
+  return ` ${haystackNorm} `.includes(` ${phraseNorm} `);
+}
+
+let cachedChartKeysMemo: { keys: Set<string>; loadedAt: number } | null = null;
+function getCachedGlobalChartKeys(): Set<string> {
+  const now = Date.now();
+  if (cachedChartKeysMemo && now - cachedChartKeysMemo.loadedAt < 5 * 60 * 1000) {
+    return cachedChartKeysMemo.keys;
+  }
+  const keys = new Set<string>();
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem(DAILY_CHARTS_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { payload?: ChartsApiPayload };
+        const items = [
+          ...(parsed?.payload?.global || []),
+          ...(parsed?.payload?.us || []),
+          ...(parsed?.payload?.indonesia || [])
+        ];
+        for (const item of items) {
+          if (!item?.title || !item?.artist) continue;
+          const base = normalizeText(stripTitleModifiers(item.title));
+          const art = canonicalPrimaryArtistKey(item.artist);
+          if (base && art) keys.add(`${base}::${art}`);
+        }
+      }
+    }
+  } catch {
+    // Ignore storage read failures
+  }
+  cachedChartKeysMemo = { keys, loadedAt: now };
+  return keys;
+}
+
 function scoreUnifiedCandidate(
   cand: UnifiedCandidate,
   normQuery: string,
@@ -1725,7 +1795,12 @@ function scoreUnifiedCandidate(
   const baseTitleNoConj = normalizeConjunctions(baseTitleNorm);
   const normQueryNoConj = normalizeConjunctions(normQuery);
   const artistNorm = normalizeText(cand.artist);
-  const primaryArtistNorm = normalizeText((cand.artist || '').split(/[,&]|ft\.?|feat\.?/i)[0] || '');
+  const titleWordsArr = baseTitleNorm.split(' ').filter(Boolean);
+  const titleWordSet = new Set(titleWordsArr);
+  const artistWordsArr = artistNorm.split(' ').filter(Boolean);
+  const artistWordSet = new Set(artistWordsArr);
+  const haystackWordsArr = [...titleWordsArr, ...artistWordsArr];
+  const haystackWordSet = new Set(haystackWordsArr);
   const role = targetArtistNorm ? classifyArtistRole(cand.artist, targetArtistNorm) : 'none';
   const songTitleExact = Boolean(
     normQuery && (baseTitleNorm === normQuery || (normQueryNoConj && baseTitleNoConj === normQueryNoConj))
@@ -1733,7 +1808,7 @@ function scoreUnifiedCandidate(
 
   if (targetArtistNorm) {
     // Never discard an exact queried song title even if an obscure artist shares that name
-    if (role === 'none' && !songTitleExact && (isPureArtistQuery || baseTitleNorm.includes(targetArtistNorm))) {
+    if (role === 'none' && !songTitleExact && (isPureArtistQuery || hasPhraseWordBoundary(baseTitleNorm, targetArtistNorm))) {
       return -999;
     }
     if (role === 'primary') score += isPureArtistQuery ? 150 : 135;
@@ -1749,7 +1824,7 @@ function scoreUnifiedCandidate(
       .split(' ')
       .filter((t) => t.length >= 2 && !/^(?:and|dan)$/.test(t));
     // Exclude co-lead/featured artist tokens in the query (e.g. "rose" in "APT Rose Bruno Mars")
-    const effectiveSongTokens = rawSongTokens.filter((t) => !artistNorm.includes(t));
+    const effectiveSongTokens = rawSongTokens.filter((t) => !hasWholeWordToken(artistWordSet, artistNorm, t));
     const matchedExtraArtistToken = effectiveSongTokens.length < rawSongTokens.length;
     const titleCheckTokens = effectiveSongTokens.length > 0 ? effectiveSongTokens : rawSongTokens;
 
@@ -1762,52 +1837,75 @@ function scoreUnifiedCandidate(
     } else if (
       matchedExtraArtistToken &&
       effectiveSongTokens.length > 0 &&
-      effectiveSongTokens.every((t) => baseTitleNorm.includes(t))
+      effectiveSongTokens.every((t) => hasWholeWordToken(titleWordSet, baseTitleNorm, t))
     ) {
       score += 245;
     } else if (
       titleCheckTokens.length > 0 &&
-      titleCheckTokens.every((t) => baseTitleNorm.includes(t))
+      titleCheckTokens.every((t) => hasWholeWordToken(titleWordSet, baseTitleNorm, t))
     ) {
-      score += songTargetNoConj && baseTitleNoConj.startsWith(songTargetNoConj) ? 165 : 135;
+      score +=
+        songTargetNoConj &&
+        (baseTitleNoConj === songTargetNoConj || baseTitleNoConj.startsWith(`${songTargetNoConj} `))
+          ? 165
+          : 135;
     } else {
-      const matchedCount = titleCheckTokens.filter((t) => baseTitleNorm.includes(t)).length;
-      score += matchedCount > 0 ? Math.round((matchedCount / Math.max(1, titleCheckTokens.length)) * 60) : -50;
+      const wholeMatched = titleCheckTokens.filter((t) => hasWholeWordToken(titleWordSet, baseTitleNorm, t)).length;
+      const prefixMatched = titleCheckTokens.filter(
+        (t) => !hasWholeWordToken(titleWordSet, baseTitleNorm, t) && hasPrefixWordToken(titleWordsArr, t)
+      ).length;
+      if (wholeMatched > 0) {
+        score += Math.round((wholeMatched / Math.max(1, titleCheckTokens.length)) * 75);
+      } else if (prefixMatched > 0) {
+        // Substring/prefix matches (e.g. "Diamonds" for "Dia") get minimal partial credit so exact songs rank #1
+        score += Math.round((prefixMatched / Math.max(1, titleCheckTokens.length)) * 18);
+      } else {
+        score -= 55;
+      }
     }
 
-    const haystack = `${baseTitleNorm} ${artistNorm}`;
     const meaningfulQueryTokens = queryTokens.filter((t) => !/^(?:and|dan)$/.test(t));
-    const allHit = meaningfulQueryTokens.length > 0 && meaningfulQueryTokens.every((t) => haystack.includes(t));
-    if (allHit) score += 65;
+    const allWholeHit =
+      meaningfulQueryTokens.length > 0 &&
+      meaningfulQueryTokens.every((t) => hasWholeWordToken(haystackWordSet, `${baseTitleNorm} ${artistNorm}`, t));
+    if (allWholeHit) score += 65;
   }
 
+  // Global Multi-Platform Statistical Popularity Model (Zero static artist-list favoritism)
   const canGetPopBoost = !targetArtistNorm || role === 'primary' || role === 'co-lead' || songTitleExact;
-  // Deezer assigns exact rank=100000 as an uninitialized placeholder to zero-play/newly-ingested tracks
-  const effectiveDeezerRank = cand.deezerRank === 100000 ? 0 : cand.deezerRank;
-  if (effectiveDeezerRank > 0) {
-    // Smooth concave curve so regional/Indonesian hits (100k-350k) strongly outrank 0-rank covers
-    score += Math.round(Math.pow(Math.min(1_000_000, effectiveDeezerRank) / 1_000_000, 0.55) * 195);
+  // 1. Real Global YouTube Play/View Count Statistics (continuous log10 curve: 100k->60, 1M->100, 10M->140, 100M->180, 1B->220)
+  if (cand.youtubeViews >= 3000 && canGetPopBoost) {
+    score += Math.round(Math.max(0, (Math.log10(cand.youtubeViews) - 3.5) * 40));
   }
-  if (cand.fromArtistTop) {
+  // 2. Real Global Deezer Streaming Popularity Rank (placeholder 100000 excluded)
+  const effectiveDeezerRank = cand.deezerRank === 100000 ? 0 : cand.deezerRank;
+  if (effectiveDeezerRank > 0 && canGetPopBoost) {
+    score += Math.round(Math.pow(Math.min(1_000_000, effectiveDeezerRank) / 1_000_000, 0.65) * 185);
+  }
+  if (cand.fromArtistTop && canGetPopBoost) {
     score += 18;
   }
+  // 3. Real Apple Music Popularity Ranking via Reciprocal Rank Fusion (RRF, k=4)
   if (cand.inItunesPop && canGetPopBoost) {
-    score += Math.max(8, 65 - cand.itunesPopIdx * 2);
+    score += Math.round(88 * (4 / (4 + Math.max(0, cand.itunesPopIdx))));
   }
   if (cand.itunesSearchIdx >= 0 && cand.itunesSearchIdx < 28 && canGetPopBoost) {
-    score += Math.max(2, 52 - cand.itunesSearchIdx * 2) + (cand.itunesSearchIdx <= 1 ? 24 : 0);
+    score += Math.round(72 * (4 / (4 + Math.max(0, cand.itunesSearchIdx))));
   }
-  if (
-    cand.inDeezer &&
-    effectiveDeezerRank >= 20000 &&
-    (cand.inItunesPop || cand.itunesSearchIdx < 16) &&
-    canGetPopBoost
-  ) {
-    // Cross-catalog consensus bonus: authentic official hits appear in both Deezer and Apple Music
-    score += 55;
-  }
-  if (findMasterAudio(cand.title, cand.artist)) {
-    score += 25;
+  // 4. Independent Cross-Platform Global Statistical Consensus (Deezer + Apple Music + YouTube Global Views)
+  if (canGetPopBoost) {
+    const platformsConfirmed =
+      (effectiveDeezerRank >= 20000 ? 1 : 0) +
+      (cand.inItunesPop || (cand.itunesSearchIdx >= 0 && cand.itunesSearchIdx < 16) ? 1 : 0) +
+      (cand.youtubeViews >= 500_000 ? 1 : 0);
+    if (platformsConfirmed >= 3) {
+      score += 75;
+    } else if (platformsConfirmed === 2) {
+      score += 42;
+    }
+    if (cand.inGlobalChart) {
+      score += 48;
+    }
   }
 
   // Script-aware canonical title preference (e.g. "Idol" / "Yoru ni kakeru" for Latin queries)
@@ -1831,21 +1929,21 @@ function scoreUnifiedCandidate(
       score += 85;
     }
     if (normalizeText(cand.title) === baseTitleNorm) {
-      score += 28;
-    }
-    // Exact full artist or exact primary artist match only (never partial single-word collision)
-    if (
-      INDEXED_ARTIST_BY_NORM.has(artistNorm) ||
-      (primaryArtistNorm && INDEXED_ARTIST_BY_NORM.has(primaryArtistNorm))
-    ) {
-      score += 58;
+      score += 20;
     }
   } else {
     if (rawLowerTitle.includes('live')) score += 10;
     if (rawLowerTitle.includes('acoustic')) score += 10;
   }
 
-  if (!lowerQuery.includes('soundtrack') && !lowerQuery.includes('from ') && (rawLowerTitle.includes('(from "') || rawLowerTitle.includes('motion picture') || rawLowerTitle.includes('soundtrack'))) {
+  // Only demote obscure film score/soundtrack cues — never penalize high-view global/regional OST hit songs
+  if (
+    !lowerQuery.includes('soundtrack') &&
+    !lowerQuery.includes('from ') &&
+    cand.youtubeViews < 1_000_000 &&
+    effectiveDeezerRank < 100_000 &&
+    (rawLowerTitle.includes('(from "') || rawLowerTitle.includes('motion picture') || rawLowerTitle.includes('soundtrack'))
+  ) {
     score -= 42;
   }
 
@@ -1861,6 +1959,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
     const normQuery = normalizeText(trimmed);
     const queryPrefersLatin = /[a-zA-Z]/.test(trimmed) && !isNonLatinScript(trimmed);
     const queryTokens = normQuery.split(' ').filter((tok) => tok.length >= 2);
+    const isSingleWordQuery = queryTokens.length === 1;
     const country = detectSearchCountry(normQuery, trimmed);
 
     const parsedIndexed = extractIndexedArtistAndSong(normQuery);
@@ -1868,7 +1967,30 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
     const itunesArtistNorm = parsedIndexed.indexedArtistNorm || normQuery;
 
     const fastStreamsPromise = Promise.race([
-      searchPipedMusic(trimmed),
+      searchPipedMusic(trimmed, undefined, 'music_songs'),
+      new Promise<StreamCandidate[]>((resolve) => setTimeout(() => resolve([]), 2400))
+    ]);
+
+    // Fetch real global YouTube view counts in parallel (0 Vercel compute, bounded by 2400ms race)
+    const ytStatsPromise = Promise.race([
+      (async (): Promise<StreamCandidate[]> => {
+        const calls = [searchPipedMusic(trimmed, undefined, 'videos')];
+        if (isSingleWordQuery && normQuery.length >= 2) {
+          calls.push(searchPipedMusic(`${trimmed} official music`, undefined, 'videos'));
+        }
+        const batches = await Promise.allSettled(calls);
+        const merged: StreamCandidate[] = [];
+        const seen = new Set<string>();
+        for (const b of batches) {
+          if (b.status !== 'fulfilled') continue;
+          for (const item of b.value) {
+            if (!item.videoId || seen.has(item.videoId)) continue;
+            seen.add(item.videoId);
+            merged.push(item);
+          }
+        }
+        return merged;
+      })(),
       new Promise<StreamCandidate[]>((resolve) => setTimeout(() => resolve([]), 2400))
     ]);
 
@@ -1877,7 +1999,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       (Boolean(parsedIndexed.indexedArtistName) && !parsedIndexed.songNorm) ||
       (queryTokens.length === 1 && normQuery.length >= 3);
 
-    const [catalogResp, itunesPopResp, itunesSearchItems, rawStreamCandidates, audiusTracks] =
+    const [catalogResp, itunesPopResp, itunesSearchItems, rawStreamCandidates, ytVideoStats, audiusTracks] =
       await Promise.all([
         fetchCatalogApiSearch(trimmed),
         shouldLookupArtistOnItunes
@@ -1885,6 +2007,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           : Promise.resolve({ matchedArtistName: '', items: [] as ITunesItem[] }),
         fetchItunesSongSearch(trimmed, country),
         fastStreamsPromise,
+        ytStatsPromise,
         searchAudiusTracks(trimmed)
       ]);
     const altItunesItems =
@@ -1911,8 +2034,17 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
               songMatchesByDifferentArtists.add(an);
             }
           }
+          for (const yv of ytVideoStats) {
+            if (!yv.views || yv.views < 250_000 || yv.duration < 60 || yv.duration > 600) continue;
+            const parsed = parseArtistAndTitleFromVideo(yv.title, yv.author);
+            const tn = normalizeText(stripTitleModifiers(parsed.title));
+            const an = normalizeText(parsed.artist);
+            if (tn === normQuery && an && an !== apiArtistNorm) {
+              songMatchesByDifferentArtists.add(an);
+            }
+          }
           const strongArtist = (catalogResp.artistFans || 0) >= 25000;
-          if (strongArtist || songMatchesByDifferentArtists.size < 2) {
+          if (strongArtist || songMatchesByDifferentArtists.size === 0) {
             targetArtistNorm = apiArtistNorm;
             cleanTargetSong = '';
           }
@@ -1926,6 +2058,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       }
     }
     const isPureArtistQuery = Boolean(targetArtistNorm && !cleanTargetSong);
+    const cachedChartKeys = getCachedGlobalChartKeys();
 
     const bucket = new Map<string, UnifiedCandidate>();
 
@@ -1941,6 +2074,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       },
       sourceMeta: {
         deezerRank?: number;
+        youtubeViews?: number;
         fromArtistTop?: boolean;
         artistTopIdx?: number;
         itunesPopIdx?: number;
@@ -1950,7 +2084,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       const displayTitle = sanitizeCanonicalTrackTitle(entry.title, entry.artist) || entry.title;
       if (isNonOriginalEntry(displayTitle, entry.artist, entry.album, trimmed)) return;
       const baseTitle = normalizeText(stripTitleModifiers(displayTitle));
-      const primaryArtist = normalizeText((entry.artist || '').split(/[,&]|ft\.?|feat\.?/i)[0] || '');
+      const primaryArtist = canonicalPrimaryArtistKey(entry.artist);
       if (!baseTitle || !primaryArtist) return;
       const entryDur = entry.duration >= 60 ? entry.duration : 210;
       const canonKey = `${baseTitle}::${primaryArtist}`;
@@ -1960,7 +2094,7 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       if (!existing) {
         const incomingNonLatin = isNonLatinScript(displayTitle);
         for (const cand of bucket.values()) {
-          const candPrimary = normalizeText((cand.artist || '').split(/[,&]|ft\.?|feat\.?/i)[0] || '');
+          const candPrimary = canonicalPrimaryArtistKey(cand.artist);
           if (
             candPrimary === primaryArtist &&
             isNonLatinScript(cand.title) !== incomingNonLatin &&
@@ -1981,6 +2115,8 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
           duration: entryDur,
           coverUrl: entry.coverUrl || DEFAULT_FALLBACK_COVER,
           deezerRank: sourceMeta.deezerRank || 0,
+          youtubeViews: sourceMeta.youtubeViews || 0,
+          inGlobalChart: cachedChartKeys.has(canonKey),
           fromArtistTop: Boolean(sourceMeta.fromArtistTop),
           artistTopIdx: sourceMeta.artistTopIdx ?? 99,
           itunesPopIdx: sourceMeta.itunesPopIdx ?? 99,
@@ -1994,6 +2130,12 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       if (sourceMeta.deezerRank !== undefined) {
         existing.inDeezer = true;
         existing.deezerRank = Math.max(existing.deezerRank, sourceMeta.deezerRank);
+      }
+      if (sourceMeta.youtubeViews && sourceMeta.youtubeViews > 0) {
+        existing.youtubeViews = Math.max(existing.youtubeViews, sourceMeta.youtubeViews);
+      }
+      if (cachedChartKeys.has(canonKey)) {
+        existing.inGlobalChart = true;
       }
       if (sourceMeta.fromArtistTop) {
         existing.fromArtistTop = true;
@@ -2106,25 +2248,110 @@ export async function searchTracksOnline(query: string): Promise<Track[]> {
       );
     });
 
-    // Resilience guard: if an official indexed artist appears in Piped streams (e.g. when Apple iTunes throttles),
-    // upsert it so canonical studio artists like Nidji still surface ahead of obscure covers.
+    // Attach real global YouTube view statistics to matching catalog entries, and surface verified
+    // multi-million-view official hits absent from Deezer/Apple (e.g. Lesti - Kejora 18.6M, Sammy Simorangkir - DIA 42.5M)
+    if (ytVideoStats.length > 0) {
+      const wantsVariantQuery =
+        /\b(live|acoustic|instrumental|piano|violin|koplo|remix|cover|dj|slowed|reverb|sped|karaoke|tribute)\b/i.test(
+          lowerQuery
+        );
+      const uniqueBucketVals = Array.from(new Set(bucket.values()));
+      const secondaryViewsByCand = new Map<UnifiedCandidate, number>();
+
+      for (const yv of ytVideoStats) {
+        const views = Number(yv.views) || 0;
+        if (views < 3000 || yv.duration < 60 || yv.duration > 600) continue;
+        const rawCombined = `${yv.title} ${yv.author}`;
+        if (NON_MUSIC_VIDEO_STATS_RE.test(rawCombined)) continue;
+        if (!wantsVariantQuery && UNREQUESTED_VARIANT_REGEX.test(yv.title)) continue;
+        if (isNonOriginalEntry(yv.title, yv.author, '', trimmed)) continue;
+
+        const parsed = parseArtistAndTitleFromVideo(yv.title, yv.author);
+        const parsedTitleNorm = normalizeText(stripTitleModifiers(parsed.title));
+        const parsedPrimaryArt = canonicalPrimaryArtistKey(parsed.artist);
+        const yvTitleNorm = normalizeText(yv.title);
+        const yvAuthorNorm = normalizeText(yv.author.replace(/\s*-\s*Topic$/i, '').replace(/VEVO$/i, ''));
+        const yvHay = `${yvTitleNorm} ${yvAuthorNorm}`;
+        const yvWords = new Set(yvHay.split(' ').filter(Boolean));
+
+        let matchedAny = false;
+        for (const cand of uniqueBucketVals) {
+          const cBase = normalizeText(stripTitleModifiers(cand.title));
+          const cArt = canonicalPrimaryArtistKey(cand.artist);
+          if (!cBase || !cArt) continue;
+          const titleOk =
+            parsedTitleNorm === cBase ||
+            hasPhraseWordBoundary(yvTitleNorm, cBase);
+          if (!titleOk) continue;
+
+          const cArtWords = cArt.split(' ').filter((w) => w.length >= 2);
+          const artistOk =
+            parsedPrimaryArt === cArt ||
+            (cArtWords.length > 0 && cArtWords.every((w) => yvWords.has(w) || yvAuthorNorm.includes(w)));
+          if (!artistOk) continue;
+
+          matchedAny = true;
+          if (views > cand.youtubeViews) {
+            if (cand.youtubeViews > 0) {
+              secondaryViewsByCand.set(cand, (secondaryViewsByCand.get(cand) || 0) + cand.youtubeViews);
+            }
+            cand.youtubeViews = views;
+          } else {
+            secondaryViewsByCand.set(cand, (secondaryViewsByCand.get(cand) || 0) + views);
+          }
+        }
+
+        // Upsert verified >= 1M-view official music videos absent from Deezer/Apple
+        if (
+          !matchedAny &&
+          views >= 1_000_000 &&
+          parsedTitleNorm &&
+          parsedPrimaryArt &&
+          /\s[-–—]\s/.test(yv.title) &&
+          !FAN_LYRIC_UPLOADER_RE.test(yv.author) &&
+          !/\b(lyric(?:s)?(?:\s+video)?|lirik)\b/i.test(yv.title)
+        ) {
+          upsert(
+            {
+              id: `yt-${yv.videoId}`,
+              title: parsed.title,
+              artist: parsed.artist,
+              album: 'Official Release',
+              genre: 'Pop',
+              duration: yv.duration,
+              coverUrl: safeYtThumbnail(yv.thumbnail, yv.videoId)
+            },
+            { youtubeViews: views }
+          );
+        }
+      }
+
+      // Add a conservative 25% aggregation weight from secondary official/lyric uploads of the same song
+      for (const [cand, extraViews] of secondaryViewsByCand.entries()) {
+        if (cand.youtubeViews > 0 && extraViews > 0) {
+          cand.youtubeViews += Math.round(Math.min(extraViews, cand.youtubeViews) * 0.25);
+        }
+      }
+    }
+
+    // Resilience guard: if Apple Music throttled and Piped returned verified official tracks, upsert them
     if (itunesSearchItems.length === 0 && rawStreamCandidates.length > 0) {
       rawStreamCandidates.slice(0, 6).forEach((c, idx) => {
-        if (c.duration < 40 || isNonOriginalEntry(c.title, c.author, '', trimmed)) return;
+        if (c.duration < 60 || c.duration > 600 || isNonOriginalEntry(c.title, c.author, '', trimmed)) return;
         const parsed = parseArtistAndTitleFromVideo(c.title, c.author);
-        const primaryArt = normalizeText(parsed.artist.split(/[,&]|ft\.?|feat\.?/i)[0] || '');
-        if (!parsed.title || !primaryArt || !INDEXED_ARTIST_BY_NORM.has(primaryArt)) return;
+        const primaryArt = canonicalPrimaryArtistKey(parsed.artist);
+        if (!parsed.title || !primaryArt) return;
         upsert(
           {
             id: `yt-${c.videoId}`,
             title: parsed.title,
             artist: parsed.artist,
             album: 'Official Release',
-            genre: INDEXED_ARTIST_BY_NORM.get(primaryArt)?.genre || 'Pop',
+            genre: 'Pop',
             duration: c.duration,
             coverUrl: safeYtThumbnail(c.thumbnail, c.videoId)
           },
-          { itunesSearchIdx: idx }
+          { itunesSearchIdx: idx + 6, youtubeViews: c.views || 0 }
         );
       });
     }
