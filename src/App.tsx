@@ -1145,9 +1145,10 @@ export default function App() {
           20
         );
         if (rankedFresh.length < 8 && force && activeIdx >= 0 && prev.length > activeIdx + 1) {
-          const fallbackTail = prev.slice(activeIdx + 1).filter(
+          const rawTail = prev.slice(activeIdx + 1).filter(
             (t) => t && t.id && !rankedFresh.some((r) => r.id === t.id) && !headIds.has(t.id)
           );
+          const fallbackTail = selectCohesiveCandidatePool(seedTrack, rawTail, 1);
           const merged = [...preservedHead, ...rankedFresh, ...fallbackTail].slice(-50);
           queueRef.current = merged;
           return merged;
@@ -2069,10 +2070,11 @@ export default function App() {
             const existingIds = new Set(queueRef.current.map((existing) => existing.id));
             let additions = rankedPool.filter((t) => !existingIds.has(t.id));
             if (additions.length === 0) {
-              const fallbackPool = gatherLocalCandidatePool(seed.id).filter(
+              const rawFallback = gatherLocalCandidatePool(seed.id).filter(
                 (t) => !existingIds.has(t.id)
               );
-              additions = fallbackPool.slice(0, 10);
+              const safeFallback = selectCohesiveCandidatePool(seed, rawFallback, 1);
+              additions = (safeFallback.length > 0 ? safeFallback : rawFallback).slice(0, 10);
             }
             const nextAuto =
               additions[0] ||
@@ -2341,9 +2343,14 @@ export default function App() {
       playbackContextRef.current = radioCtx;
       setPlaybackContext(radioCtx);
 
+      const cohesiveRadioPool = selectCohesiveCandidatePool(
+        seedTrack,
+        gatherLocalCandidatePool(seedTrack.id),
+        3
+      );
       const smartNext = buildSmartQueueFromPool(
         seedTrack,
-        [...queueRef.current, ...TRACK_CATALOG],
+        cohesiveRadioPool,
         recStateRef.current.recentTracks,
         recStateRef.current,
         activeMoodRef.current,
@@ -2357,7 +2364,7 @@ export default function App() {
       }
       refillRadioQueueIfNeeded(seedTrack, true);
     },
-    [handleSelectTrack, refillRadioQueueIfNeeded]
+    [gatherLocalCandidatePool, handleSelectTrack, refillRadioQueueIfNeeded]
   );
 
   const handleRefreshRadioMix = useCallback(() => {
@@ -2373,9 +2380,14 @@ export default function App() {
     playbackContextRef.current = radioCtx;
     setPlaybackContext(radioCtx);
 
+    const cohesiveRefreshPool = selectCohesiveCandidatePool(
+      seed,
+      gatherLocalCandidatePool(seed.id),
+      3
+    );
     const smartNext = buildSmartQueueFromPool(
       seed,
-      [...queueRef.current, ...TRACK_CATALOG],
+      cohesiveRefreshPool,
       recStateRef.current.recentTracks,
       recStateRef.current,
       activeMoodRef.current,
@@ -2385,7 +2397,7 @@ export default function App() {
     queueRef.current = nextQueue;
     setQueue(nextQueue);
     refillRadioQueueIfNeeded(seed, true);
-  }, [refillRadioQueueIfNeeded]);
+  }, [gatherLocalCandidatePool, refillRadioQueueIfNeeded]);
 
   useEffect(() => {
     refillRadioRef.current = refillRadioQueueIfNeeded;
@@ -2399,9 +2411,14 @@ export default function App() {
         const fetched = await searchTracksOnline(queries[0]);
         if (fetched.length > 0) {
           const seed = fetched[0];
+          const moodPool = selectCohesiveCandidatePool(
+            seed,
+            [...fetched.slice(1), ...gatherLocalCandidatePool(seed.id)],
+            3
+          );
           const smartNext = buildSmartQueueFromPool(
             seed,
-            [...fetched.slice(1), ...TRACK_CATALOG],
+            moodPool,
             recStateRef.current.recentTracks,
             recStateRef.current,
             mood,
@@ -2414,17 +2431,23 @@ export default function App() {
       } catch {
         // Fallback to rebuilding existing queue under selected mood
       }
+      const localMoodSeed = currentTrackRef.current;
+      const localMoodPool = selectCohesiveCandidatePool(
+        localMoodSeed,
+        gatherLocalCandidatePool(localMoodSeed.id),
+        3
+      );
       const smartLocal = buildSmartQueueFromPool(
-        currentTrackRef.current,
-        [...queueRef.current, ...TRACK_CATALOG],
+        localMoodSeed,
+        localMoodPool,
         recStateRef.current.recentTracks,
         recStateRef.current,
         mood,
         24
       );
-      setQueue([currentTrackRef.current, ...smartLocal]);
+      setQueue([localMoodSeed, ...smartLocal]);
     },
-    [handleSelectTrack]
+    [gatherLocalCandidatePool, handleSelectTrack]
   );
 
   const handleToggleAutoplay = useCallback(() => {

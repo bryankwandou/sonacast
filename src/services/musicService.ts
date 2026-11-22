@@ -410,6 +410,7 @@ function isNonLatinScript(input: string): boolean {
       (code >= 0xac00 && code <= 0xd7af) ||
       (code >= 0x0400 && code <= 0x04ff) ||
       (code >= 0x0600 && code <= 0x06ff) ||
+      (code >= 0x0900 && code <= 0x0d7f) ||
       (code >= 0x0e00 && code <= 0x0e7f)
     ) {
       nonLatin++;
@@ -1057,6 +1058,9 @@ export async function searchFullStreams(query: string): Promise<StreamCandidate[
   return merged;
 }
 
+const STREAM_INDIAN_MISMATCH_RE =
+  /[\u0900-\u0D7F]|\b(bollywood|t-series|tseries|zee\s+music|saregama|tips\s+official|sony\s+music\s+india|yrf|yash\s+raj|eros\s+now|aditya\s+music|lahari\s+music|think\s+music|speed\s+records|hindi\s+song|punjabi\s+song|tamil\s+song|telugu\s+song|bhojpuri|bhajan|aarti|chalisa)\b/i;
+
 function scoreCandidate(
   candidate: StreamCandidate,
   targetTitle: string,
@@ -1071,6 +1075,12 @@ function scoreCandidate(
   const candRawLower = (candidate.title || '').toLowerCase();
   const candAuthorLower = (candidate.author || '').toLowerCase();
   const primaryArtist = normalizeText(targetArtist.split(/[,&]|ft\.?|feat\.?/i)[0] || '');
+
+  // Block cross-market Indian/Bollywood stream hijacks for non-Indian tracks
+  const targetLooksIndian = STREAM_INDIAN_MISMATCH_RE.test(`${targetTitle} ${targetArtist}`);
+  if (!targetLooksIndian && STREAM_INDIAN_MISMATCH_RE.test(`${candidate.title} ${candidate.author}`)) {
+    score -= 320;
+  }
 
   if (candTitle === normTitle) score += 65;
   else if (normTitle && candTitle.includes(normTitle)) score += 40;
@@ -1317,7 +1327,7 @@ const DEFAULT_FALLBACK_COVER =
   'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop';
 
 const INDONESIAN_QUERY_HINT_RE =
-  /\b(karna|karena|selow|sayang|cinta|rindu|hati|kamu|aku|dirimu|diriku|kekasih|kasih|telah|memilih|pasanganmu|tak|tidak|bisa|jangan|pergi|kembali|menangis|segampang|penggantimu|mencari|sempurna|berdua|senja|luka|pelukan|bertaut|monokrom|komang|terlintas|berjalan|pulang|mungkin|biarlah|garam|madu|tabola|bale|ojo|dibandingke|rungkad|nemen|sial|sisa|rasa|jiwa|bersedih|runtuh|duka|kangen|separuh|laskar|pelangi|matian|bulan|untukmu|sampai|menutup|mata|mengejar|matahari|semata|karenamu|pesawat|timur|kenangan|terakhir|terbaik|selamanya|sejati|jodoh|janji|setia|kecewa|patah|menunggu|bertahan|melupakan|melepasmu|ku\s+(?:cinta|sayang|tahu|tak|ingin|selow|menangis|mencari))\b/i;
+  /\b(karna|karena|selow|sayang|cinta|rindu|hati|kamu|aku|dirimu|diriku|kekasih|kasih|telah|memilih|pasanganmu|tak|tidak|bisa|jangan|pergi|kembali|menangis|segampang|penggantimu|mencari|sempurna|berdua|senja|luka|pelukan|bertaut|monokrom|komang|terlintas|berjalan|pulang|mungkin|biarlah|garam|madu|tabola|bale|ojo|dibandingke|rungkad|nemen|sial|sisa|rasa|jiwa|bersedih|runtuh|duka|kangen|separuh|laskar|pelangi|matian|bulan|untukmu|sampai|menutup|mata|mengejar|matahari|semata|karenamu|pesawat|timur|kenangan|terakhir|terbaik|selamanya|sejati|jodoh|janji|setia|kecewa|patah|menunggu|bertahan|melupakan|melepasmu|bunga\s+maaf|lampu\s+(?:merah|kuning)|asmalibrasi|hampa|dawai|kejora|begadang|syantik|cundamani|klebus|wirang|sanes|pingal|dumes|satru|cidro|ambyar|tresno|bojo|stecu|pica|lesung\s+pipi|teh\s+hijau|tungkek|mambaok|palaminan|padiah|seumur\s+hidup|ikhlas|hantaran|perasaanku|ku\s+(?:cinta|sayang|tahu|tak|ingin|selow|menangis|mencari))\b/i;
 
 function detectSearchCountry(normQuery: string, rawQuery = ''): 'ID' | 'US' | 'JP' | 'KR' {
   if (/[\uac00-\ud7af]/.test(rawQuery)) return 'KR';

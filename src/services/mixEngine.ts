@@ -102,8 +102,10 @@ function interleaveOrderedUnique(
 
 function isMainstreamCohesiveChart(track: Track): boolean {
   const g = String(track.genre || '').toLowerCase();
-  // Keep Country / niche regional noise out of automated generic pop mixes unless user specifically listens to it
+  // Keep Country / Holiday / unrelated regional noise out of automated generic pop mixes unless user specifically listens to it
   if (g.includes('country') || g.includes('holiday') || g.includes('christmas')) return false;
+  const reg = inferTrackLanguageRegion(track);
+  if (reg === 'hi' || reg === 'ar' || reg === 'other') return false;
   return true;
 }
 
@@ -258,14 +260,20 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
     const cls = classifyTrackTier(t);
     const reg = inferTrackLanguageRegion(t);
     if (cls.isInstrumental !== dominantClassProfile.isInstrumental) return false;
-    return reg === dominantRegion || (reg !== 'id' && dominantRegion === 'en' && cls.classId !== 'kpop_idol' && cls.classId !== 'jpop_city_anime');
+    if (dominantRegion !== 'en' && dominantRegion !== 'instrumental') {
+      return reg === dominantRegion;
+    }
+    return reg === dominantRegion || (dominantRegion === 'en' && reg !== 'id' && reg !== 'hi' && reg !== 'ar' && reg !== 'other' && cls.classId !== 'kpop_idol' && cls.classId !== 'jpop_city_anime');
   });
   const mix1Source =
     mix1Pool.length >= 4
       ? mix1Pool
-      : mix1RegionalPool.length >= 4
+      : mix1RegionalPool.length >= 1
         ? mix1RegionalPool
-        : combinedPool;
+        : combinedPool.filter((t) => {
+          const reg = inferTrackLanguageRegion(t);
+          return reg !== 'hi' && reg !== 'ar' && reg !== 'other';
+        });
   const dailyMixScored = [...mix1Source].sort((a, b) => {
     const scoreOf = (t: Track) => {
       let s = 0;
@@ -365,8 +373,15 @@ export function buildRecommendationMixes(input: BuildMixesInput): Recommendation
     discoveryCandidates = combinedPool.filter((t) => {
       if (usedIdsAcrossMixes.has(t.id) || recentIds.has(t.id) || likedIds.has(t.id)) return false;
       const cls = classifyTrackTier(t);
+      const reg = inferTrackLanguageRegion(t);
+      if (dominantRegion !== 'en' && dominantRegion !== 'instrumental') {
+        return reg === dominantRegion && cls.isInstrumental === dominantClassProfile.isInstrumental;
+      }
       return (
         cls.isInstrumental === dominantClassProfile.isInstrumental &&
+        reg !== 'hi' &&
+        reg !== 'ar' &&
+        reg !== 'other' &&
         cls.classId !== 'indo_koplo_dangdut' &&
         cls.classId !== 'heavy_metal_hard'
       );
