@@ -331,6 +331,7 @@ export default function App() {
     }
   });
   const [isFloatingMinimized, setIsFloatingMinimized] = useState(false);
+  const [isDesktopPipOpen, setIsDesktopPipOpen] = useState(false);
   const pipControllerRef = useRef<DesktopPipController | null>(null);
   const searchHistoryRef = useRef<SearchHistoryEntry[]>(searchHistory);
   useEffect(() => {
@@ -3373,6 +3374,8 @@ export default function App() {
         syncPlaybackState?: (title: string, artist: string, isPlaying: boolean, lowCpuMode: boolean) => void;
       };
       __sonacastNativeMediaAction?: (action: string) => void;
+      __sonacastAndroidBackgroundState?: (inBg: boolean) => void;
+      __sonacastAndroidBgKeepAlive?: () => void;
     };
 
     win.SonacastAndroid?.syncPlaybackState?.(
@@ -3398,26 +3401,45 @@ export default function App() {
       }
     };
 
+    win.__sonacastAndroidBackgroundState = (inBg: boolean) => {
+      sharedAudioEngine.setAndroidBackgroundState(Boolean(inBg));
+    };
+
+    win.__sonacastAndroidBgKeepAlive = () => {
+      sharedAudioEngine.kickAndroidBackgroundPlayback();
+    };
+  }, [currentTrack.id, currentTrack.title, currentTrack.artist, isPlaying, lowCpuMode, handlePrev]);
+
+  useEffect(() => {
+    if (!pipControllerRef.current?.isOpen()) return;
     const activeLine =
       currentTrack.lyrics.slice().reverse().find((l) => currentTime >= l.time)?.text || '';
-    if (pipControllerRef.current?.isOpen()) {
-      pipControllerRef.current.update({
-        track: currentTrack,
-        isPlaying,
-        activeLyricText: activeLine,
-        lowCpuMode
-      });
-    }
-  }, [currentTrack, isPlaying, lowCpuMode, currentTime, handlePrev]);
+    pipControllerRef.current.update({
+      track: currentTrack,
+      isPlaying,
+      currentTime,
+      duration: currentTrack.duration,
+      activeLyricText: activeLine,
+      lowCpuMode
+    });
+  }, [currentTrack, isPlaying, lowCpuMode, currentTime]);
 
   const handleToggleLowCpu = useCallback(() => {
     setLowCpuMode((prev) => !prev);
   }, []);
 
   const handleOpenDesktopPip = useCallback(async () => {
+    const androidBridge = (window as unknown as {
+      SonacastAndroid?: { isNativeApp?: () => boolean; enterPip?: () => void };
+    }).SonacastAndroid;
+    if (androidBridge?.isNativeApp?.() && androidBridge?.enterPip) {
+      androidBridge.enterPip();
+      return;
+    }
     if (pipControllerRef.current?.isOpen()) {
       pipControllerRef.current.close();
       pipControllerRef.current = null;
+      setIsDesktopPipOpen(false);
       return;
     }
     const activeLine =
@@ -3428,6 +3450,8 @@ export default function App() {
     const ctrl = await openDesktopPipWindow({
       track: currentTrackRef.current,
       isPlaying: sharedAudioEngine.getIsPlaying(),
+      currentTime: currentTimeRef.current,
+      duration: currentTrackRef.current.duration,
       activeLyricText: activeLine,
       lowCpuMode,
       onTogglePlay: () => handleTogglePlayRef.current(),
@@ -3435,11 +3459,14 @@ export default function App() {
       onPrev: () => handlePrev(),
       onClosed: () => {
         pipControllerRef.current = null;
+        setIsDesktopPipOpen(false);
       }
     });
     if (ctrl) {
       pipControllerRef.current = ctrl;
+      setIsDesktopPipOpen(true);
     } else {
+      setIsDesktopPipOpen(false);
       setIsFloatingMinimized(true);
     }
   }, [lowCpuMode, handlePrev]);
@@ -4883,7 +4910,16 @@ export default function App() {
             repeatMode={recState.repeatMode}
             onCycleRepeat={handleCycleRepeat}
             isFloatingMinimized={isFloatingMinimized}
-            onToggleFloating={() => setIsFloatingMinimized((prev) => !prev)}
+            isDesktopPipOpen={isDesktopPipOpen}
+            onToggleFloating={() => {
+              setIsFloatingMinimized((prev) => {
+                const next = !prev;
+                if (next) {
+                  setIsStageOpen(false);
+                }
+                return next;
+              });
+            }}
             onTriggerDesktopPip={handleOpenDesktopPip}
             isLiked={likedTrackIds.has(currentTrack.id)}
             onToggleLike={() => handleToggleLike(currentTrack)}
@@ -4924,9 +4960,12 @@ export default function App() {
         <FloatingMiniPlayer
           track={currentTrack}
           isPlaying={isPlaying}
+          currentTime={currentTime}
+          duration={currentTrack.duration}
           lowCpuMode={lowCpuMode}
           onTogglePlay={handleTogglePlay}
           onNext={() => handleNext(false)}
+          onPrev={handlePrev}
           onRestoreStage={() => {
             setIsFloatingMinimized(false);
             setIsStageOpen(true);

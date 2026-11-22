@@ -6,11 +6,12 @@ import android.view.View;
 import android.webkit.WebView;
 
 /**
- * Custom WebView that prevents Chromium from throttling JavaScript timers or
- * suspending audio playback when the app moves to background or the screen locks.
+ * Custom WebView that prevents Android Chromium from dropping renderer visibility,
+ * throttling JavaScript timers, or suspending YouTube/HTML5 audio when the user
+ * switches to another app or turns off the screen.
  */
 public class BackgroundAudioWebView extends WebView {
-    private boolean keepAliveInBackground = true;
+    private volatile boolean keepAliveInBackground = true;
 
     public BackgroundAudioWebView(Context context) {
         super(context);
@@ -26,10 +27,6 @@ public class BackgroundAudioWebView extends WebView {
 
     @Override
     protected void onWindowVisibilityChanged(int visibility) {
-        if (keepAliveInBackground && visibility != View.GONE) {
-            super.onWindowVisibilityChanged(View.VISIBLE);
-            return;
-        }
         if (keepAliveInBackground) {
             super.onWindowVisibilityChanged(View.VISIBLE);
             return;
@@ -45,5 +42,38 @@ public class BackgroundAudioWebView extends WebView {
         }
         super.dispatchWindowVisibilityChanged(visibility);
     }
-}
 
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        if (keepAliveInBackground) {
+            super.onVisibilityChanged(changedView, View.VISIBLE);
+            return;
+        }
+        super.onVisibilityChanged(changedView, visibility);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        if (keepAliveInBackground) {
+            super.onWindowFocusChanged(true);
+            return;
+        }
+        super.onWindowFocusChanged(hasWindowFocus);
+    }
+
+    @Override
+    public void onPause() {
+        if (keepAliveInBackground) {
+            return;
+        }
+        super.onPause();
+    }
+
+    @Override
+    public void pauseTimers() {
+        if (keepAliveInBackground) {
+            return;
+        }
+        super.pauseTimers();
+    }
+}

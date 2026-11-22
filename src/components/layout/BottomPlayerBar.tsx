@@ -67,6 +67,7 @@ interface BottomPlayerBarProps {
   repeatMode?: RepeatMode;
   onCycleRepeat?: () => void;
   isFloatingMinimized?: boolean;
+  isDesktopPipOpen?: boolean;
   onToggleFloating?: () => void;
   onTriggerDesktopPip?: () => void;
   onOpenSettings?: () => void;
@@ -122,6 +123,7 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
   repeatMode = 'off',
   onCycleRepeat,
   isFloatingMinimized = false,
+  isDesktopPipOpen = false,
   onToggleFloating,
   onTriggerDesktopPip,
   onOpenSettings,
@@ -1075,6 +1077,42 @@ export const BottomPlayerBar: React.FC<BottomPlayerBarProps> = ({
               </div>
             </div>
           </div>
+
+          {onToggleFloating && (
+            <button
+              type="button"
+              onClick={onToggleFloating}
+              data-testid="player-bar-minimize-btn"
+              title={t.minimizeFloating}
+              aria-label={t.minimizeFloating}
+              aria-pressed={isFloatingMinimized}
+              className={`inline-flex p-1.5 rounded-lg shrink-0 transition-colors cursor-pointer ${
+                isFloatingMinimized
+                  ? 'text-[var(--accent-text)] bg-[var(--accent-soft)]'
+                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <Minimize2 size={15} />
+            </button>
+          )}
+
+          {onTriggerDesktopPip && (
+            <button
+              type="button"
+              onClick={onTriggerDesktopPip}
+              data-testid="player-bar-pip-btn"
+              title={t.desktopPip}
+              aria-label={t.desktopPip}
+              aria-pressed={isDesktopPipOpen}
+              className={`inline-flex p-1.5 rounded-lg shrink-0 transition-colors cursor-pointer ${
+                isDesktopPipOpen
+                  ? 'text-[var(--accent-text)] bg-[var(--accent-soft)]'
+                  : 'text-[var(--text-dim)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <PictureInPicture2 size={15} />
+            </button>
+          )}
 
           {onOpenExpandedPlayer && (
             <button

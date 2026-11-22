@@ -197,6 +197,8 @@ export class AudioEngine {
   private volume = 0.85;
   private lowCpuMode = false;
   private isDocumentHidden = false;
+  private androidInBackground = false;
+  private html5BgPauseRecoverCount = 0;
   private lastHtml5NotifyAt = 0;
 
   private freqArray: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
@@ -352,7 +354,7 @@ export class AudioEngine {
         this.ctx &&
         (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted')
       ) {
-        this.ctx.resume().catch(() => {});
+        this.ctx.resume().catch(() => { });
       }
       if (
         !this.isLiveStream &&
@@ -454,7 +456,7 @@ export class AudioEngine {
   }
 
   public preloadYouTubeApi() {
-    this.loadYouTubeApi().catch(() => {});
+    this.loadYouTubeApi().catch(() => { });
   }
 
   public getPlayGeneration(): number {
@@ -475,7 +477,7 @@ export class AudioEngine {
     if (typeof window === 'undefined') return;
     this.startTransitionKeepalive(0);
     if (this.ctx && this.ctx.state !== 'running') {
-      this.ctx.resume().catch(() => {});
+      this.ctx.resume().catch(() => { });
     }
     this.prewarmYouTubePlayer();
   }
@@ -808,7 +810,7 @@ export class AudioEngine {
         const st = this.ctx.state as string;
         if (this.activeBackend === 'html5' && (st === 'suspended' || st === 'interrupted')) {
           if (this.isPlaying && this.wasPlayingBeforeSleep && performance.now() - this.lastPauseCalledAt > 1200) {
-            this.ctx.resume().catch(() => {});
+            this.ctx.resume().catch(() => { });
             return;
           }
           if (this.audioElement && this.audioElement.paused && this.isPlaying) {
@@ -847,7 +849,7 @@ export class AudioEngine {
         this.html5PlayPending = false;
         this.startTransitionKeepalive(0);
         if (this.ctx && this.ctx.state !== 'running') {
-          this.ctx.resume().catch(() => {});
+          this.ctx.resume().catch(() => { });
         }
         if (!this.isPlaying) {
           this.isPlaying = true;
@@ -876,6 +878,21 @@ export class AudioEngine {
           return;
         }
         if (this.activeBackend !== 'html5' || this.usingPassthroughStream || !this.audioElement || this.audioElement.ended) return;
+        const nowMs = performance.now();
+        if (
+          (this.isDocumentHidden || this.androidInBackground) &&
+          this.isPlaying &&
+          nowMs - this.lastPauseCalledAt > 1200 &&
+          this.html5BgPauseRecoverCount < 16
+        ) {
+          this.html5BgPauseRecoverCount += 1;
+          this.suppressPauseUntilMs = nowMs + 600;
+          if (this.ctx && this.ctx.state !== 'running') {
+            this.ctx.resume().catch(() => { });
+          }
+          this.audioElement.play().catch(() => { });
+          return;
+        }
         if (this.isPlaying) {
           this.isPlaying = false;
           this.notifyState();
@@ -954,7 +971,7 @@ export class AudioEngine {
     }
 
     if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
-      this.ctx.resume().catch(() => {});
+      this.ctx.resume().catch(() => { });
     }
   }
 
@@ -1326,7 +1343,7 @@ export class AudioEngine {
         }
       }
       if (this.keepaliveAudioEl && this.keepaliveAudioEl.paused) {
-        this.keepaliveAudioEl.play().catch(() => {});
+        this.keepaliveAudioEl.play().catch(() => { });
       }
     } catch {
       // Safe fallback when Audio element keepalive is blocked
@@ -1341,7 +1358,7 @@ export class AudioEngine {
         }
         if (this.ctx) {
           if (this.ctx.state !== 'running') {
-            this.ctx.resume().catch(() => {});
+            this.ctx.resume().catch(() => { });
           }
           const osc = this.ctx.createOscillator();
           const gain = this.ctx.createGain();
@@ -1517,6 +1534,20 @@ export class AudioEngine {
     el.addEventListener('pause', () => {
       if (!this.usingPassthroughStream) return;
       if (performance.now() < this.suppressPauseUntilMs) return;
+      const nowMs = performance.now();
+      if (
+        (this.isDocumentHidden || this.androidInBackground) &&
+        this.activeBackend === 'html5' &&
+        !el.ended &&
+        this.isPlaying &&
+        nowMs - this.lastPauseCalledAt > 1200 &&
+        this.html5BgPauseRecoverCount < 16
+      ) {
+        this.html5BgPauseRecoverCount += 1;
+        this.suppressPauseUntilMs = nowMs + 600;
+        el.play().catch(() => { });
+        return;
+      }
       this.stopHtml5Poll();
       if (this.activeBackend === 'html5' && !el.ended && this.isPlaying) {
         this.isPlaying = false;
@@ -1574,7 +1605,7 @@ export class AudioEngine {
           this.lastAudioUrl = fallbackUrl;
           el.src = fallbackUrl;
           el.load();
-          el.play().catch(() => {});
+          el.play().catch(() => { });
           return;
         }
       }
@@ -2407,16 +2438,17 @@ export class AudioEngine {
                 return;
               }
             }
-            // In background tabs Chromium may temporarily pause cross-origin YT iframes across track transitions
+            // In background tabs or Android WebView backgrounding, Chromium may temporarily pause cross-origin YT iframes
             const nowMs = performance.now();
+            const isBgSession = this.isDocumentHidden || this.androidInBackground;
             if (
-              this.isDocumentHidden &&
+              isBgSession &&
               this.isPlaying &&
-              this.wasPlayingBeforeSleep &&
+              (this.wasPlayingBeforeSleep || this.androidInBackground) &&
               nowMs - this.lastPauseCalledAt > 1200 &&
-              this.ytBgPauseRecoverCount < 12
+              this.ytBgPauseRecoverCount < 24
             ) {
-              if (nowMs - this.ytLastBgKickAt >= 600) {
+              if (nowMs - this.ytLastBgKickAt >= 350) {
                 this.ytBgPauseRecoverCount += 1;
                 this.ytLastBgKickAt = nowMs;
                 try {
@@ -2651,7 +2683,7 @@ export class AudioEngine {
       }
 
       if (this.ctx && this.ctx.state !== 'running') {
-        this.ctx.resume().catch(() => {});
+        this.ctx.resume().catch(() => { });
       }
 
       this.audioElement
@@ -2763,7 +2795,7 @@ export class AudioEngine {
     }
 
     if (!this.usingPassthroughStream && this.ctx && this.ctx.state !== 'running') {
-      this.ctx.resume().catch(() => {});
+      this.ctx.resume().catch(() => { });
     }
 
     if (this.activeBackend === 'html5') {
@@ -3392,6 +3424,67 @@ export class AudioEngine {
 
   public getDuration(): number {
     return this.duration;
+  }
+
+  public setAndroidBackgroundState(inBg: boolean): void {
+    this.androidInBackground = Boolean(inBg);
+    if (this.androidInBackground) {
+      if (this.isPlaying) {
+        this.wasPlayingBeforeSleep = true;
+        this.html5BgPauseRecoverCount = 0;
+        this.ytBgPauseRecoverCount = 0;
+        if (this.activeBackend === 'youtube' && this.currentTime >= 0) {
+          this.ytWallAnchorMs = Date.now();
+          this.ytWallAnchorPos = this.currentTime;
+        }
+        this.startTransitionKeepalive(0);
+        if (this.activeBackend === 'youtube') {
+          this.startYouTubePoll();
+        } else if (this.activeBackend === 'html5') {
+          this.startHtml5Poll();
+        }
+        this.syncBgWorkerState();
+        this.kickAndroidBackgroundPlayback();
+      }
+      return;
+    }
+    this.html5BgPauseRecoverCount = 0;
+    this.ytBgPauseRecoverCount = 0;
+    this.syncBgWorkerState();
+    this.scheduleWakeRecovery();
+  }
+
+  public kickAndroidBackgroundPlayback(): void {
+    if (!this.isPlaying) return;
+    if (performance.now() - this.lastPauseCalledAt <= 1200) return;
+
+    this.wasPlayingBeforeSleep = true;
+    this.startTransitionKeepalive(0);
+
+    if (this.activeBackend === 'youtube' && this.ytPlayer && this.ytReady) {
+      try {
+        const st = this.ytPlayer.getPlayerState?.();
+        if (st !== 1 && st !== 3) {
+          this.ytPlayer.unMute?.();
+          this.ytPlayer.setVolume(this.getCalibratedYouTubeVolume());
+          this.ytPlayer.playVideo();
+        }
+      } catch {
+        // Ignore transient YT API error during activity pause
+      }
+      return;
+    }
+
+    if (this.activeBackend === 'html5') {
+      const activeEl = this.usingPassthroughStream ? this.streamAudioElement : this.audioElement;
+      if (!this.usingPassthroughStream && this.ctx && this.ctx.state !== 'running') {
+        this.ctx.resume().catch(() => { });
+      }
+      if (activeEl && activeEl.paused && !activeEl.ended) {
+        this.suppressPauseUntilMs = performance.now() + 600;
+        activeEl.play().catch(() => { });
+      }
+    }
   }
 
   public getIsPlaying(): boolean {

@@ -9,9 +9,15 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.drawable.Icon;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioTrack;
 import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -19,8 +25,12 @@ import android.os.Looper;
 import android.os.PowerManager;
 
 /**
- * High-priority Android foreground media service holding partial CPU wake lock
- * only while audio is actively playing, lockscreen notification controls, and MediaSession hooks.
+ * High-priority Android foreground media service holding:
+ * 1. FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK persistent lockscreen notification + MediaSession
+ * 2. AudioManager AUDIOFOCUS_GAIN (USAGE_MEDIA / CONTENT_TYPE_MUSIC) with transient call handling
+ * 3. Zero-amplitude MODE_STATIC AudioTrack keepalive in AudioFlinger (0% Java CPU) so Android 12-15
+ *    App Freezer and OEM killers never freeze or mute the Chromium WebView audio renderer
+ * 4. Partial CPU WakeLock + WifiLock held strictly while playing
  */
 public class PlaybackForegroundService extends Service {
     public static final String CHANNEL_ID = "sonacast_playback_channel";
@@ -50,23 +60,64 @@ public class PlaybackForegroundService extends Service {
 
     private MediaSession mediaSession;
     private PowerManager.WakeLock wakeLock;
+    private WifiManager.WifiLock wifiLock;
     private NotificationManager notificationManager;
+    private AudioManager audioManager;
+    private AudioFocusRequest audioFocusRequest;
+    private boolean hasAudioFocus = false;
+    private boolean pausedByTransientFocusLoss = false;
+    private AudioTrack silentKeepaliveTrack;
 
     private String currentTitle = "Sonacast";
     private String currentArtist = "24/7 Audio Stream";
     private boolean currentPlaying = false;
     private boolean currentLowCpu = false;
 
+    private final AudioManager.OnAudioFocusChangeListener focusChangeListener =
+        new AudioManager.OnAudioFocusChangeListener() {
+            @Override
+            public void onAudioFocusChange(int focusChange) {
+                if (focusChange == AudioManager.AUDIOFOCUS_LOSS) {
+                    hasAudioFocus = false;
+                    pausedByTransientFocusLoss = false;
+                    if (currentPlaying) {
+                        dispatchToWebView("pause");
+                    }
+                } else if (focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                    if (currentPlaying) {
+                        pausedByTransientFocusLoss = true;
+                        dispatchToWebView("pause");
+                    }
+                } else if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
+                    hasAudioFocus = true;
+                    if (pausedByTransientFocusLoss) {
+                        pausedByTransientFocusLoss = false;
+                        dispatchToWebView("play");
+                    }
+                }
+            }
+        };
+
     @Override
     public void onCreate() {
         super.onCreate();
         notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         createNotificationChannel();
 
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm != null) {
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "sonacast:playback_wakelock");
             wakeLock.setReferenceCounted(false);
+        }
+
+        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        if (wm != null) {
+            int wifiMode = Build.VERSION.SDK_INT >= 29
+                ? WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                : WifiManager.WIFI_MODE_FULL_HIGH_PERF;
+            wifiLock = wm.createWifiLock(wifiMode, "sonacast:playback_wifilock");
+            wifiLock.setReferenceCounted(false);
         }
 
         mediaSession = new MediaSession(this, "SonacastMediaSession");
@@ -109,7 +160,7 @@ public class PlaybackForegroundService extends Service {
                 "Sonacast Background Audio",
                 NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("Keeps full-length playback active 24/7 with low CPU overhead");
+            channel.setDescription("Keeps full-length playback active 24/7 in background and screen-off");
             channel.setShowBadge(false);
             notificationManager.createNotificationChannel(channel);
         }
@@ -127,7 +178,9 @@ public class PlaybackForegroundService extends Service {
                 dispatchToWebView("next");
             } else if (ACTION_STOP.equals(action)) {
                 dispatchToWebView("pause");
-                releaseWakeLock();
+                stopSilentAudioFlingerKeepalive();
+                abandonAudioFocus();
+                releaseLocks();
                 stopForeground(true);
                 stopSelf();
                 return START_NOT_STICKY;
@@ -142,9 +195,16 @@ public class PlaybackForegroundService extends Service {
         }
 
         if (currentPlaying) {
-            acquireWakeLock();
+            pausedByTransientFocusLoss = false;
+            acquireLocks();
+            requestAudioFocus();
+            startSilentAudioFlingerKeepalive();
         } else {
-            releaseWakeLock();
+            stopSilentAudioFlingerKeepalive();
+            if (!pausedByTransientFocusLoss) {
+                abandonAudioFocus();
+            }
+            releaseLocks();
         }
 
         updateMediaSessionState();
@@ -163,6 +223,103 @@ public class PlaybackForegroundService extends Service {
         return START_STICKY;
     }
 
+    private void requestAudioFocus() {
+        if (audioManager == null || hasAudioFocus) return;
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build();
+                audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attrs)
+                    .setAcceptsDelayedFocusGain(true)
+                    .setWillPauseWhenDucked(false)
+                    .setOnAudioFocusChangeListener(focusChangeListener, MAIN_HANDLER)
+                    .build();
+                int res = audioManager.requestAudioFocus(audioFocusRequest);
+                hasAudioFocus = (res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
+            } else {
+                @SuppressWarnings("deprecation")
+                int res = audioManager.requestAudioFocus(
+                    focusChangeListener,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN
+                );
+                hasAudioFocus = (res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
+            }
+        } catch (Throwable ignored) {
+            // Best-effort focus request
+        }
+    }
+
+    private void abandonAudioFocus() {
+        if (audioManager == null || !hasAudioFocus) return;
+        try {
+            if (Build.VERSION.SDK_INT >= 26 && audioFocusRequest != null) {
+                audioManager.abandonAudioFocusRequest(audioFocusRequest);
+            } else {
+                @SuppressWarnings("deprecation")
+                int ignored = audioManager.abandonAudioFocus(focusChangeListener);
+            }
+        } catch (Throwable ignored) {
+            // Ignore cleanup errors
+        } finally {
+            hasAudioFocus = false;
+        }
+    }
+
+    private void startSilentAudioFlingerKeepalive() {
+        try {
+            if (silentKeepaliveTrack != null) {
+                if (silentKeepaliveTrack.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
+                    silentKeepaliveTrack.play();
+                }
+                return;
+            }
+            final int sampleRate = 16000;
+            final int frameCount = 1600; // 100ms zero-amplitude static PCM loop
+            final int byteCount = frameCount * 2;
+            byte[] silence = new byte[byteCount];
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build();
+            AudioFormat fmt = new AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(sampleRate)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .build();
+            AudioTrack track = new AudioTrack.Builder()
+                .setAudioAttributes(attrs)
+                .setAudioFormat(fmt)
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(byteCount)
+                .build();
+            track.write(silence, 0, silence.length);
+            track.setLoopPoints(0, frameCount, -1);
+            track.setVolume(0.0f);
+            track.play();
+            silentKeepaliveTrack = track;
+        } catch (Throwable ignored) {
+            // Keep service running even if AudioTrack cannot initialize on an unusual device
+        }
+    }
+
+    private void stopSilentAudioFlingerKeepalive() {
+        AudioTrack track = silentKeepaliveTrack;
+        silentKeepaliveTrack = null;
+        if (track != null) {
+            try {
+                track.pause();
+                track.stop();
+                track.release();
+            } catch (Throwable ignored) {
+                // Ignore AudioTrack release errors
+            }
+        }
+    }
+
     private void dispatchToWebView(final String action) {
         MAIN_HANDLER.post(new Runnable() {
             @Override
@@ -175,15 +332,29 @@ public class PlaybackForegroundService extends Service {
         });
     }
 
-    private void acquireWakeLock() {
+    private void acquireLocks() {
         if (wakeLock != null && !wakeLock.isHeld()) {
-            wakeLock.acquire(4L * 60L * 60L * 1000L);
+            wakeLock.acquire(8L * 60L * 60L * 1000L);
+        }
+        if (wifiLock != null && !wifiLock.isHeld()) {
+            try {
+                wifiLock.acquire();
+            } catch (Throwable ignored) {
+                // Ignore if device restricts WifiLock
+            }
         }
     }
 
-    private void releaseWakeLock() {
+    private void releaseLocks() {
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
+        }
+        if (wifiLock != null && wifiLock.isHeld()) {
+            try {
+                wifiLock.release();
+            } catch (Throwable ignored) {
+                // Ignore
+            }
         }
     }
 
@@ -274,13 +445,23 @@ public class PlaybackForegroundService extends Service {
     }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        if (!currentPlaying) {
+            stopSelf();
+        }
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
     public IBinder onBind(Intent intent) {
         return null;
     }
 
     @Override
     public void onDestroy() {
-        releaseWakeLock();
+        stopSilentAudioFlingerKeepalive();
+        abandonAudioFocus();
+        releaseLocks();
         if (mediaSession != null) {
             mediaSession.setActive(false);
             mediaSession.release();
@@ -288,4 +469,3 @@ public class PlaybackForegroundService extends Service {
         super.onDestroy();
     }
 }
-

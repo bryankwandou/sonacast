@@ -8,6 +8,7 @@ import {
   Pause,
   PictureInPicture2,
   Play,
+  SkipBack,
   SkipForward,
   X,
   Zap
@@ -18,9 +19,12 @@ import { useAppPreferences } from '../../contexts/AppPreferencesContext';
 interface FloatingMiniPlayerProps {
   track: Track;
   isPlaying: boolean;
+  currentTime?: number;
+  duration?: number;
   lowCpuMode: boolean;
   onTogglePlay: () => void;
   onNext: () => void;
+  onPrev?: () => void;
   onRestoreStage: () => void;
   onCloseFloating: () => void;
   onOpenDesktopPip: () => void;
@@ -31,15 +35,144 @@ export interface DesktopPipController {
   update: (payload: {
     track: Track;
     isPlaying: boolean;
+    currentTime?: number;
+    duration?: number;
     activeLyricText: string;
     lowCpuMode: boolean;
   }) => void;
   close: () => void;
 }
 
+function mountMiniPlayerWindow(
+  pipWin: Window,
+  callbacks: {
+    track: Track;
+    isPlaying: boolean;
+    currentTime?: number;
+    duration?: number;
+    activeLyricText: string;
+    lowCpuMode: boolean;
+    onTogglePlay: () => void;
+    onNext: () => void;
+    onPrev: () => void;
+    onClosed?: () => void;
+  }
+): DesktopPipController {
+  const doc = pipWin.document;
+  doc.title = `${callbacks.track.title} - Sonacast`;
+
+  const style = doc.createElement('style');
+  style.textContent = `
+      * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+      body { background: #090d16; color: #f8fafc; padding: 12px 14px; display: flex; flex-direction: column; justify-content: space-between; height: 100vh; overflow: hidden; user-select: none; }
+      .row { display: flex; align-items: center; gap: 10px; }
+      .cover { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.14); }
+      .meta { min-width: 0; flex: 1; }
+      .title { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .artist { font-size: 11px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+      .lyric { font-size: 11px; color: #34d399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 6px 0 4px; min-height: 15px; }
+      .prog-wrap { width: 100%; height: 3px; border-radius: 999px; background: rgba(148,163,184,0.22); overflow: hidden; margin-bottom: 8px; }
+      .prog-fill { height: 100%; background: #10b981; border-radius: 999px; width: 0%; transition: width 0.25s linear; }
+      .controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .btns { display: flex; align-items: center; gap: 6px; }
+      button { background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; height: 32px; min-width: 32px; padding: 0 10px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+      button:hover { background: #334155; }
+      button.primary { background: #10b981; color: #042f2e; border-color: #10b981; width: 34px; height: 34px; padding: 0; }
+      button.primary:hover { background: #34d399; }
+      .badge { font-size: 10px; color: #94a3b8; font-family: monospace; letter-spacing: 0.04em; }
+    `;
+  doc.head.appendChild(style);
+
+  const root = doc.createElement('div');
+  root.innerHTML = `
+      <div class="row">
+        <img id="sc-cover" class="cover" alt="" />
+        <div class="meta">
+          <div id="sc-title" class="title"></div>
+          <div id="sc-artist" class="artist"></div>
+        </div>
+      </div>
+      <div id="sc-lyric" class="lyric"></div>
+      <div class="prog-wrap"><div id="sc-prog" class="prog-fill"></div></div>
+      <div class="controls">
+        <div class="btns">
+          <button id="sc-prev" type="button" aria-label="Previous">Prev</button>
+          <button id="sc-play" type="button" class="primary" aria-label="Play or Pause">Play</button>
+          <button id="sc-next" type="button" aria-label="Next">Next</button>
+        </div>
+        <span id="sc-mode" class="badge"></span>
+      </div>
+    `;
+  doc.body.appendChild(root);
+
+  const coverEl = doc.getElementById('sc-cover') as HTMLImageElement;
+  const titleEl = doc.getElementById('sc-title') as HTMLElement;
+  const artistEl = doc.getElementById('sc-artist') as HTMLElement;
+  const lyricEl = doc.getElementById('sc-lyric') as HTMLElement;
+  const progEl = doc.getElementById('sc-prog') as HTMLElement;
+  const playEl = doc.getElementById('sc-play') as HTMLButtonElement;
+  const modeEl = doc.getElementById('sc-mode') as HTMLElement;
+
+  doc.getElementById('sc-prev')?.addEventListener('click', () => callbacks.onPrev());
+  playEl.addEventListener('click', () => callbacks.onTogglePlay());
+  doc.getElementById('sc-next')?.addEventListener('click', () => callbacks.onNext());
+
+  const syncUi = (payload: {
+    track: Track;
+    isPlaying: boolean;
+    currentTime?: number;
+    duration?: number;
+    activeLyricText: string;
+    lowCpuMode: boolean;
+  }) => {
+    if (pipWin.closed) return;
+    doc.title = `${payload.track.title} - Sonacast`;
+    coverEl.src =
+      payload.track.coverUrl ||
+      buildCoverFallbackDataUri(payload.track.title, payload.track.artist);
+    titleEl.textContent = payload.track.title;
+    artistEl.textContent = payload.track.artist;
+    lyricEl.textContent = payload.activeLyricText || '24/7 Background Stream';
+    const dur = Math.max(1, payload.duration || payload.track.duration || 1);
+    const pct = Math.min(100, Math.max(0, ((payload.currentTime || 0) / dur) * 100));
+    progEl.style.width = `${pct.toFixed(1)}%`;
+    playEl.textContent = payload.isPlaying ? '||' : '>';
+    playEl.setAttribute('aria-label', payload.isPlaying ? 'Pause' : 'Play');
+    modeEl.textContent =
+      payload.track.sourceTag === 'live-radio'
+        ? 'LIVE'
+        : payload.lowCpuMode
+          ? 'ECO 24/7'
+          : 'SONACAST';
+  };
+
+  syncUi({
+    track: callbacks.track,
+    isPlaying: callbacks.isPlaying,
+    currentTime: callbacks.currentTime,
+    duration: callbacks.duration,
+    activeLyricText: callbacks.activeLyricText,
+    lowCpuMode: callbacks.lowCpuMode
+  });
+
+  pipWin.addEventListener('pagehide', () => {
+    callbacks.onClosed?.();
+  });
+
+  return {
+    isOpen: () => !pipWin.closed,
+    update: syncUi,
+    close: () => {
+      if (!pipWin.closed) pipWin.close();
+    }
+  };
+}
+
 export const openDesktopPipWindow = async (callbacks: {
   track: Track;
   isPlaying: boolean;
+  currentTime?: number;
+  duration?: number;
   activeLyricText: string;
   lowCpuMode: boolean;
   onTogglePlay: () => void;
@@ -54,101 +187,31 @@ export const openDesktopPipWindow = async (callbacks: {
   }).documentPictureInPicture;
 
   if (docPip?.requestWindow) {
-    const pipWin = await docPip.requestWindow({ width: 356, height: 158 });
-    const doc = pipWin.document;
-    doc.title = `${callbacks.track.title} - Sonacast`;
+    try {
+      const pipWin = await docPip.requestWindow({ width: 364, height: 176 });
+      return mountMiniPlayerWindow(pipWin, callbacks);
+    } catch {
+      // Fall through to popup / video PiP fallback
+    }
+  }
 
-    const style = doc.createElement('style');
-    style.textContent = `
-      * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-      body { background: #090d16; color: #f8fafc; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; height: 100vh; overflow: hidden; user-select: none; }
-      .row { display: flex; align-items: center; gap: 10px; }
-      .cover { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.12); }
-      .meta { min-width: 0; flex: 1; }
-      .title { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .artist { font-size: 11px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-      .lyric { font-size: 11px; color: #34d399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 8px 0; min-height: 15px; }
-      .controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-      .btns { display: flex; align-items: center; gap: 6px; }
-      button { background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; height: 30px; min-width: 30px; padding: 0 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
-      button.primary { background: #10b981; color: #042f2e; border-color: #10b981; }
-      .badge { font-size: 10px; color: #94a3b8; font-family: monospace; }
-    `;
-    doc.head.appendChild(style);
-
-    const root = doc.createElement('div');
-    root.innerHTML = `
-      <div class="row">
-        <img id="sc-cover" class="cover" alt="" />
-        <div class="meta">
-          <div id="sc-title" class="title"></div>
-          <div id="sc-artist" class="artist"></div>
-        </div>
-      </div>
-      <div id="sc-lyric" class="lyric"></div>
-      <div class="controls">
-        <div class="btns">
-          <button id="sc-prev" type="button">Prev</button>
-          <button id="sc-play" type="button" class="primary">Play</button>
-          <button id="sc-next" type="button">Next</button>
-        </div>
-        <span id="sc-mode" class="badge"></span>
-      </div>
-    `;
-    doc.body.appendChild(root);
-
-    const coverEl = doc.getElementById('sc-cover') as HTMLImageElement;
-    const titleEl = doc.getElementById('sc-title') as HTMLElement;
-    const artistEl = doc.getElementById('sc-artist') as HTMLElement;
-    const lyricEl = doc.getElementById('sc-lyric') as HTMLElement;
-    const playEl = doc.getElementById('sc-play') as HTMLButtonElement;
-    const modeEl = doc.getElementById('sc-mode') as HTMLElement;
-
-    doc.getElementById('sc-prev')?.addEventListener('click', () => callbacks.onPrev());
-    playEl.addEventListener('click', () => callbacks.onTogglePlay());
-    doc.getElementById('sc-next')?.addEventListener('click', () => callbacks.onNext());
-
-    const syncUi = (payload: {
-      track: Track;
-      isPlaying: boolean;
-      activeLyricText: string;
-      lowCpuMode: boolean;
-    }) => {
-      if (pipWin.closed) return;
-      doc.title = `${payload.track.title} - Sonacast`;
-      coverEl.src =
-        payload.track.coverUrl ||
-        buildCoverFallbackDataUri(payload.track.title, payload.track.artist);
-      titleEl.textContent = payload.track.title;
-      artistEl.textContent = payload.track.artist;
-      lyricEl.textContent = payload.activeLyricText || '24/7 Background Stream';
-      playEl.textContent = payload.isPlaying ? 'Pause' : 'Play';
-      modeEl.textContent =
-        payload.track.sourceTag === 'live-radio'
-          ? 'LIVE'
-          : payload.lowCpuMode
-            ? 'ECO 24/7'
-            : 'AUDIO';
-    };
-
-    syncUi({
-      track: callbacks.track,
-      isPlaying: callbacks.isPlaying,
-      activeLyricText: callbacks.activeLyricText,
-      lowCpuMode: callbacks.lowCpuMode
-    });
-
-    pipWin.addEventListener('pagehide', () => {
-      callbacks.onClosed?.();
-    });
-
-    return {
-      isOpen: () => !pipWin.closed,
-      update: syncUi,
-      close: () => {
-        if (!pipWin.closed) pipWin.close();
-      }
-    };
+  // Fallback 2: Desktop bottom-right floating popup window (works in Firefox/Safari/browsers without Document PiP)
+  try {
+    const left = Math.max(20, (window.screen?.availWidth || 1280) - 388);
+    const top = Math.max(20, (window.screen?.availHeight || 800) - 224);
+    const popupWin = window.open(
+      '',
+      'sonacast-desktop-miniplayer',
+      `popup=yes,width=364,height=176,left=${left},top=${top},resizable=yes`
+    );
+    if (popupWin && !popupWin.closed && popupWin.document) {
+      popupWin.document.open();
+      popupWin.document.write('<!doctype html><html><head></head><body></body></html>');
+      popupWin.document.close();
+      return mountMiniPlayerWindow(popupWin, callbacks);
+    }
+  } catch {
+    // Fall through to Video PiP
   }
 
   // Fallback for browsers with Video PiP but without Document PiP
@@ -232,20 +295,24 @@ export const openDesktopPipWindow = async (callbacks: {
 export const FloatingMiniPlayer: React.FC<FloatingMiniPlayerProps> = ({
   track,
   isPlaying,
+  currentTime = 0,
+  duration = 0,
   lowCpuMode,
   onTogglePlay,
   onNext,
+  onPrev,
   onRestoreStage,
   onCloseFloating,
   onOpenDesktopPip
 }) => {
   const { t } = useAppPreferences();
   const [isCompactIcon, setIsCompactIcon] = useState(false);
+  const progressPct = Math.min(100, Math.max(0, (currentTime / Math.max(1, duration || track.duration || 1)) * 100));
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     if (typeof window === 'undefined') return { x: 24, y: 120 };
     return {
-      x: Math.max(12, window.innerWidth - 318),
-      y: Math.max(16, window.innerHeight - 178)
+      x: Math.max(12, window.innerWidth - 332),
+      y: Math.max(16, window.innerHeight - 194)
     };
   });
 
@@ -342,9 +409,16 @@ export const FloatingMiniPlayer: React.FC<FloatingMiniPlayerProps> = ({
     <div
       data-testid="floating-mini-bubble"
       style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
-      className="fixed z-50 w-[300px] max-w-[calc(100vw-16px)] rounded-2xl bg-[var(--bg-surface)]/95 backdrop-blur-lg border border-[var(--border-medium)] shadow-2xl p-2.5 select-none"
+      className="fixed z-50 w-[316px] max-w-[calc(100vw-16px)] rounded-2xl bg-[var(--bg-surface)]/95 backdrop-blur-lg border border-[var(--border-medium)] shadow-2xl overflow-hidden select-none"
     >
-      <div className="flex items-center gap-2.5">
+      <div className="w-full h-1 bg-[var(--bg-tint)]">
+        <div
+          className="h-full bg-[var(--accent-emerald)] transition-[width] duration-300"
+          style={{ width: `${progressPct.toFixed(1)}%` }}
+        />
+      </div>
+      <div className="p-2.5">
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onPointerDown={startDrag}
@@ -375,6 +449,17 @@ export const FloatingMiniPlayer: React.FC<FloatingMiniPlayerProps> = ({
           </div>
         </div>
 
+        {onPrev && (
+          <button
+            type="button"
+            onClick={onPrev}
+            aria-label="Previous"
+            className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer shrink-0"
+          >
+            <SkipBack size={13} />
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onTogglePlay}
@@ -397,15 +482,17 @@ export const FloatingMiniPlayer: React.FC<FloatingMiniPlayerProps> = ({
       <div className="mt-2 pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-1 text-[10px]">
         <button
           type="button"
+          data-testid="floating-mini-icon-toggle"
           onClick={() => setIsCompactIcon(true)}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer"
         >
           <ChevronDown size={11} />
-          <span>Icon</span>
+          <span>Corner Icon</span>
         </button>
 
         <button
           type="button"
+          data-testid="floating-mini-pip-btn"
           onClick={onOpenDesktopPip}
           title={t.desktopPip}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tint)] cursor-pointer"
@@ -425,12 +512,14 @@ export const FloatingMiniPlayer: React.FC<FloatingMiniPlayerProps> = ({
 
         <button
           type="button"
+          data-testid="floating-mini-close-btn"
           onClick={onCloseFloating}
           aria-label="Close floating player"
           className="p-1 rounded-md text-[var(--text-dim)] hover:text-rose-400 cursor-pointer"
         >
           <X size={12} />
         </button>
+      </div>
       </div>
     </div>
   );
