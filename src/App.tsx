@@ -3381,7 +3381,7 @@ export default function App() {
     win.SonacastAndroid?.syncPlaybackState?.(
       currentTrack.title,
       currentTrack.artist,
-      isPlaying,
+      isPlaying || Boolean(resolvingTrackId),
       lowCpuMode
     );
 
@@ -3408,7 +3408,7 @@ export default function App() {
     win.__sonacastAndroidBgKeepAlive = () => {
       sharedAudioEngine.kickAndroidBackgroundPlayback();
     };
-  }, [currentTrack.id, currentTrack.title, currentTrack.artist, isPlaying, lowCpuMode, handlePrev]);
+  }, [currentTrack.id, currentTrack.title, currentTrack.artist, isPlaying, resolvingTrackId, lowCpuMode, handlePrev]);
 
   useEffect(() => {
     if (!pipControllerRef.current?.isOpen()) return;
@@ -5082,6 +5082,12 @@ export default function App() {
         onToggleSaveOffline={() => void handleToggleSaveOffline(currentTrack)}
         onShareTrack={() => void handleShareTrack(currentTrack)}
         onWatchVideo={() => handleSelectStageMode('video-lyric')}
+        onMinimizeToFloating={() => {
+          setIsExpandedPlayerOpen(false);
+          setIsStageOpen(false);
+          setIsFloatingMinimized(true);
+        }}
+        onTriggerDesktopPip={handleOpenDesktopPip}
         isResolvingSharedTrack={isResolvingSharedTrack}
       />
 

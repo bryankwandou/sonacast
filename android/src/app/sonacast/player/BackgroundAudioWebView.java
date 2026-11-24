@@ -53,6 +53,15 @@ public class BackgroundAudioWebView extends WebView {
     }
 
     @Override
+    public void onVisibilityAggregated(boolean isVisible) {
+        if (keepAliveInBackground) {
+            super.onVisibilityAggregated(true);
+            return;
+        }
+        super.onVisibilityAggregated(isVisible);
+    }
+
+    @Override
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         if (keepAliveInBackground) {
             super.onWindowFocusChanged(true);

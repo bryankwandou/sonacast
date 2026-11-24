@@ -9,8 +9,10 @@ import {
   ListPlus,
   Loader2,
   Mic2,
+  Minimize2,
   Moon,
   Pause,
+  PictureInPicture2,
   Play,
   Radio,
   RefreshCw,
@@ -74,6 +76,8 @@ interface ExpandedPlayerModalProps {
   onOpenArtist?: (artistName: string) => void;
   onOpenLyricCard?: (lineIndex?: number) => void;
   onWatchVideo?: () => void;
+  onMinimizeToFloating?: () => void;
+  onTriggerDesktopPip?: () => void;
   normalizationEnabled?: boolean;
   onToggleNormalization?: () => void;
   loudnessTarget?: LoudnessTarget;
@@ -136,6 +140,8 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
   onOpenArtist,
   onOpenLyricCard,
   onWatchVideo,
+  onMinimizeToFloating,
+  onTriggerDesktopPip,
   normalizationEnabled = true,
   onToggleNormalization,
   loudnessTarget = 'balanced',
@@ -313,6 +319,32 @@ export const ExpandedPlayerModal: React.FC<ExpandedPlayerModalProps> = ({
             >
               <Film size={14} />
               <span className="hidden sm:inline">{t.watchMusicVideo}</span>
+            </button>
+          )}
+
+          {onMinimizeToFloating && (
+            <button
+              type="button"
+              onClick={onMinimizeToFloating}
+              data-testid="expanded-minimize-btn"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-primary)] text-xs font-semibold cursor-pointer transition-colors"
+              title={t.minimizeFloating}
+            >
+              <Minimize2 size={14} />
+              <span className="hidden sm:inline">{t.minimizeFloating}</span>
+            </button>
+          )}
+
+          {onTriggerDesktopPip && (
+            <button
+              type="button"
+              onClick={onTriggerDesktopPip}
+              data-testid="expanded-pip-btn"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-tint)] hover:bg-[var(--bg-tint-hover)] text-[var(--text-primary)] text-xs font-semibold cursor-pointer transition-colors"
+              title={t.desktopPip}
+            >
+              <PictureInPicture2 size={14} />
+              <span className="hidden sm:inline">{t.desktopPip}</span>
             </button>
           )}
 
