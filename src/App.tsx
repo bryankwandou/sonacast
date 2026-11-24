@@ -3749,10 +3749,24 @@ export default function App() {
   };
 
   const handleHardRefresh = () => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .getRegistration()
+        .then((reg) => {
+          reg?.waiting?.postMessage({ type: 'SKIP_WAITING' });
+        })
+        .catch(() => {});
+    }
     if (typeof window.caches !== 'undefined') {
       window.caches
         .keys()
-        .then((keys) => Promise.all(keys.map((k) => window.caches.delete(k))))
+        .then((keys) =>
+          Promise.all(
+            keys
+              .filter((k) => k !== 'sonacast-offline-audio-v1')
+              .map((k) => window.caches.delete(k))
+          )
+        )
         .finally(() => {
           window.location.reload();
         });

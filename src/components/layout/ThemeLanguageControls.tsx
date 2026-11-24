@@ -130,21 +130,23 @@ export const ThemeLanguageControls: React.FC<ThemeLanguageControlsProps> = ({
         </label>
       </div>
 
-      {/* Theme Toggle Button */}
+      {/* Theme Toggle Button (shows currently active theme consistently without reload flip) */}
       <button
         type="button"
         onClick={toggleTheme}
         data-testid="theme-toggle-topbar"
+        data-theme-active={theme}
+        aria-pressed={isDark}
         aria-label={`${t.themeLabel}: ${isDark ? t.themeDark : t.themeLight}`}
-        title={isDark ? t.themeLight : t.themeDark}
+        title={`${t.themeLabel}: ${isDark ? t.themeDark : t.themeLight}`}
         className="min-h-[34px] min-w-[34px] px-2.5 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center gap-1.5 text-[11px] font-semibold transition-colors cursor-pointer"
       >
         {isDark ? (
-          <Sun size={14} className="text-amber-400 shrink-0" />
+          <Moon size={14} className="text-[var(--accent-text)] shrink-0" />
         ) : (
-          <Moon size={14} className="text-slate-700 shrink-0" />
+          <Sun size={14} className="text-amber-500 shrink-0" />
         )}
-        <span className="hidden md:inline">{isDark ? t.themeLight : t.themeDark}</span>
+        <span className="hidden md:inline">{isDark ? t.themeDark : t.themeLight}</span>
       </button>
     </div>
   );

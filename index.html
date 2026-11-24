@@ -4,12 +4,58 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#08090D" />
+    <script>
+      (function () {
+        try {
+          var root = document.documentElement;
+          root.classList.add('theme-booting');
+          var savedTheme = localStorage.getItem('sonacast-theme');
+          var theme = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark';
+          var bgColor = theme === 'light' ? '#F8FAFC' : '#08090D';
+          root.setAttribute('data-theme', theme);
+          root.style.colorScheme = theme;
+          root.style.backgroundColor = bgColor;
+          var metaTheme = document.querySelector('meta[name="theme-color"]');
+          if (metaTheme) {
+            metaTheme.setAttribute('content', bgColor);
+          }
+          var savedLang = localStorage.getItem('sonacast-lang');
+          if (savedLang && /^[a-z-]{2,8}$/i.test(savedLang)) {
+            root.setAttribute('lang', savedLang);
+            root.setAttribute('dir', savedLang.toLowerCase() === 'ar' ? 'rtl' : 'ltr');
+          }
+          window.setTimeout(function () {
+            root.classList.remove('theme-booting');
+          }, 800);
+        } catch (_) {}
+      })();
+    </script>
+    <style>
+      html[data-theme="light"],
+      html[data-theme="light"] body {
+        background-color: #F8FAFC;
+        color: #0F172A;
+        color-scheme: light;
+      }
+      html[data-theme="dark"],
+      html[data-theme="dark"] body {
+        background-color: #08090D;
+        color: #F5F5F0;
+        color-scheme: dark;
+      }
+      html.theme-booting,
+      html.theme-booting *,
+      html.theme-booting *::before,
+      html.theme-booting *::after {
+        transition: none !important;
+      }
+    </style>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Sonacast — Full-Length Music Streaming &amp; Synchronized Lyrics</title>
     <meta name="description" content="Editorial full-length music player with live charts, multi-source search, synchronized lyrics, pure deterministic radio, and 60 FPS Web Audio visualizer." />
-    <meta name="theme-color" content="#08090D" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.webmanifest" />

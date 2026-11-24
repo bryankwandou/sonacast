@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sonacast-shell-v37';
+const CACHE_NAME = 'sonacast-shell-v38';
 const OFFLINE_AUDIO_CACHE = 'sonacast-offline-audio-v1';
 const offlineAudioPaths = new Set();
 let offlinePathsReady = false;
@@ -54,7 +54,6 @@ async function serveAudioFromCache(req) {
 }
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
   event.waitUntil(
     caches
       .open(CACHE_NAME)
@@ -74,11 +73,14 @@ self.addEventListener('activate', (event) => {
             .map((k) => caches.delete(k))
         )
       )
-      .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
   if (event.data && event.data.type === 'REFRESH_OFFLINE_AUDIO') {
     void refreshOfflineAudioPaths();
   }
